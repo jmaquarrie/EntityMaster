@@ -22,6 +22,20 @@ body {
   margin: 0;
   min-height: 100vh;
   background: radial-gradient(circle at 15% 20%, #ffffff, #edf0f7 65%);
+  overflow: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+body::-webkit-scrollbar,
+html::-webkit-scrollbar,
+#canvasViewport::-webkit-scrollbar {
+  display: none;
+}
+
+#canvasViewport {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 .app {
@@ -47,10 +61,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 999px;
-  padding: 0.35rem 0.9rem;
-  box-shadow: 0 10px 25px rgba(10, 18, 54, 0.15);
+  padding: 0.35rem 0;
   z-index: 2;
   margin-top: 0.5rem;
 }
@@ -66,6 +77,30 @@ body {
   gap: 0.35rem;
   font-size: 0.9rem;
   color: #4b4f65;
+}
+
+.storage-controls {
+  display: inline-flex;
+  gap: 0.25rem;
+  margin-right: 0.25rem;
+}
+
+.icon-btn {
+  background: rgba(18, 24, 57, 0.08);
+  color: #121839;
+  border-radius: 12px;
+  padding: 0.35rem 0.5rem;
+  min-width: 36px;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+}
+
+.icon-btn:hover {
+  background: rgba(18, 24, 57, 0.15);
+  box-shadow: none;
 }
 
 button {
@@ -240,7 +275,8 @@ button.ghost {
   top: 1.5rem;
   right: 1.5rem;
   width: min(var(--filter-width), calc(100vw - 2.5rem));
-  background: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(12px);
   border-radius: 18px;
   padding: 0.5rem 0.75rem 1rem;
   box-shadow: 0 12px 30px rgba(15, 20, 50, 0.25);
@@ -253,10 +289,19 @@ button.ghost {
 .sidebar-toggle {
   border-radius: 14px;
   border: 1px solid rgba(18, 24, 57, 0.2);
-  background: transparent;
+  background: rgba(255, 255, 255, 0.8);
   color: #0f1424;
   padding: 0.35rem 0.75rem;
   font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.sidebar-toggle .toggle-icon {
+  font-size: 1rem;
+  font-weight: 600;
 }
 
 .sidebar-content {
@@ -437,6 +482,185 @@ button.ghost {
   accent-color: #121839;
 }
 
+.selection-box {
+  position: absolute;
+  border: 1px dashed rgba(93, 141, 238, 0.9);
+  background: rgba(93, 141, 238, 0.2);
+  pointer-events: none;
+  border-radius: 8px;
+  z-index: 2;
+}
+
+.selection-box.hidden {
+  display: none;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 10, 24, 0.45);
+  z-index: 6;
+  padding: 1.5rem;
+}
+
+.modal.hidden {
+  display: none;
+}
+
+.modal-card {
+  background: #fff;
+  border-radius: 20px;
+  padding: 1.25rem;
+  width: min(480px, 90vw);
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 25px 60px rgba(12, 19, 54, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.modal-description {
+  margin: 0;
+  color: #4a4d63;
+  font-size: 0.9rem;
+}
+
+.selection-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.selection-list li {
+  background: #f1f3fb;
+  border-radius: 999px;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.85rem;
+}
+
+.modal-hint {
+  font-size: 0.8rem;
+  color: #6b6e88;
+  margin: 0;
+}
+
+.bulk-domain-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.bulk-domain-controls button {
+  border-radius: 14px;
+  padding: 0.25rem 0.7rem;
+  font-size: 0.8rem;
+  border: 1px solid rgba(18, 24, 57, 0.2);
+  background: rgba(18, 24, 57, 0.05);
+  color: #0f1424;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.bulk-domain-controls button[data-state="add"] {
+  background: rgba(63, 178, 138, 0.15);
+  border-color: #3fb28a;
+}
+
+.bulk-domain-controls button[data-state="remove"] {
+  background: rgba(221, 95, 104, 0.15);
+  border-color: #dd5f68;
+}
+
+.bulk-domain-controls .domain-state {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #6b6e88;
+}
+
+.bulk-domain-controls button[data-state="add"] .domain-state {
+  color: #1c6b4f;
+}
+
+.bulk-domain-controls button[data-state="remove"] .domain-state {
+  color: #a22f38;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.save-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.save-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 12px;
+  background: #f4f5fb;
+}
+
+.save-row .save-actions {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.save-row .save-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #131735;
+}
+
+.save-row button {
+  padding: 0.3rem 0.65rem;
+  font-size: 0.8rem;
+  border-radius: 10px;
+}
+
+.save-row button.delete {
+  background: rgba(221, 95, 104, 0.1);
+  color: #a22f38;
+}
+
+.save-row button.rename {
+  background: rgba(95, 111, 221, 0.1);
+  color: #4a4fbf;
+}
+
+.save-row button.load {
+  background: rgba(63, 178, 138, 0.15);
+  color: #1c6b4f;
+}
+
+.save-list .empty-message {
+  text-align: center;
+  color: #6f728c;
+  font-size: 0.9rem;
+}
+
 @media (max-width: 900px) {
   .canvas-toolbar {
     flex-direction: column;
@@ -462,5 +686,9 @@ button.ghost {
   .canvas-toolbar {
     position: static;
     flex-wrap: wrap;
+  }
+
+  body {
+    overflow: auto;
   }
 }

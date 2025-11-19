@@ -22,15 +22,20 @@
               <button id="clearFocusBtn" class="ghost">Clear Highlights</button>
             </div>
             <div class="zoom-controls" aria-label="Zoom">
+              <div class="storage-controls" aria-label="Diagram storage">
+                <button id="saveDiagramBtn" class="icon-btn" title="Save diagram" aria-label="Save diagram">💾</button>
+                <button id="loadDiagramBtn" class="icon-btn" title="Load diagram" aria-label="Load diagram">📂</button>
+              </div>
               <button class="zoom-btn" data-direction="out" aria-label="Zoom out">−</button>
               <span id="zoomLabel">100%</span>
               <button class="zoom-btn" data-direction="in" aria-label="Zoom in">+</button>
             </div>
           </div>
         </div>
-        <aside id="filterPanel" class="sidebar" aria-label="Filters">
-          <button id="filterPanelToggle" class="sidebar-toggle" aria-expanded="true">
-            Filters &amp; Search
+        <aside id="filterPanel" class="sidebar collapsed" aria-label="Filters">
+          <button id="filterPanelToggle" class="sidebar-toggle" aria-expanded="false">
+            <span class="toggle-label">Filters &amp; Search</span>
+            <span class="toggle-icon" aria-hidden="true">+</span>
           </button>
           <div class="sidebar-content">
             <div class="sidebar-section">
@@ -143,6 +148,70 @@
           <div id="panelDomainChoices" class="domain-choices"></div>
         </section>
       </aside>
+      <div id="bulkModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="bulkModalTitle">
+        <div class="modal-card">
+          <div class="modal-header">
+            <h3 id="bulkModalTitle">Bulk Edit Systems</h3>
+            <button id="closeBulkModal" class="icon-btn" type="button" aria-label="Close bulk edit">×</button>
+          </div>
+          <p class="modal-description">Apply owner or domain changes to every system inside your selection.</p>
+          <ul id="bulkSelectionList" class="selection-list"></ul>
+          <form id="bulkForm">
+            <label class="field">
+              <span>Platform Owner</span>
+              <input
+                type="text"
+                id="bulkPlatformOwner"
+                placeholder="Leave blank to keep current"
+                list="platformOwnerSuggestions"
+              />
+            </label>
+            <label class="field">
+              <span>Business Owner</span>
+              <input
+                type="text"
+                id="bulkBusinessOwner"
+                placeholder="Leave blank to keep current"
+                list="businessOwnerSuggestions"
+              />
+            </label>
+            <label class="field">
+              <span>Function Owner</span>
+              <input
+                type="text"
+                id="bulkFunctionOwner"
+                placeholder="Leave blank to keep current"
+                list="functionOwnerOptions"
+              />
+            </label>
+            <div class="field">
+              <div class="section-title">Domains</div>
+              <p class="modal-hint">Click a domain to toggle between Add → Remove → Ignore.</p>
+              <div id="bulkDomainControls" class="bulk-domain-controls"></div>
+            </div>
+            <div class="modal-actions">
+              <button type="button" id="cancelBulkBtn" class="ghost">Cancel</button>
+              <button type="submit">Apply Changes</button>
+            </div>
+          </form>
+        </div>
+      </div>
+      <div
+        id="saveManagerModal"
+        class="modal hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="saveModalTitle"
+      >
+        <div class="modal-card">
+          <div class="modal-header">
+            <h3 id="saveModalTitle">Saved Diagrams</h3>
+            <button id="closeSaveModal" class="icon-btn" type="button" aria-label="Close saved diagrams">×</button>
+          </div>
+          <p class="modal-description">Load, rename, or delete any saved snapshot.</p>
+          <div id="saveList" class="save-list"></div>
+        </div>
+      </div>
       <datalist id="platformOwnerSuggestions"></datalist>
       <datalist id="businessOwnerSuggestions"></datalist>
       <datalist id="functionOwnerOptions"></datalist>

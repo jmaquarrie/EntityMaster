@@ -3,6 +3,7 @@ const CANVAS_HEIGHT = 1600;
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 1.5;
 const ZOOM_STEP = 0.1;
+const STORAGE_KEY = "entityMasterSaves";
 
 const FUNCTION_OWNER_DEFAULTS = ["IT", "Fleet", "HR", "Payroll", "OCUOne", "Data", "L&D"];
 
@@ -17,6 +18,7 @@ const DOMAIN_LIST = [
 
 const systems = [];
 const connections = [];
+const activeDomainFilters = new Set();
 
 const functionOwnerOptions = new Set(FUNCTION_OWNER_DEFAULTS);
 const ownerSuggestionSets = {
@@ -30,7 +32,6 @@ const ownerColorMaps = {
 };
 const COLOR_POOL = ["#5d8dee", "#c266ff", "#ffa447", "#3fb28a", "#dd5f68", "#2f9edc", "#6f7bf7", "#ff6ea9", "#29c6b7", "#845ef7"];
 
-let activeDomainFilter = null;
 let platformOwnerFilterText = "";
 let businessOwnerFilterText = "";
 let functionOwnerFilterText = "";
@@ -41,9 +42,13 @@ let selectedSystemId = null;
 let linkingState = null;
 let systemCounter = 1;
 let currentColorBy = "none";
-let isSidebarCollapsed = false;
+let isSidebarCollapsed = true;
 let isPanning = false;
 let panStart = null;
+let selectionBoxElement = null;
+let marqueeState = null;
+let shouldSkipCanvasClear = false;
+let bulkSelection = [];
 
 const canvasContent = document.getElementById("canvasContent");
 const canvasViewport = document.getElementById("canvasViewport");
@@ -73,9 +78,24 @@ const zoomButtons = document.querySelectorAll(".zoom-btn");
 const colorBySelect = document.getElementById("colorBySelect");
 const filterPanel = document.getElementById("filterPanel");
 const filterPanelToggle = document.getElementById("filterPanelToggle");
+const filterToggleIcon = filterPanelToggle?.querySelector(".toggle-icon");
 const platformOwnerSuggestionsList = document.getElementById("platformOwnerSuggestions");
 const businessOwnerSuggestionsList = document.getElementById("businessOwnerSuggestions");
 const functionOwnerOptionsList = document.getElementById("functionOwnerOptions");
+const saveDiagramBtn = document.getElementById("saveDiagramBtn");
+const loadDiagramBtn = document.getElementById("loadDiagramBtn");
+const bulkModal = document.getElementById("bulkModal");
+const closeBulkModalBtn = document.getElementById("closeBulkModal");
+const bulkSelectionList = document.getElementById("bulkSelectionList");
+const bulkForm = document.getElementById("bulkForm");
+const bulkPlatformOwnerInput = document.getElementById("bulkPlatformOwner");
+const bulkBusinessOwnerInput = document.getElementById("bulkBusinessOwner");
+const bulkFunctionOwnerInput = document.getElementById("bulkFunctionOwner");
+const bulkDomainControls = document.getElementById("bulkDomainControls");
+const cancelBulkBtn = document.getElementById("cancelBulkBtn");
+const saveManagerModal = document.getElementById("saveManagerModal");
+const closeSaveModalBtn = document.getElementById("closeSaveModal");
+const saveListContainer = document.getElementById("saveList");
 
 let activePanelSystem = null;
 
@@ -98,7 +118,11 @@ function init() {
     `
   ).join("");
 
+  updateGlobalDomainChips();
   panelDomainChoices.addEventListener("change", handleDomainSelection);
+  canvas.addEventListener("pointerdown", handleCanvasPointerDown);
+  renderBulkDomainControls();
+  createSelectionBox();
   addSystemBtn.addEventListener("click", () => addSystem());
   clearFocusBtn.addEventListener("click", handleClearHighlights);
   closePanelBtn.addEventListener("click", closePanel);
@@ -140,11 +164,28 @@ function init() {
     applyColorCoding();
   });
   filterPanelToggle.addEventListener("click", toggleFilterPanel);
+  saveDiagramBtn.addEventListener("click", handleSaveDiagram);
+  loadDiagramBtn.addEventListener("click", openSaveManager);
+  closeBulkModalBtn.addEventListener("click", closeBulkModal);
+  cancelBulkBtn.addEventListener("click", closeBulkModal);
+  bulkForm.addEventListener("submit", handleBulkSubmit);
+  bulkModal.addEventListener("click", (event) => {
+    if (event.target === bulkModal) closeBulkModal();
+  });
+  saveManagerModal.addEventListener("click", (event) => {
+    if (event.target === saveManagerModal) closeSaveManager();
+  });
+  bulkDomainControls.addEventListener("click", handleBulkDomainControlClick);
+  saveListContainer.addEventListener("click", handleSaveListClick);
+  closeSaveModalBtn.addEventListener("click", closeSaveManager);
   zoomButtons.forEach((button) =>
     button.addEventListener("click", () => adjustZoom(button.dataset.direction))
   );
   setupPanning();
   setupContextMenuBlock();
+  filterPanel.classList.toggle("collapsed", isSidebarCollapsed);
+  filterPanelToggle.setAttribute("aria-expanded", String(!isSidebarCollapsed));
+  updateSidebarToggleIcon();
 
   // Seed with two systems to start.
   addSystem({
@@ -161,6 +202,7 @@ function init() {
     domains: ["clients", "people"],
     functionOwner: "Data",
   });
+  centerCanvasView();
 }
 
 function renderGlobalDomainChips() {
@@ -169,7 +211,8 @@ function renderGlobalDomainChips() {
   ).join("");
   globalDomainChips.addEventListener("click", (event) => {
     if (!(event.target instanceof HTMLElement)) return;
-    const domain = event.target.dataset.domain;
+    const chip = event.target.closest(".domain-chip");
+    const domain = chip?.dataset.domain;
     if (!domain) return;
     event.preventDefault();
     toggleDomainFilter(domain);
@@ -177,8 +220,12 @@ function renderGlobalDomainChips() {
 }
 
 function toggleDomainFilter(domain) {
-  activeDomainFilter = activeDomainFilter === domain ? null : domain;
-  if (activeDomainFilter) {
+  if (activeDomainFilters.has(domain)) {
+    activeDomainFilters.delete(domain);
+  } else {
+    activeDomainFilters.add(domain);
+  }
+  if (activeDomainFilters.size) {
     selectedSystemId = null;
   }
   updateGlobalDomainChips();
@@ -187,11 +234,12 @@ function toggleDomainFilter(domain) {
 
 function updateGlobalDomainChips() {
   globalDomainChips.querySelectorAll(".domain-chip").forEach((chip) => {
-    chip.classList.toggle("active", chip.dataset.domain === activeDomainFilter);
+    chip.classList.toggle("active", activeDomainFilters.has(chip.dataset.domain));
   });
 }
 
 function addSystem({
+  id,
   name,
   x,
   y,
@@ -201,9 +249,9 @@ function addSystem({
   functionOwner = "",
   entities = [],
 } = {}) {
-  const id = `sys-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+  const resolvedId = id || `sys-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
   const system = {
-    id,
+    id: resolvedId,
     name: name || `System ${systemCounter++}`,
     x: x ?? 100 + systems.length * 40,
     y: y ?? 100 + systems.length * 30,
@@ -218,7 +266,7 @@ function addSystem({
   };
 
   system.element.className = "system-node";
-  system.element.dataset.id = id;
+  system.element.dataset.id = resolvedId;
   system.element.innerHTML = `
     <div class="title-row">
       <div class="title">${system.name}</div>
@@ -277,6 +325,10 @@ function attachNodeEvents(system) {
 }
 
 function handleCanvasClick(event) {
+  if (shouldSkipCanvasClear) {
+    shouldSkipCanvasClear = false;
+    return;
+  }
   if (event.target !== canvas) return;
   closePanel();
   handleClearHighlights();
@@ -312,25 +364,23 @@ function startLinking(event, system) {
   if (event.button !== 0) return;
   event.stopPropagation();
   event.preventDefault();
-  const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  const line = document.createElementNS("http://www.w3.org/2000/svg", "path");
   line.classList.add("link-preview");
   line.setAttribute("stroke", "#7f8acb");
   line.setAttribute("stroke-width", "2");
   line.setAttribute("stroke-dasharray", "6 6");
+  line.setAttribute("fill", "none");
+  line.setAttribute("stroke-linejoin", "round");
   connectionLayer.appendChild(line);
 
   const start = getSystemCenter(system);
-  line.setAttribute("x1", start.x);
-  line.setAttribute("y1", start.y);
-  line.setAttribute("x2", start.x);
-  line.setAttribute("y2", start.y);
+  line.setAttribute("d", getAngledPath(start, start));
 
   linkingState = { source: system, line };
 
   function onMove(moveEvent) {
     const coords = getCanvasRelativeCoords(moveEvent.clientX, moveEvent.clientY);
-    line.setAttribute("x2", coords.x);
-    line.setAttribute("y2", coords.y);
+    line.setAttribute("d", getAngledPath(start, coords));
   }
 
   function onUp(upEvent) {
@@ -369,20 +419,19 @@ function addConnection(source, target) {
 function drawConnections() {
   connectionLayer.innerHTML = "";
   connections.forEach((connection) => {
-    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "path");
     line.setAttribute("stroke", "#c0c6e5");
     line.setAttribute("stroke-width", "2");
     line.setAttribute("stroke-linecap", "round");
+    line.setAttribute("stroke-linejoin", "round");
     line.setAttribute("stroke-dasharray", "6 6");
+    line.setAttribute("fill", "none");
     const fromSystem = systems.find((s) => s.id === connection.from);
     const toSystem = systems.find((s) => s.id === connection.to);
     if (!fromSystem || !toSystem) return;
     const fromPos = getSystemCenter(fromSystem);
     const toPos = getSystemCenter(toSystem);
-    line.setAttribute("x1", fromPos.x);
-    line.setAttribute("y1", fromPos.y);
-    line.setAttribute("x2", toPos.x);
-    line.setAttribute("y2", toPos.y);
+    line.setAttribute("d", getAngledPath(fromPos, toPos));
     connectionLayer.appendChild(line);
   });
 }
@@ -556,7 +605,7 @@ function updateSystemMeta(system) {
 }
 
 function handleClearHighlights() {
-  activeDomainFilter = null;
+  activeDomainFilters.clear();
   platformOwnerFilterText = "";
   businessOwnerFilterText = "";
   functionOwnerFilterText = "";
@@ -571,10 +620,10 @@ function handleClearHighlights() {
 }
 
 function updateHighlights() {
-  const connectedSet = selectedSystemId ? getConnectedSystemIds(selectedSystemId) : null;
+  const connectedSet = selectedSystemId ? getImmediateConnectedSystemIds(selectedSystemId) : null;
 
   const filtersActive =
-    !!activeDomainFilter ||
+    activeDomainFilters.size > 0 ||
     !!platformOwnerFilterText ||
     !!businessOwnerFilterText ||
     !!functionOwnerFilterText ||
@@ -601,27 +650,24 @@ function updateHighlights() {
   applyColorCoding();
 }
 
-function getConnectedSystemIds(startId) {
-  const visited = new Set();
-  const queue = [startId];
-  while (queue.length) {
-    const current = queue.shift();
-    if (visited.has(current)) continue;
-    visited.add(current);
-    connections.forEach((conn) => {
-      if (conn.from === current && !visited.has(conn.to)) {
-        queue.push(conn.to);
-      } else if (conn.to === current && !visited.has(conn.from)) {
-        queue.push(conn.from);
-      }
-    });
-  }
+function getImmediateConnectedSystemIds(startId) {
+  const visited = new Set([startId]);
+  connections.forEach((conn) => {
+    if (conn.from === startId) {
+      visited.add(conn.to);
+    } else if (conn.to === startId) {
+      visited.add(conn.from);
+    }
+  });
   return visited;
 }
 
 function systemMatchesFilters(system) {
-  if (activeDomainFilter && !system.domains.has(activeDomainFilter)) {
-    return false;
+  if (activeDomainFilters.size) {
+    const hasMatch = Array.from(activeDomainFilters).some((domain) => system.domains.has(domain));
+    if (!hasMatch) {
+      return false;
+    }
   }
   if (platformOwnerFilterText) {
     if (!system.platformOwner.toLowerCase().includes(platformOwnerFilterText)) {
@@ -819,6 +865,415 @@ function tintColor(hex, amount = 0.85) {
   const b = num & 255;
   const mix = (channel) => Math.round(channel + (255 - channel) * amount);
   return `rgba(${mix(r)}, ${mix(g)}, ${mix(b)}, 0.85)`;
+}
+
+function updateSidebarToggleIcon() {
+  if (!filterToggleIcon) return;
+  filterToggleIcon.textContent = isSidebarCollapsed ? "+" : "−";
+}
+
+function handleCanvasPointerDown(event) {
+  if (event.button !== 0) return;
+  if (event.target !== canvas) return;
+  const start = getCanvasRelativeCoords(event.clientX, event.clientY);
+  marqueeState = {
+    start,
+    current: start,
+    moved: false,
+  };
+  if (selectionBoxElement) {
+    selectionBoxElement.classList.remove("hidden");
+    updateSelectionBox(start, start);
+  }
+  const onMove = (moveEvent) => {
+    if (!marqueeState) return;
+    const point = getCanvasRelativeCoords(moveEvent.clientX, moveEvent.clientY);
+    marqueeState.current = point;
+    if (!marqueeState.moved) {
+      const deltaX = Math.abs(point.x - marqueeState.start.x);
+      const deltaY = Math.abs(point.y - marqueeState.start.y);
+      if (deltaX > 3 || deltaY > 3) {
+        marqueeState.moved = true;
+      }
+    }
+    updateSelectionBox(marqueeState.start, point);
+  };
+  const onUp = () => {
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("pointerup", onUp);
+    if (selectionBoxElement) {
+      selectionBoxElement.classList.add("hidden");
+    }
+    if (marqueeState && marqueeState.moved) {
+      shouldSkipCanvasClear = true;
+      setTimeout(() => {
+        shouldSkipCanvasClear = false;
+      }, 200);
+      const rect = getRectFromPoints(marqueeState.start, marqueeState.current);
+      const selected = getSystemsInRect(rect);
+      if (selected.length > 1) {
+        openBulkModal(selected);
+      }
+    }
+    marqueeState = null;
+  };
+  window.addEventListener("pointermove", onMove);
+  window.addEventListener("pointerup", onUp);
+}
+
+function createSelectionBox() {
+  if (selectionBoxElement || !canvas) return;
+  selectionBoxElement = document.createElement("div");
+  selectionBoxElement.className = "selection-box hidden";
+  canvas.appendChild(selectionBoxElement);
+}
+
+function updateSelectionBox(start, end) {
+  if (!selectionBoxElement) return;
+  const rect = getRectFromPoints(start, end);
+  selectionBoxElement.style.left = `${rect.x}px`;
+  selectionBoxElement.style.top = `${rect.y}px`;
+  selectionBoxElement.style.width = `${rect.width}px`;
+  selectionBoxElement.style.height = `${rect.height}px`;
+}
+
+function getRectFromPoints(a, b) {
+  const left = Math.min(a.x, b.x);
+  const top = Math.min(a.y, b.y);
+  const width = Math.abs(a.x - b.x);
+  const height = Math.abs(a.y - b.y);
+  return { x: left, y: top, width, height };
+}
+
+function getSystemsInRect(rect) {
+  return systems.filter((system) => {
+    const bounds = {
+      x: system.x,
+      y: system.y,
+      width: system.element.offsetWidth,
+      height: system.element.offsetHeight,
+    };
+    return rectanglesIntersect(rect, bounds);
+  });
+}
+
+function rectanglesIntersect(a, b) {
+  return !(
+    a.x + a.width < b.x ||
+    b.x + b.width < a.x ||
+    a.y + a.height < b.y ||
+    b.y + b.height < a.y
+  );
+}
+
+function openBulkModal(selectedSystems) {
+  bulkSelection = selectedSystems;
+  bulkSelectionList.innerHTML = "";
+  selectedSystems.forEach((system) => {
+    const li = document.createElement("li");
+    li.textContent = system.name;
+    bulkSelectionList.appendChild(li);
+  });
+  resetBulkForm();
+  bulkModal.classList.remove("hidden");
+}
+
+function closeBulkModal() {
+  bulkModal.classList.add("hidden");
+  bulkSelection = [];
+}
+
+function resetBulkForm() {
+  bulkPlatformOwnerInput.value = "";
+  bulkBusinessOwnerInput.value = "";
+  bulkFunctionOwnerInput.value = "";
+  bulkDomainControls?.querySelectorAll("button").forEach((button) => {
+    button.dataset.state = "neutral";
+    updateBulkDomainLabel(button);
+  });
+}
+
+function handleBulkSubmit(event) {
+  event.preventDefault();
+  if (!bulkSelection.length) return;
+  const platformValue = bulkPlatformOwnerInput.value.trim();
+  const businessValue = bulkBusinessOwnerInput.value.trim();
+  const functionValue = bulkFunctionOwnerInput.value.trim();
+  const domainActions = getBulkDomainActions();
+  bulkSelection.forEach((system) => {
+    if (platformValue) system.platformOwner = platformValue;
+    if (businessValue) system.businessOwner = businessValue;
+    if (functionValue) system.functionOwner = functionValue;
+    domainActions.add.forEach((domain) => system.domains.add(domain));
+    domainActions.remove.forEach((domain) => system.domains.delete(domain));
+    renderDomainBubbles(system);
+    updateSystemMeta(system);
+  });
+  ensureFunctionOwnerOption(functionValue);
+  refreshOwnerSuggestionLists();
+  updateHighlights();
+  closeBulkModal();
+}
+
+function renderBulkDomainControls() {
+  if (!bulkDomainControls) return;
+  bulkDomainControls.innerHTML = "";
+  DOMAIN_LIST.forEach((domain) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.domain = domain.key;
+    button.dataset.state = "neutral";
+    button.innerHTML = `<span>${domain.label}</span><span class="domain-state">Ignore</span>`;
+    bulkDomainControls.appendChild(button);
+  });
+}
+
+function handleBulkDomainControlClick(event) {
+  if (!bulkDomainControls) return;
+  const button = event.target.closest("button[data-domain]");
+  if (!button) return;
+  cycleBulkDomainState(button);
+}
+
+function cycleBulkDomainState(button) {
+  const states = ["neutral", "add", "remove"];
+  const current = button.dataset.state || "neutral";
+  const next = states[(states.indexOf(current) + 1) % states.length];
+  button.dataset.state = next;
+  updateBulkDomainLabel(button);
+}
+
+function updateBulkDomainLabel(button) {
+  const label = button.querySelector(".domain-state");
+  if (!label) return;
+  if (button.dataset.state === "add") {
+    label.textContent = "Add";
+  } else if (button.dataset.state === "remove") {
+    label.textContent = "Remove";
+  } else {
+    label.textContent = "Ignore";
+  }
+}
+
+function getBulkDomainActions() {
+  const add = [];
+  const remove = [];
+  bulkDomainControls.querySelectorAll("button").forEach((button) => {
+    if (button.dataset.state === "add") {
+      add.push(button.dataset.domain);
+    } else if (button.dataset.state === "remove") {
+      remove.push(button.dataset.domain);
+    }
+  });
+  return { add, remove };
+}
+
+function handleSaveDiagram() {
+  const saves = getStoredDiagrams();
+  const entry = {
+    id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `save-${Date.now()}`,
+    name: formatSnapshotName(new Date()),
+    createdAt: Date.now(),
+    data: serializeState(),
+  };
+  saves.push(entry);
+  persistStoredDiagrams(saves);
+  if (!saveManagerModal.classList.contains("hidden")) {
+    renderSaveList();
+  }
+}
+
+function openSaveManager() {
+  renderSaveList();
+  saveManagerModal.classList.remove("hidden");
+}
+
+function closeSaveManager() {
+  saveManagerModal.classList.add("hidden");
+}
+
+function renderSaveList() {
+  const saves = getStoredDiagrams();
+  if (!saves.length) {
+    saveListContainer.innerHTML = '<div class="empty-message">No saved diagrams yet.</div>';
+    return;
+  }
+  saveListContainer.innerHTML = "";
+  const fragment = document.createDocumentFragment();
+  saves.forEach((save) => {
+    const row = document.createElement("div");
+    row.className = "save-row";
+    row.dataset.id = save.id;
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "save-name";
+    nameSpan.textContent = save.name;
+    const actions = document.createElement("div");
+    actions.className = "save-actions";
+
+    const loadBtn = document.createElement("button");
+    loadBtn.className = "load";
+    loadBtn.dataset.action = "load";
+    loadBtn.textContent = "Load";
+
+    const renameBtn = document.createElement("button");
+    renameBtn.className = "rename";
+    renameBtn.dataset.action = "rename";
+    renameBtn.textContent = "Rename";
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.className = "delete";
+    deleteBtn.dataset.action = "delete";
+    deleteBtn.setAttribute("aria-label", "Delete save");
+    deleteBtn.textContent = "✕";
+
+    actions.append(loadBtn, renameBtn, deleteBtn);
+    row.append(nameSpan, actions);
+    fragment.appendChild(row);
+  });
+  saveListContainer.appendChild(fragment);
+}
+
+function handleSaveListClick(event) {
+  const button = event.target.closest("button[data-action]");
+  if (!button) return;
+  const row = button.closest(".save-row");
+  const id = row?.dataset.id;
+  if (!id) return;
+  const action = button.dataset.action;
+  if (action === "load") {
+    loadSavedDiagram(id);
+  } else if (action === "rename") {
+    renameSavedDiagram(id);
+  } else if (action === "delete") {
+    deleteSavedDiagram(id);
+  }
+}
+
+function getStoredDiagrams() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.warn("Unable to read stored diagrams", error);
+    return [];
+  }
+}
+
+function persistStoredDiagrams(entries) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+  } catch (error) {
+    console.warn("Unable to persist diagrams", error);
+  }
+}
+
+function loadSavedDiagram(id) {
+  const saves = getStoredDiagrams();
+  const entry = saves.find((save) => save.id === id);
+  if (!entry) return;
+  loadSerializedState(entry.data);
+  closeSaveManager();
+}
+
+function renameSavedDiagram(id) {
+  const saves = getStoredDiagrams();
+  const entry = saves.find((save) => save.id === id);
+  if (!entry) return;
+  const newName = prompt("Rename save", entry.name);
+  if (!newName) return;
+  const trimmed = newName.trim();
+  if (!trimmed) return;
+  entry.name = trimmed;
+  persistStoredDiagrams(saves);
+  renderSaveList();
+}
+
+function deleteSavedDiagram(id) {
+  let saves = getStoredDiagrams();
+  saves = saves.filter((save) => save.id !== id);
+  persistStoredDiagrams(saves);
+  renderSaveList();
+}
+
+function serializeState() {
+  return {
+    systems: systems.map((system) => ({
+      id: system.id,
+      name: system.name,
+      x: system.x,
+      y: system.y,
+      domains: Array.from(system.domains),
+      platformOwner: system.platformOwner,
+      businessOwner: system.businessOwner,
+      functionOwner: system.functionOwner,
+      entities: system.entities.map((entity) => ({ name: entity.name, isSor: !!entity.isSor })),
+    })),
+    connections: connections.map((connection) => ({ ...connection })),
+    functionOwners: Array.from(functionOwnerOptions),
+    counter: systemCounter,
+  };
+}
+
+function loadSerializedState(snapshot) {
+  if (!snapshot) return;
+  closePanel();
+  handleClearHighlights();
+  systems.forEach((system) => system.element.remove());
+  systems.length = 0;
+  connections.length = 0;
+  connectionLayer.innerHTML = "";
+  functionOwnerOptions.clear();
+  FUNCTION_OWNER_DEFAULTS.forEach((value) => functionOwnerOptions.add(value));
+  if (Array.isArray(snapshot.functionOwners)) {
+    snapshot.functionOwners.forEach((value) => functionOwnerOptions.add(value));
+  }
+  populateFunctionOwnerOptions();
+  (snapshot.systems || []).forEach((systemData) => {
+    addSystem({
+      id: systemData.id,
+      name: systemData.name,
+      x: systemData.x,
+      y: systemData.y,
+      domains: systemData.domains,
+      platformOwner: systemData.platformOwner,
+      businessOwner: systemData.businessOwner,
+      functionOwner: systemData.functionOwner,
+      entities: systemData.entities,
+    });
+  });
+  connections.push(...(snapshot.connections || []));
+  drawConnections();
+  systemCounter = snapshot.counter || systems.length + 1;
+  refreshOwnerSuggestionLists();
+  Object.values(ownerColorMaps).forEach((map) => map.clear());
+  updateHighlights();
+  applyColorCoding();
+  centerCanvasView();
+}
+
+function formatSnapshotName(date) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}.${pad(date.getMinutes())}`;
+}
+
+function getAngledPath(from, to) {
+  const midX = from.x + (to.x - from.x) / 2;
+  return `M ${from.x} ${from.y} L ${midX} ${from.y} L ${midX} ${to.y} L ${to.x} ${to.y}`;
+}
+
+function centerCanvasView() {
+  requestAnimationFrame(() => {
+    const maxScrollLeft = canvasViewport.scrollWidth - canvasViewport.clientWidth;
+    const maxScrollTop = canvasViewport.scrollHeight - canvasViewport.clientHeight;
+    if (maxScrollLeft > 0) {
+      canvasViewport.scrollLeft = maxScrollLeft / 2;
+    }
+    if (maxScrollTop > 0) {
+      canvasViewport.scrollTop = maxScrollTop / 2;
+    }
+  });
 }
 
 document.addEventListener("DOMContentLoaded", init);
