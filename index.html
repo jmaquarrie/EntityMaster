@@ -4,6 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>EntityMaster Diagram</title>
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
+      integrity="sha512-HY0yxu8aAkaI0s5momkGLumZ5qX6Ch12yvDqOiiMHDL/95B2S/bRMyCV2wE8p8nH3UX0YPD9PEw24hHJcG0zOA=="
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -25,7 +32,13 @@
               <div class="storage-controls" aria-label="Diagram storage">
                 <button id="saveDiagramBtn" class="icon-btn" title="Save diagram" aria-label="Save diagram">💾</button>
                 <button id="loadDiagramBtn" class="icon-btn" title="Load diagram" aria-label="Load diagram">📂</button>
+                <button id="shareDiagramBtn" class="icon-btn" title="Share diagram" aria-label="Share diagram">
+                  <i class="fa-solid fa-share-nodes" aria-hidden="true"></i>
+                </button>
               </div>
+              <button id="settingsBtn" class="icon-btn" title="Diagram settings" aria-label="Diagram settings">
+                <i class="fa-solid fa-gear" aria-hidden="true"></i>
+              </button>
               <button class="zoom-btn" data-direction="out" aria-label="Zoom out">−</button>
               <span id="zoomLabel">100%</span>
               <button class="zoom-btn" data-direction="in" aria-label="Zoom in">+</button>
@@ -39,6 +52,13 @@
           </button>
           <div class="sidebar-content">
             <div class="sidebar-section">
+              <label class="field">
+                <span>Filter Mode</span>
+                <select id="filterModeSelect">
+                  <option value="fade">Fade</option>
+                  <option value="hide">Hide</option>
+                </select>
+              </label>
               <label class="field">
                 <span>Search Type</span>
                 <select id="searchType">
@@ -87,14 +107,14 @@
               />
             </div>
             <div class="sidebar-section">
-              <div class="section-title">Colour By</div>
-              <select id="colorBySelect">
-                <option value="none">None</option>
-                <option value="domains">Domains</option>
-                <option value="functionOwner">Function Owner</option>
-                <option value="businessOwner">Business Owner</option>
-                <option value="platformOwner">Platform Owner</option>
-              </select>
+              <label class="field">
+                <span>System of Record</span>
+                <select id="sorFilter">
+                  <option value="any">Any</option>
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              </label>
             </div>
           </div>
         </aside>
@@ -135,6 +155,21 @@
             list="functionOwnerOptions"
           />
         </label>
+        <label class="field">
+          <span>System Icon</span>
+          <select id="systemIconSelect">
+            <option value="fa-solid fa-cube">Cube</option>
+            <option value="fa-solid fa-database">Database</option>
+            <option value="fa-solid fa-cloud">Cloud</option>
+            <option value="fa-solid fa-server">Server</option>
+            <option value="fa-solid fa-diagram-project">Project</option>
+            <option value="fa-solid fa-building">Building</option>
+            <option value="fa-solid fa-network-wired">Network</option>
+            <option value="fa-solid fa-chart-line">Growth</option>
+            <option value="fa-solid fa-shield">Shield</option>
+            <option value="fa-solid fa-rocket">Rocket</option>
+          </select>
+        </label>
         <section class="field">
           <div class="section-title">Entities</div>
           <form id="entityForm">
@@ -147,6 +182,10 @@
           <div class="section-title">Domains</div>
           <div id="panelDomainChoices" class="domain-choices"></div>
         </section>
+        <label class="field">
+          <span>Comments</span>
+          <textarea id="systemCommentsInput" rows="3" placeholder="Add notes or context"></textarea>
+        </label>
       </aside>
       <div id="bulkModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="bulkModalTitle">
         <div class="modal-card">
@@ -212,9 +251,28 @@
           <div id="saveList" class="save-list"></div>
         </div>
       </div>
+      <div id="settingsModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
+        <div class="modal-card">
+          <div class="modal-header">
+            <h3 id="settingsModalTitle">Diagram Settings</h3>
+            <button id="closeSettingsModal" class="icon-btn" type="button" aria-label="Close settings">×</button>
+          </div>
+          <label class="field">
+            <span>Colour By</span>
+            <select id="colorBySelect">
+              <option value="none">None</option>
+              <option value="domains">Domains</option>
+              <option value="functionOwner">Function Owner</option>
+              <option value="businessOwner">Business Owner</option>
+              <option value="platformOwner">Platform Owner</option>
+            </select>
+          </label>
+        </div>
+      </div>
       <datalist id="platformOwnerSuggestions"></datalist>
       <datalist id="businessOwnerSuggestions"></datalist>
       <datalist id="functionOwnerOptions"></datalist>
+      <button id="undoDeleteBtn" class="undo-button hidden" type="button">Undo delete</button>
     </div>
     <script src="script.js"></script>
   </body>

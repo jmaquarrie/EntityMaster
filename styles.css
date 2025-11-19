@@ -86,7 +86,7 @@ html::-webkit-scrollbar,
 }
 
 .icon-btn {
-  background: rgba(18, 24, 57, 0.08);
+  background: transparent;
   color: #121839;
   border-radius: 12px;
   padding: 0.35rem 0.5rem;
@@ -99,7 +99,7 @@ html::-webkit-scrollbar,
 }
 
 .icon-btn:hover {
-  background: rgba(18, 24, 57, 0.15);
+  background: rgba(18, 24, 57, 0.1);
   box-shadow: none;
 }
 
@@ -174,12 +174,12 @@ button.ghost {
 
 .system-node {
   position: absolute;
-  width: 210px;
+  width: 220px;
   border-radius: 18px;
   box-shadow: 0 12px 24px rgba(22, 28, 45, 0.16);
-  padding: 0.85rem;
+  padding: 1rem 0.95rem 0.95rem;
   cursor: grab;
-  border: 2px solid var(--node-border-color, transparent);
+  border: 2px solid var(--node-border-color, rgba(18, 24, 57, 0.15));
   transition: box-shadow 0.2s ease, transform 0.2s ease, opacity 0.2s ease, border-color 0.2s ease;
   background: var(--node-bg-color, #fff);
 }
@@ -195,9 +195,36 @@ button.ghost {
   gap: 0.35rem;
 }
 
+.system-node .icon-title {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.system-node .system-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: rgba(18, 24, 57, 0.08);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #121839;
+  font-size: 1.1rem;
+}
+
+.system-node .system-icon i {
+  line-height: 1;
+}
+
 .system-node .title {
   font-weight: 600;
   font-size: 1rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .system-node .meta {
@@ -246,6 +273,32 @@ button.ghost {
   cursor: crosshair;
 }
 
+.system-node .delete-node {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(221, 95, 104, 0.9);
+  color: #fff;
+  font-size: 0.9rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  box-shadow: 0 4px 12px rgba(221, 95, 104, 0.35);
+}
+
+.system-node:hover .delete-node,
+.system-node:focus-within .delete-node {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .system-node .domain-bubbles {
   display: flex;
   flex-wrap: wrap;
@@ -266,8 +319,16 @@ button.ghost {
   box-shadow: 0 12px 32px rgba(93, 141, 238, 0.35);
 }
 
+.system-node.selected {
+  border-width: 3px;
+}
+
 .system-node.dimmed {
   opacity: 0.25;
+}
+
+.system-node.hidden-filter {
+  display: none !important;
 }
 
 .sidebar {
@@ -334,12 +395,18 @@ button.ghost {
 }
 
 .field input,
-.field select {
+.field select,
+.field textarea {
   border: 1px solid #c7cce2;
   border-radius: 12px;
   padding: 0.45rem 0.6rem;
   font-size: 0.9rem;
   background: #fff;
+  font-family: inherit;
+}
+
+.field textarea {
+  resize: vertical;
 }
 
 .domain-chips {
@@ -632,6 +699,32 @@ button.ghost {
   font-weight: 600;
   font-size: 0.9rem;
   color: #131735;
+}
+
+.undo-button {
+  position: fixed;
+  bottom: 1.5rem;
+  left: 1.5rem;
+  z-index: 7;
+  background: #121839;
+  color: #fff;
+  border-radius: 999px;
+  padding: 0.5rem 1.25rem;
+  font-weight: 600;
+  box-shadow: 0 12px 25px rgba(15, 20, 50, 0.35);
+}
+
+.undo-button.hidden {
+  display: none;
+}
+
+#settingsBtn i,
+#shareDiagramBtn i {
+  font-size: 1rem;
+}
+
+#settingsModal .modal-card {
+  width: min(360px, 90vw);
 }
 
 .save-row button {

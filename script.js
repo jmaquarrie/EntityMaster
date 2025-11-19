@@ -4,6 +4,7 @@ const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 1.5;
 const ZOOM_STEP = 0.1;
 const STORAGE_KEY = "entityMasterSaves";
+const DEFAULT_ICON = "fa-solid fa-cube";
 
 const FUNCTION_OWNER_DEFAULTS = ["IT", "Fleet", "HR", "Payroll", "OCUOne", "Data", "L&D"];
 
@@ -49,6 +50,9 @@ let selectionBoxElement = null;
 let marqueeState = null;
 let shouldSkipCanvasClear = false;
 let bulkSelection = [];
+let filterMode = "fade";
+let sorFilterValue = "any";
+let lastDeletedSnapshot = null;
 
 const canvasContent = document.getElementById("canvasContent");
 const canvasViewport = document.getElementById("canvasViewport");
@@ -84,6 +88,7 @@ const businessOwnerSuggestionsList = document.getElementById("businessOwnerSugge
 const functionOwnerOptionsList = document.getElementById("functionOwnerOptions");
 const saveDiagramBtn = document.getElementById("saveDiagramBtn");
 const loadDiagramBtn = document.getElementById("loadDiagramBtn");
+const shareDiagramBtn = document.getElementById("shareDiagramBtn");
 const bulkModal = document.getElementById("bulkModal");
 const closeBulkModalBtn = document.getElementById("closeBulkModal");
 const bulkSelectionList = document.getElementById("bulkSelectionList");
@@ -96,6 +101,14 @@ const cancelBulkBtn = document.getElementById("cancelBulkBtn");
 const saveManagerModal = document.getElementById("saveManagerModal");
 const closeSaveModalBtn = document.getElementById("closeSaveModal");
 const saveListContainer = document.getElementById("saveList");
+const filterModeSelect = document.getElementById("filterModeSelect");
+const sorFilterSelect = document.getElementById("sorFilter");
+const systemIconSelect = document.getElementById("systemIconSelect");
+const systemCommentsInput = document.getElementById("systemCommentsInput");
+const settingsBtn = document.getElementById("settingsBtn");
+const settingsModal = document.getElementById("settingsModal");
+const closeSettingsModalBtn = document.getElementById("closeSettingsModal");
+const undoDeleteBtn = document.getElementById("undoDeleteBtn");
 
 let activePanelSystem = null;
 
@@ -106,6 +119,8 @@ function init() {
   applyZoom(currentZoom);
   searchType = searchTypeSelect.value;
   currentColorBy = colorBySelect.value || "none";
+  filterMode = filterModeSelect?.value || "fade";
+  sorFilterValue = sorFilterSelect?.value || "any";
   populateFunctionOwnerOptions();
 
   renderGlobalDomainChips();
@@ -159,6 +174,15 @@ function init() {
     selectedSystemId = null;
     updateHighlights();
   });
+  filterModeSelect?.addEventListener("change", (event) => {
+    filterMode = event.target.value;
+    updateHighlights();
+  });
+  sorFilterSelect?.addEventListener("change", (event) => {
+    sorFilterValue = event.target.value;
+    selectedSystemId = null;
+    updateHighlights();
+  });
   colorBySelect.addEventListener("change", (event) => {
     currentColorBy = event.target.value;
     applyColorCoding();
@@ -166,6 +190,7 @@ function init() {
   filterPanelToggle.addEventListener("click", toggleFilterPanel);
   saveDiagramBtn.addEventListener("click", handleSaveDiagram);
   loadDiagramBtn.addEventListener("click", openSaveManager);
+  shareDiagramBtn?.addEventListener("click", handleShareDiagram);
   closeBulkModalBtn.addEventListener("click", closeBulkModal);
   cancelBulkBtn.addEventListener("click", closeBulkModal);
   bulkForm.addEventListener("submit", handleBulkSubmit);
@@ -183,26 +208,46 @@ function init() {
   );
   setupPanning();
   setupContextMenuBlock();
+  canvasViewport.addEventListener("wheel", handleWheelZoom, { passive: false });
+  systemIconSelect?.addEventListener("change", () => {
+    if (!activePanelSystem) return;
+    activePanelSystem.icon = systemIconSelect.value;
+    updateSystemIcon(activePanelSystem);
+  });
+  systemCommentsInput?.addEventListener("input", () => {
+    if (!activePanelSystem) return;
+    activePanelSystem.comments = systemCommentsInput.value;
+  });
+  settingsBtn?.addEventListener("click", openSettingsModal);
+  closeSettingsModalBtn?.addEventListener("click", closeSettingsModal);
+  settingsModal?.addEventListener("click", (event) => {
+    if (event.target === settingsModal) {
+      closeSettingsModal();
+    }
+  });
+  undoDeleteBtn?.addEventListener("click", handleUndoDelete);
   filterPanel.classList.toggle("collapsed", isSidebarCollapsed);
   filterPanelToggle.setAttribute("aria-expanded", String(!isSidebarCollapsed));
   updateSidebarToggleIcon();
 
-  // Seed with two systems to start.
-  addSystem({
-    name: "Core Services",
-    x: 80,
-    y: 90,
-    domains: ["products"],
-    functionOwner: "IT",
-  });
-  addSystem({
-    name: "Client Portal",
-    x: 320,
-    y: 260,
-    domains: ["clients", "people"],
-    functionOwner: "Data",
-  });
-  centerCanvasView();
+  const loadedFromUrl = loadFromUrlParams();
+  if (!loadedFromUrl) {
+    addSystem({
+      name: "Core Services",
+      x: 80,
+      y: 90,
+      domains: ["products"],
+      functionOwner: "IT",
+    });
+    addSystem({
+      name: "Client Portal",
+      x: 320,
+      y: 260,
+      domains: ["clients", "people"],
+      functionOwner: "Data",
+    });
+    centerCanvasView();
+  }
 }
 
 function renderGlobalDomainChips() {
@@ -248,6 +293,8 @@ function addSystem({
   businessOwner = "",
   functionOwner = "",
   entities = [],
+  icon = DEFAULT_ICON,
+  comments = "",
 } = {}) {
   const resolvedId = id || `sys-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
   const system = {
@@ -262,14 +309,22 @@ function addSystem({
     platformOwner: platformOwner || "",
     businessOwner: businessOwner || "",
     functionOwner: functionOwner || "",
+    icon: icon || DEFAULT_ICON,
+    comments: comments || "",
     element: document.createElement("div"),
   };
 
   system.element.className = "system-node";
   system.element.dataset.id = resolvedId;
   system.element.innerHTML = `
+    <button class="delete-node" aria-label="Delete system">
+      <i class="fa-solid fa-trash" aria-hidden="true"></i>
+    </button>
     <div class="title-row">
-      <div class="title">${system.name}</div>
+      <div class="icon-title">
+        <div class="system-icon" aria-hidden="true"><i class="${system.icon}"></i></div>
+        <div class="title">${system.name}</div>
+      </div>
       <div class="connector" title="Drag to connect"></div>
     </div>
     <div class="meta">
@@ -286,6 +341,7 @@ function addSystem({
   attachNodeEvents(system);
   renderDomainBubbles(system);
   updateSystemMeta(system);
+  updateSystemIcon(system);
   ensureFunctionOwnerOption(system.functionOwner);
   refreshOwnerSuggestionLists();
   updateHighlights();
@@ -302,14 +358,27 @@ function attachNodeEvents(system) {
     startLinking(event, system);
   });
 
+  const deleteButton = system.element.querySelector(".delete-node");
+  deleteButton?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    selectSystem(system);
+    handleDeleteSystem(system);
+  });
+
   system.element.addEventListener("pointerdown", (event) => {
     if (event.button !== 0) return;
-    if (event.target.closest(".connector") || event.target.closest(".domain-bubble")) return;
+    if (
+      event.target.closest(".connector") ||
+      event.target.closest(".domain-bubble") ||
+      event.target.closest(".delete-node")
+    ) {
+      return;
+    }
     startDragging(event, system);
   });
 
   system.element.addEventListener("click", (event) => {
-    if (event.target.closest(".domain-bubble")) return;
+    if (event.target.closest(".domain-bubble") || event.target.closest(".delete-node")) return;
     selectSystem(system);
   });
 
@@ -461,6 +530,10 @@ function openPanel(system) {
   platformOwnerInput.value = system.platformOwner;
   businessOwnerInput.value = system.businessOwner;
   functionOwnerInput.value = system.functionOwner;
+  syncIconSelectValue(system.icon);
+  if (systemCommentsInput) {
+    systemCommentsInput.value = system.comments || "";
+  }
   renderEntityList(system);
   syncPanelDomainSelection(system);
 }
@@ -502,6 +575,7 @@ function handleAddEntity(event) {
   entityInput.value = "";
   renderEntityList(activePanelSystem);
   updateSystemMeta(activePanelSystem);
+  updateHighlights();
 }
 
 function renderEntityList(system) {
@@ -524,6 +598,7 @@ function renderEntityList(system) {
     sorInput.addEventListener("change", () => {
       entity.isSor = sorInput.checked;
       renderEntityList(system);
+      updateHighlights();
     });
     sorLabel.append(sorInput, document.createTextNode("SOR"));
 
@@ -534,6 +609,7 @@ function renderEntityList(system) {
       system.entities.splice(index, 1);
       renderEntityList(system);
       updateSystemMeta(system);
+      updateHighlights();
     });
 
     actions.append(sorLabel, removeBtn);
@@ -602,6 +678,94 @@ function updateSystemMeta(system) {
       entityBadge.classList.add("hidden");
     }
   }
+
+  updateSystemIcon(system);
+}
+
+function updateSystemIcon(system) {
+  const iconElement = system.element.querySelector(".system-icon i");
+  if (!iconElement) return;
+  iconElement.className = system.icon || DEFAULT_ICON;
+}
+
+function syncIconSelectValue(value) {
+  if (!systemIconSelect) return;
+  const iconValue = value || DEFAULT_ICON;
+  const exists = Array.from(systemIconSelect.options).some((option) => option.value === iconValue);
+  if (!exists) {
+    const option = document.createElement("option");
+    option.value = iconValue;
+    option.textContent = formatIconLabel(iconValue);
+    systemIconSelect.appendChild(option);
+  }
+  systemIconSelect.value = iconValue;
+}
+
+function formatIconLabel(value) {
+  if (!value) return "Icon";
+  return value
+    .replace("fa-solid", "")
+    .replace(/fa-/g, "")
+    .replace(/-/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase()) || "Icon";
+}
+
+function handleDeleteSystem(system) {
+  if (!system) return;
+  const index = systems.findIndex((entry) => entry.id === system.id);
+  if (index === -1) return;
+  const relatedConnections = connections.filter((conn) => conn.from === system.id || conn.to === system.id);
+  lastDeletedSnapshot = {
+    system: cloneSystemData(system),
+    connections: relatedConnections.map((conn) => ({ ...conn })),
+  };
+  systems.splice(index, 1);
+  system.element.remove();
+  for (let i = connections.length - 1; i >= 0; i -= 1) {
+    if (connections[i].from === system.id || connections[i].to === system.id) {
+      connections.splice(i, 1);
+    }
+  }
+  if (selectedSystemId === system.id) {
+    selectedSystemId = null;
+    closePanel();
+  }
+  refreshOwnerSuggestionLists();
+  drawConnections();
+  updateHighlights();
+  undoDeleteBtn?.classList.remove("hidden");
+}
+
+function handleUndoDelete() {
+  if (!lastDeletedSnapshot) return;
+  addSystem(lastDeletedSnapshot.system);
+  lastDeletedSnapshot.connections.forEach((connection) => {
+    const exists = connections.some((existing) => existing.id === connection.id);
+    if (!exists) {
+      connections.push({ ...connection });
+    }
+  });
+  drawConnections();
+  updateHighlights();
+  undoDeleteBtn?.classList.add("hidden");
+  lastDeletedSnapshot = null;
+}
+
+function cloneSystemData(system) {
+  return {
+    id: system.id,
+    name: system.name,
+    x: system.x,
+    y: system.y,
+    domains: Array.from(system.domains),
+    platformOwner: system.platformOwner,
+    businessOwner: system.businessOwner,
+    functionOwner: system.functionOwner,
+    icon: system.icon,
+    comments: system.comments,
+    entities: system.entities.map((entity) => ({ name: entity.name, isSor: !!entity.isSor })),
+  };
 }
 
 function handleClearHighlights() {
@@ -611,10 +775,14 @@ function handleClearHighlights() {
   functionOwnerFilterText = "";
   searchQuery = "";
   selectedSystemId = null;
+  sorFilterValue = "any";
   platformOwnerFilterInput.value = "";
   businessOwnerFilterInput.value = "";
   functionOwnerFilterInput.value = "";
   searchInput.value = "";
+  if (sorFilterSelect) {
+    sorFilterSelect.value = "any";
+  }
   updateGlobalDomainChips();
   updateHighlights();
 }
@@ -627,7 +795,8 @@ function updateHighlights() {
     !!platformOwnerFilterText ||
     !!businessOwnerFilterText ||
     !!functionOwnerFilterText ||
-    !!searchQuery;
+    !!searchQuery ||
+    sorFilterValue !== "any";
 
   systems.forEach((system) => {
     let highlight = true;
@@ -640,11 +809,12 @@ function updateHighlights() {
 
     const shouldApplyState = selectedSystemId || filtersActive;
     system.element.classList.toggle("highlighted", highlight && shouldApplyState);
-    system.element.classList.toggle("dimmed", !highlight && shouldApplyState);
-
+    system.element.classList.toggle("dimmed", !highlight && shouldApplyState && filterMode === "fade");
+    system.element.classList.toggle("hidden-filter", !highlight && shouldApplyState && filterMode === "hide");
     if (!shouldApplyState) {
-      system.element.classList.remove("highlighted", "dimmed");
+      system.element.classList.remove("highlighted", "dimmed", "hidden-filter");
     }
+    system.element.classList.toggle("selected", system.id === selectedSystemId);
   });
 
   applyColorCoding();
@@ -670,24 +840,34 @@ function systemMatchesFilters(system) {
     }
   }
   if (platformOwnerFilterText) {
-    if (!system.platformOwner.toLowerCase().includes(platformOwnerFilterText)) {
+    if (!(system.platformOwner || "").toLowerCase().includes(platformOwnerFilterText)) {
       return false;
     }
   }
   if (businessOwnerFilterText) {
-    if (!system.businessOwner.toLowerCase().includes(businessOwnerFilterText)) {
+    if (!(system.businessOwner || "").toLowerCase().includes(businessOwnerFilterText)) {
       return false;
     }
   }
   if (functionOwnerFilterText) {
-    if (!system.functionOwner.toLowerCase().includes(functionOwnerFilterText)) {
+    if (!(system.functionOwner || "").toLowerCase().includes(functionOwnerFilterText)) {
       return false;
     }
+  }
+  if (sorFilterValue === "yes" && !systemHasSor(system)) {
+    return false;
+  }
+  if (sorFilterValue === "no" && systemHasSor(system)) {
+    return false;
   }
   if (searchQuery) {
     return doesSystemMatchSearch(system);
   }
   return true;
+}
+
+function systemHasSor(system) {
+  return system.entities.some((entity) => entity.isSor);
 }
 
 function doesSystemMatchSearch(system) {
@@ -701,11 +881,11 @@ function doesSystemMatchSearch(system) {
         return label.toLowerCase().includes(query) || domainKey.toLowerCase().includes(query);
       });
     case "platformOwner":
-      return system.platformOwner.toLowerCase().includes(query);
+      return (system.platformOwner || "").toLowerCase().includes(query);
     case "businessOwner":
-      return system.businessOwner.toLowerCase().includes(query);
+      return (system.businessOwner || "").toLowerCase().includes(query);
     case "functionOwner":
-      return system.functionOwner.toLowerCase().includes(query);
+      return (system.functionOwner || "").toLowerCase().includes(query);
     case "entity":
       return system.entities.some((entity) => entity.name.toLowerCase().includes(query));
     case "system":
@@ -723,6 +903,22 @@ function applyZoom(value) {
   currentZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value));
   canvasContent.style.transform = `scale(${currentZoom})`;
   zoomLabel.textContent = `${Math.round(currentZoom * 100)}%`;
+}
+
+function handleWheelZoom(event) {
+  event.preventDefault();
+  const prevZoom = currentZoom;
+  const delta = event.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP;
+  applyZoom(currentZoom + delta);
+  if (prevZoom === currentZoom) return;
+  const rect = canvasViewport.getBoundingClientRect();
+  const pointerOffsetX = event.clientX - rect.left;
+  const pointerOffsetY = event.clientY - rect.top;
+  const offsetX = pointerOffsetX + canvasViewport.scrollLeft;
+  const offsetY = pointerOffsetY + canvasViewport.scrollTop;
+  const scale = currentZoom / prevZoom;
+  canvasViewport.scrollLeft = offsetX * scale - pointerOffsetX;
+  canvasViewport.scrollTop = offsetY * scale - pointerOffsetY;
 }
 
 function getCanvasRelativeCoords(clientX, clientY) {
@@ -770,6 +966,7 @@ function toggleFilterPanel() {
   isSidebarCollapsed = !isSidebarCollapsed;
   filterPanel.classList.toggle("collapsed", isSidebarCollapsed);
   filterPanelToggle.setAttribute("aria-expanded", String(!isSidebarCollapsed));
+  updateSidebarToggleIcon();
 }
 
 function setupPanning() {
@@ -864,7 +1061,7 @@ function tintColor(hex, amount = 0.85) {
   const g = (num >> 8) & 255;
   const b = num & 255;
   const mix = (channel) => Math.round(channel + (255 - channel) * amount);
-  return `rgba(${mix(r)}, ${mix(g)}, ${mix(b)}, 0.85)`;
+  return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
 }
 
 function updateSidebarToggleIcon() {
@@ -1083,6 +1280,24 @@ function handleSaveDiagram() {
   }
 }
 
+function handleShareDiagram() {
+  try {
+    const payload = encodeStatePayload(serializeState());
+    const url = `${window.location.origin}${window.location.pathname}?data=${encodeURIComponent(payload)}`;
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(url).catch(() => openSharePrompt(url));
+    } else {
+      openSharePrompt(url);
+    }
+  } catch (error) {
+    console.warn("Unable to build shareable URL", error);
+  }
+}
+
+function openSharePrompt(url) {
+  window.prompt("Copy this link", url);
+}
+
 function openSaveManager() {
   renderSaveList();
   saveManagerModal.classList.remove("hidden");
@@ -1090,6 +1305,18 @@ function openSaveManager() {
 
 function closeSaveManager() {
   saveManagerModal.classList.add("hidden");
+}
+
+function openSettingsModal() {
+  if (!settingsModal) return;
+  if (colorBySelect) {
+    colorBySelect.value = currentColorBy;
+  }
+  settingsModal.classList.remove("hidden");
+}
+
+function closeSettingsModal() {
+  settingsModal?.classList.add("hidden");
 }
 
 function renderSaveList() {
@@ -1208,11 +1435,14 @@ function serializeState() {
       platformOwner: system.platformOwner,
       businessOwner: system.businessOwner,
       functionOwner: system.functionOwner,
+      icon: system.icon,
+      comments: system.comments,
       entities: system.entities.map((entity) => ({ name: entity.name, isSor: !!entity.isSor })),
     })),
     connections: connections.map((connection) => ({ ...connection })),
     functionOwners: Array.from(functionOwnerOptions),
     counter: systemCounter,
+    colorBy: currentColorBy,
   };
 }
 
@@ -1241,21 +1471,72 @@ function loadSerializedState(snapshot) {
       businessOwner: systemData.businessOwner,
       functionOwner: systemData.functionOwner,
       entities: systemData.entities,
+      icon: systemData.icon,
+      comments: systemData.comments,
     });
   });
   connections.push(...(snapshot.connections || []));
   drawConnections();
   systemCounter = snapshot.counter || systems.length + 1;
+  currentColorBy = snapshot.colorBy || "none";
+  if (colorBySelect) {
+    colorBySelect.value = currentColorBy;
+  }
   refreshOwnerSuggestionLists();
   Object.values(ownerColorMaps).forEach((map) => map.clear());
   updateHighlights();
   applyColorCoding();
   centerCanvasView();
+  lastDeletedSnapshot = null;
+  undoDeleteBtn?.classList.add("hidden");
 }
 
 function formatSnapshotName(date) {
   const pad = (value) => String(value).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}.${pad(date.getMinutes())}`;
+}
+
+function encodeStatePayload(state) {
+  const json = JSON.stringify(state);
+  if (typeof TextEncoder === "undefined") {
+    return btoa(unescape(encodeURIComponent(json)));
+  }
+  const encoder = new TextEncoder();
+  const bytes = encoder.encode(json);
+  let binary = "";
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary);
+}
+
+function decodeStatePayload(payload) {
+  const binary = atob(payload);
+  if (typeof TextDecoder === "undefined") {
+    const decoded = decodeURIComponent(escape(binary));
+    return JSON.parse(decoded);
+  }
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  const decoder = new TextDecoder();
+  const json = decoder.decode(bytes);
+  return JSON.parse(json);
+}
+
+function loadFromUrlParams() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const encoded = params.get("data");
+    if (!encoded) return false;
+    const snapshot = decodeStatePayload(encoded);
+    loadSerializedState(snapshot);
+    if (window.history?.replaceState) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+    return true;
+  } catch (error) {
+    console.warn("Unable to parse shared diagram", error);
+    return false;
+  }
 }
 
 function getAngledPath(from, to) {
