@@ -2116,9 +2116,47 @@ function renderVisualSnapshot() {
   const positionMap = new Map();
   const nodesFragment = document.createDocumentFragment();
 
-  systemsToShow.forEach((system) => {
-    const left = padding + (system.x - minX) * scale;
-    const top = padding + (system.y - minY) * scale;
+  const rawPositions = systemsToShow.map((system) => {
+    return {
+      system,
+      left: padding + (system.x - minX) * scale,
+      top: padding + (system.y - minY) * scale,
+    };
+  });
+
+  const minSpacing = 140;
+  const bounds = {
+    minLeft: padding,
+    maxLeft: width - padding,
+    minTop: padding,
+    maxTop: height - padding,
+  };
+
+  for (let iteration = 0; iteration < 40; iteration++) {
+    for (let i = 0; i < rawPositions.length; i++) {
+      for (let j = i + 1; j < rawPositions.length; j++) {
+        const a = rawPositions[i];
+        const b = rawPositions[j];
+        const dx = b.left - a.left;
+        const dy = b.top - a.top;
+        const dist = Math.hypot(dx, dy) || 0.0001;
+        if (dist >= minSpacing) continue;
+        const push = (minSpacing - dist) / 2;
+        const ux = dx / dist;
+        const uy = dy / dist;
+        a.left -= ux * push;
+        a.top -= uy * push;
+        b.left += ux * push;
+        b.top += uy * push;
+      }
+    }
+    rawPositions.forEach((pos) => {
+      pos.left = Math.min(bounds.maxLeft, Math.max(bounds.minLeft, pos.left));
+      pos.top = Math.min(bounds.maxTop, Math.max(bounds.minTop, pos.top));
+    });
+  }
+
+  rawPositions.forEach(({ system, left, top }) => {
     positionMap.set(system.id, { left, top });
 
     const node = document.createElement("div");
