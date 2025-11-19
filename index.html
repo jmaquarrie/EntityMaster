@@ -4,13 +4,6 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>EntityMaster Diagram</title>
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
-      integrity="sha512-SzlrxWriC3LLJYlX3n0P0CJ1qjNenE2no0Rvr2bHu3Dg9N576JRw/tmIurh4VJ0aYfUlrU3Nv2h0Pbk2TBwHhw=="
-      crossorigin="anonymous"
-      referrerpolicy="no-referrer"
-    />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -36,13 +29,9 @@
                   <span id="saveStatus" class="save-status" aria-live="polite"></span>
                 </div>
                 <button id="loadDiagramBtn" class="icon-btn" title="Load diagram" aria-label="Load diagram">📂</button>
-                <button id="shareDiagramBtn" class="icon-btn" title="Share diagram" aria-label="Share diagram">
-                  <i class="fa-solid fa-share-nodes" aria-hidden="true"></i>
-                </button>
+                <button id="shareDiagramBtn" class="icon-btn" title="Share diagram" aria-label="Share diagram">🔗</button>
               </div>
-              <button id="settingsBtn" class="icon-btn" title="Diagram settings" aria-label="Diagram settings">
-                <i class="fa-solid fa-gear" aria-hidden="true"></i>
-              </button>
+              <button id="settingsBtn" class="icon-btn" title="Diagram settings" aria-label="Diagram settings">⚙️</button>
               <button class="zoom-btn" data-direction="out" aria-label="Zoom out">−</button>
               <span id="zoomLabel">100%</span>
               <button class="zoom-btn" data-direction="in" aria-label="Zoom in">+</button>
@@ -171,16 +160,16 @@
         <label class="field">
           <span>System Icon</span>
           <select id="systemIconSelect">
-            <option value="fa-solid fa-cube">Cube</option>
-            <option value="fa-solid fa-database">Database</option>
-            <option value="fa-solid fa-cloud">Cloud</option>
-            <option value="fa-solid fa-server">Server</option>
-            <option value="fa-solid fa-diagram-project">Project</option>
-            <option value="fa-solid fa-building">Building</option>
-            <option value="fa-solid fa-network-wired">Network</option>
-            <option value="fa-solid fa-chart-line">Growth</option>
-            <option value="fa-solid fa-shield">Shield</option>
-            <option value="fa-solid fa-rocket">Rocket</option>
+            <option value="cube">⬛</option>
+            <option value="database">🗄️</option>
+            <option value="cloud">☁️</option>
+            <option value="server">🖥️</option>
+            <option value="project">📊</option>
+            <option value="building">🏢</option>
+            <option value="network">🌐</option>
+            <option value="growth">📈</option>
+            <option value="shield">🛡️</option>
+            <option value="rocket">🚀</option>
           </select>
         </label>
         <section class="field">

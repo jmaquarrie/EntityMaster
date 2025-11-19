@@ -4,11 +4,24 @@ const DEFAULT_NODE_WIDTH = 220;
 const DEFAULT_NODE_HEIGHT = 160;
 const SVG_NS = "http://www.w3.org/2000/svg";
 const HANDLE_OFFSET = 24;
-const MIN_ZOOM = 0.5;
+const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 1.5;
 const ZOOM_STEP = 0.1;
 const STORAGE_KEY = "entityMasterSaves";
-const DEFAULT_ICON = "fa-solid fa-cube";
+const DEFAULT_ICON = "cube";
+const ICON_LIBRARY = {
+  cube: "⬛",
+  database: "🗄️",
+  cloud: "☁️",
+  server: "🖥️",
+  project: "📊",
+  building: "🏢",
+  network: "🌐",
+  growth: "📈",
+  shield: "🛡️",
+  rocket: "🚀",
+  spreadsheet: "📗",
+};
 const GRID_SIZE = 40;
 
 const FUNCTION_OWNER_DEFAULTS = ["IT", "Fleet", "HR", "Payroll", "OCUOne", "Data", "L&D"];
@@ -67,6 +80,7 @@ let editingConnectionId = null;
 let editingConnectionOriginalLabel = "";
 const multiSelectedIds = new Set();
 const suppressClickForIds = new Set();
+let undoTimer = null;
 
 const canvasContent = document.getElementById("canvasContent");
 const canvasViewport = document.getElementById("canvasViewport");
@@ -472,7 +486,7 @@ function addSystem({
     platformOwner: platformOwner || "",
     businessOwner: businessOwner || "",
     functionOwner: functionOwner || "",
-    icon: icon || DEFAULT_ICON,
+    icon: normalizeIconKey(icon),
     comments: comments || "",
     description: description || "",
     isSpreadsheet: !!isSpreadsheet,
@@ -483,11 +497,11 @@ function addSystem({
   system.element.dataset.id = resolvedId;
   system.element.innerHTML = `
     <button class="delete-node" aria-label="Delete system">
-      <i class="fa-solid fa-trash" aria-hidden="true"></i>
+      🗑️
     </button>
     <div class="title-row">
       <div class="icon-title">
-        <div class="system-icon" aria-hidden="true"><i class="${system.icon}"></i></div>
+        <div class="system-icon" aria-hidden="true"><span></span></div>
         <div class="title">${system.name}</div>
       </div>
       <div class="connector" title="Drag to connect"></div>
@@ -1080,33 +1094,50 @@ function updateSystemMeta(system) {
 }
 
 function updateSystemIcon(system) {
-  const iconElement = system.element.querySelector(".system-icon i");
+  const iconElement = system.element.querySelector(".system-icon span");
   if (!iconElement) return;
-  const className = system.isSpreadsheet ? "fa-solid fa-file-excel" : system.icon || DEFAULT_ICON;
-  iconElement.className = className;
+  iconElement.textContent = getSystemIconSymbol(system);
 }
 
 function syncIconSelectValue(value) {
   if (!systemIconSelect) return;
-  const iconValue = value || DEFAULT_ICON;
+  const iconValue = normalizeIconKey(value || DEFAULT_ICON);
   const exists = Array.from(systemIconSelect.options).some((option) => option.value === iconValue);
   if (!exists) {
     const option = document.createElement("option");
     option.value = iconValue;
-    option.textContent = formatIconLabel(iconValue);
+    option.textContent = getIconSymbol(iconValue);
     systemIconSelect.appendChild(option);
   }
   systemIconSelect.value = iconValue;
 }
 
-function formatIconLabel(value) {
-  if (!value) return "Icon";
-  return value
-    .replace("fa-solid", "")
-    .replace(/fa-/g, "")
-    .replace(/-/g, " ")
-    .trim()
-    .replace(/\b\w/g, (char) => char.toUpperCase()) || "Icon";
+function getIconSymbol(key) {
+  return ICON_LIBRARY[key] || ICON_LIBRARY[DEFAULT_ICON] || "⬛";
+}
+
+function getSystemIconSymbol(system) {
+  if (system.isSpreadsheet) return getIconSymbol("spreadsheet");
+  return getIconSymbol(system.icon || DEFAULT_ICON);
+}
+
+function normalizeIconKey(rawValue) {
+  if (!rawValue) return DEFAULT_ICON;
+  if (ICON_LIBRARY[rawValue]) return rawValue;
+  const legacyMap = {
+    "fa-solid fa-cube": "cube",
+    "fa-solid fa-database": "database",
+    "fa-solid fa-cloud": "cloud",
+    "fa-solid fa-server": "server",
+    "fa-solid fa-diagram-project": "project",
+    "fa-solid fa-building": "building",
+    "fa-solid fa-network-wired": "network",
+    "fa-solid fa-chart-line": "growth",
+    "fa-solid fa-shield": "shield",
+    "fa-solid fa-rocket": "rocket",
+    "fa-solid fa-file-excel": "spreadsheet",
+  };
+  return legacyMap[rawValue] || DEFAULT_ICON;
 }
 
 function handleDeleteSystem(system) {
@@ -1136,7 +1167,15 @@ function handleDeleteSystem(system) {
   refreshOwnerSuggestionLists();
   drawConnections();
   updateHighlights();
-  undoDeleteBtn?.classList.remove("hidden");
+  if (undoDeleteBtn) {
+    undoDeleteBtn.classList.remove("hidden");
+    if (undoTimer) {
+      clearTimeout(undoTimer);
+    }
+    undoTimer = setTimeout(() => {
+      undoDeleteBtn.classList.add("hidden");
+    }, 10000);
+  }
 }
 
 function handleUndoDelete() {
@@ -1151,6 +1190,10 @@ function handleUndoDelete() {
   drawConnections();
   updateHighlights();
   undoDeleteBtn?.classList.add("hidden");
+  if (undoTimer) {
+    clearTimeout(undoTimer);
+    undoTimer = null;
+  }
   lastDeletedSnapshot = null;
 }
 

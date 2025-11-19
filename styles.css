@@ -253,7 +253,7 @@ button.ghost {
   font-size: 1.1rem;
 }
 
-.system-node .system-icon i {
+.system-node .system-icon span {
   line-height: 1;
 }
 
@@ -423,8 +423,8 @@ button.ghost {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  border: 1.5px solid rgba(17, 24, 59, 0.45);
-  background: #fff;
+  border: none;
+  background: #e4e5eb;
   color: #0f1424;
   font-size: 0.75rem;
   line-height: 1;
@@ -867,7 +867,7 @@ button.ghost {
 
 .undo-button {
   position: fixed;
-  bottom: 1.5rem;
+  bottom: 4.25rem;
   left: 1.5rem;
   z-index: 7;
   background: #121839;
@@ -880,11 +880,6 @@ button.ghost {
 
 .undo-button.hidden {
   display: none;
-}
-
-#settingsBtn i,
-#shareDiagramBtn i {
-  font-size: 1rem;
 }
 
 #settingsModal .modal-card {
