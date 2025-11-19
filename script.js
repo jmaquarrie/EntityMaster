@@ -81,11 +81,13 @@ let editingConnectionOriginalLabel = "";
 const multiSelectedIds = new Set();
 const suppressClickForIds = new Set();
 let undoTimer = null;
+let activeEntityLinkName = null;
 
 const canvasContent = document.getElementById("canvasContent");
 const canvasViewport = document.getElementById("canvasViewport");
 const canvas = document.getElementById("canvas");
 const connectionLayer = document.getElementById("connectionLayer");
+const entityLinkLayer = document.getElementById("entityLinkLayer");
 const connectionHandleLayer = document.getElementById("connectionHandleLayer");
 const addSystemBtn = document.getElementById("addSystemBtn");
 const clearFocusBtn = document.getElementById("clearFocusBtn");
@@ -267,20 +269,6 @@ function init() {
 
   const loadedFromUrl = loadFromUrlParams();
   if (!loadedFromUrl) {
-    addSystem({
-      name: "Core Services",
-      x: 80,
-      y: 90,
-      domains: ["products"],
-      functionOwner: "IT",
-    });
-    addSystem({
-      name: "Client Portal",
-      x: 320,
-      y: 260,
-      domains: ["clients", "people"],
-      functionOwner: "Data",
-    });
     centerCanvasView();
   }
 }
@@ -491,6 +479,8 @@ function addSystem({
     description: description || "",
     isSpreadsheet: !!isSpreadsheet,
     element: document.createElement("div"),
+    isEntityExpanded: false,
+    forceEntityExpand: false,
   };
 
   system.element.className = "system-node";
@@ -511,6 +501,7 @@ function addSystem({
       <div class="entity-count hidden"></div>
     </div>
     <div class="domain-bubbles"></div>
+    <div class="entity-inline hidden"></div>
   `;
 
   canvas.appendChild(system.element);
@@ -581,6 +572,16 @@ function attachNodeEvents(system) {
     event.stopPropagation();
     toggleDomainFilter(domain);
   });
+
+  const entityToggle = system.element.querySelector(".entity-count");
+  entityToggle?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (!system.entities.length) return;
+    system.isEntityExpanded = !system.isEntityExpanded;
+    renderInlineEntities(system);
+    refreshEntityLinkIfActive();
+    updateConnectionPositions();
+  });
 }
 
 function handleCanvasClick(event) {
@@ -595,6 +596,7 @@ function handleCanvasClick(event) {
   closeConnectionLabelEditor();
   clearMultiSelect();
   closePanel();
+  clearEntityLinkHighlight();
   handleClearHighlights();
 }
 
@@ -748,10 +750,58 @@ function drawConnections() {
       renderConnectionHandle(connection, getHandleAnchorPosition(toPos, fromPos));
     }
   });
+
+  drawEntityLinks();
 }
 
 function updateConnectionPositions() {
   drawConnections();
+}
+
+function drawEntityLinks() {
+  if (!entityLinkLayer) return;
+  entityLinkLayer.innerHTML = "";
+  if (!activeEntityLinkName) return;
+
+  const target = activeEntityLinkName.toLowerCase();
+  const anchors = systems
+    .map((system) => {
+      const row = Array.from(system.element.querySelectorAll(".entity-row")).find(
+        (candidate) => candidate.dataset.entityName?.toLowerCase() === target
+      );
+      if (!row) return null;
+      const entity = system.entities.find((item) => item.name.toLowerCase() === target);
+      if (!entity) return null;
+      const point = getEntityRowAnchor(row);
+      return point ? { systemId: system.id, point } : null;
+    })
+    .filter(Boolean);
+
+  if (anchors.length < 2) return;
+
+  for (let i = 0; i < anchors.length - 1; i += 1) {
+    for (let j = i + 1; j < anchors.length; j += 1) {
+      const path = document.createElementNS(SVG_NS, "path");
+      path.classList.add("entity-link-path");
+      path.setAttribute("d", getCurvedPath(anchors[i].point, anchors[j].point));
+      entityLinkLayer.appendChild(path);
+    }
+  }
+}
+
+function getEntityRowAnchor(row) {
+  if (!row || !canvasContent) return null;
+  const canvasRect = canvasContent.getBoundingClientRect();
+  const rect = row.getBoundingClientRect();
+  const x = (rect.left - canvasRect.left + rect.width / 2) / currentZoom;
+  const y = (rect.top - canvasRect.top + rect.height / 2) / currentZoom;
+  return { x, y };
+}
+
+function getCurvedPath(from, to) {
+  const controlX = (from.x + to.x) / 2;
+  const controlY = (from.y + to.y) / 2 - 40;
+  return `M ${from.x} ${from.y} Q ${controlX} ${controlY} ${to.x} ${to.y}`;
 }
 
 function getSystemCenter(system) {
@@ -986,6 +1036,7 @@ function handleAddEntity(event) {
   entityInput.value = "";
   renderEntityList(activePanelSystem);
   updateSystemMeta(activePanelSystem);
+  refreshEntityLinkIfActive();
   updateHighlights();
 }
 
@@ -1029,6 +1080,7 @@ function renderEntityList(system) {
   });
 
   updateSystemMeta(system);
+  refreshEntityLinkIfActive();
 }
 
 function handleDomainSelection(event) {
@@ -1083,7 +1135,9 @@ function updateSystemMeta(system) {
   const entityBadge = system.element.querySelector(".entity-count");
   if (entityBadge) {
     if (system.entities.length > 0) {
-      entityBadge.textContent = `${system.entities.length} ${system.entities.length === 1 ? "entity" : "entities"}`;
+      entityBadge.textContent = `${system.entities.length} ${
+        system.entities.length === 1 ? "entity" : "entities"
+      } +`;
       entityBadge.classList.remove("hidden");
     } else {
       entityBadge.classList.add("hidden");
@@ -1091,12 +1145,62 @@ function updateSystemMeta(system) {
   }
 
   updateSystemIcon(system);
+  renderInlineEntities(system);
 }
 
 function updateSystemIcon(system) {
   const iconElement = system.element.querySelector(".system-icon span");
   if (!iconElement) return;
   iconElement.textContent = getSystemIconSymbol(system);
+}
+
+function renderInlineEntities(system) {
+  const container = system.element.querySelector(".entity-inline");
+  if (!container) return;
+  container.innerHTML = "";
+  if (!system.entities.length) {
+    container.classList.add("hidden");
+    return;
+  }
+
+  const shouldShow = system.isEntityExpanded || system.forceEntityExpand;
+  container.classList.toggle("hidden", !shouldShow);
+  if (!shouldShow) {
+    return;
+  }
+
+  const table = document.createElement("table");
+  table.className = "entity-table";
+  const tbody = document.createElement("tbody");
+  const activeName = activeEntityLinkName ? activeEntityLinkName.toLowerCase() : null;
+
+  system.entities.forEach((entity) => {
+    const row = document.createElement("tr");
+    row.className = "entity-row";
+    if (entity.isSor) {
+      row.classList.add("sor");
+    }
+    if (activeName && entity.name.toLowerCase() === activeName) {
+      row.classList.add("entity-linked");
+    }
+    row.dataset.entityName = entity.name;
+    row.addEventListener("click", (event) => {
+      event.stopPropagation();
+      handleEntityRowActivation(entity.name);
+    });
+
+    const nameCell = document.createElement("td");
+    nameCell.textContent = entity.name;
+
+    const sorCell = document.createElement("td");
+    sorCell.textContent = entity.isSor ? "SOR" : "";
+
+    row.append(nameCell, sorCell);
+    tbody.appendChild(row);
+  });
+
+  table.appendChild(tbody);
+  container.appendChild(table);
 }
 
 function syncIconSelectValue(value) {
@@ -1140,6 +1244,39 @@ function normalizeIconKey(rawValue) {
   return legacyMap[rawValue] || DEFAULT_ICON;
 }
 
+function handleEntityRowActivation(entityName) {
+  if (!entityName) return;
+  activeEntityLinkName = entityName;
+  applyEntityLinkState();
+}
+
+function applyEntityLinkState() {
+  const normalized = activeEntityLinkName ? activeEntityLinkName.toLowerCase() : "";
+  systems.forEach((system) => {
+    const hasMatch = normalized && system.entities.some((entity) => entity.name.toLowerCase() === normalized);
+    system.forceEntityExpand = !!normalized && hasMatch;
+    renderInlineEntities(system);
+  });
+  updateConnectionPositions();
+}
+
+function refreshEntityLinkIfActive() {
+  if (activeEntityLinkName) {
+    applyEntityLinkState();
+  }
+}
+
+function clearEntityLinkHighlight() {
+  activeEntityLinkName = null;
+  systems.forEach((system) => {
+    system.forceEntityExpand = false;
+    renderInlineEntities(system);
+  });
+  if (entityLinkLayer) {
+    entityLinkLayer.innerHTML = "";
+  }
+}
+
 function handleDeleteSystem(system) {
   if (!system) return;
   const index = systems.findIndex((entry) => entry.id === system.id);
@@ -1167,6 +1304,17 @@ function handleDeleteSystem(system) {
   refreshOwnerSuggestionLists();
   drawConnections();
   updateHighlights();
+  if (activeEntityLinkName) {
+    const target = activeEntityLinkName.toLowerCase();
+    const stillExists = systems.some((entry) =>
+      entry.entities.some((entity) => entity.name.toLowerCase() === target)
+    );
+    if (stillExists) {
+      applyEntityLinkState();
+    } else {
+      clearEntityLinkHighlight();
+    }
+  }
   if (undoDeleteBtn) {
     undoDeleteBtn.classList.remove("hidden");
     if (undoTimer) {
@@ -1209,6 +1357,7 @@ function cloneSystemData(system) {
     functionOwner: system.functionOwner,
     icon: system.icon,
     comments: system.comments,
+    description: system.description,
     isSpreadsheet: system.isSpreadsheet,
     entities: system.entities.map((entity) => ({ name: entity.name, isSor: !!entity.isSor })),
   };
@@ -1222,6 +1371,7 @@ function handleClearHighlights() {
   searchQuery = "";
   selectedSystemId = null;
   sorFilterValue = "any";
+  clearEntityLinkHighlight();
   clearMultiSelect();
   closeConnectionLabelEditor();
   platformOwnerFilterInput.value = "";
@@ -1951,6 +2101,9 @@ function loadSerializedState(snapshot) {
   if (connectionHandleLayer) {
     connectionHandleLayer.innerHTML = "";
   }
+  if (entityLinkLayer) {
+    entityLinkLayer.innerHTML = "";
+  }
   setCanvasDimensions(CANVAS_WIDTH, CANVAS_HEIGHT);
   functionOwnerOptions.clear();
   FUNCTION_OWNER_DEFAULTS.forEach((value) => functionOwnerOptions.add(value));
@@ -2071,6 +2224,11 @@ function setCanvasDimensions(width, height) {
   connectionLayer.setAttribute("width", canvasWidth);
   connectionLayer.setAttribute("height", canvasHeight);
   connectionLayer.setAttribute("viewBox", `0 0 ${canvasWidth} ${canvasHeight}`);
+  if (entityLinkLayer) {
+    entityLinkLayer.setAttribute("width", canvasWidth);
+    entityLinkLayer.setAttribute("height", canvasHeight);
+    entityLinkLayer.setAttribute("viewBox", `0 0 ${canvasWidth} ${canvasHeight}`);
+  }
 }
 
 function ensureCanvasBoundsForSystem(system) {

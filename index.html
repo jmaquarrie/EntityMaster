@@ -13,6 +13,7 @@
           <div id="canvasViewport">
             <div id="canvasContent">
               <svg id="connectionLayer"></svg>
+              <svg id="entityLinkLayer"></svg>
               <div id="canvas" tabindex="0"></div>
               <div id="connectionHandleLayer" aria-hidden="true"></div>
             </div>
@@ -24,14 +25,26 @@
             </div>
             <div class="zoom-controls" aria-label="Zoom">
               <div class="storage-controls" aria-label="Diagram storage">
-                <div class="save-control">
-                  <button id="saveDiagramBtn" class="icon-btn" title="Save diagram" aria-label="Save diagram">💾</button>
-                  <span id="saveStatus" class="save-status" aria-live="polite"></span>
+                <div class="icon-block">
+                  <div class="save-control">
+                    <button id="saveDiagramBtn" class="icon-btn" title="Save diagram" aria-label="Save diagram">💾</button>
+                    <span id="saveStatus" class="save-status" aria-live="polite"></span>
+                  </div>
+                  <div class="icon-label">Save</div>
                 </div>
-                <button id="loadDiagramBtn" class="icon-btn" title="Load diagram" aria-label="Load diagram">📂</button>
-                <button id="shareDiagramBtn" class="icon-btn" title="Share diagram" aria-label="Share diagram">🔗</button>
+                <div class="icon-block">
+                  <button id="loadDiagramBtn" class="icon-btn" title="Load diagram" aria-label="Load diagram">📂</button>
+                  <div class="icon-label">Load</div>
+                </div>
+                <div class="icon-block">
+                  <button id="shareDiagramBtn" class="icon-btn" title="Share diagram" aria-label="Share diagram">🔗</button>
+                  <div class="icon-label">Share</div>
+                </div>
               </div>
-              <button id="settingsBtn" class="icon-btn" title="Diagram settings" aria-label="Diagram settings">⚙️</button>
+              <div class="icon-block">
+                <button id="settingsBtn" class="icon-btn" title="Diagram settings" aria-label="Diagram settings">⚙️</button>
+                <div class="icon-label">Settings</div>
+              </div>
               <button class="zoom-btn" data-direction="out" aria-label="Zoom out">−</button>
               <span id="zoomLabel">100%</span>
               <button class="zoom-btn" data-direction="in" aria-label="Zoom in">+</button>
@@ -118,8 +131,22 @@
           <button id="closePanelBtn" aria-label="Close panel">×</button>
         </div>
         <label class="field field-inline-toggle">
-          <div class="field-top-row">
-            <span>System Name</span>
+          <div class="field-top-row name-row">
+            <div class="name-left">
+              <span>System Name</span>
+              <select id="systemIconSelect" class="icon-inline-select">
+                <option value="cube">⬛</option>
+                <option value="database">🗄️</option>
+                <option value="cloud">☁️</option>
+                <option value="server">🖥️</option>
+                <option value="project">📊</option>
+                <option value="building">🏢</option>
+                <option value="network">🌐</option>
+                <option value="growth">📈</option>
+                <option value="shield">🛡️</option>
+                <option value="rocket">🚀</option>
+              </select>
+            </div>
             <label class="mini-toggle" for="spreadsheetSelect">
               <span>Spreadsheet?</span>
               <select id="spreadsheetSelect">
@@ -156,21 +183,6 @@
             placeholder="Select or add"
             list="functionOwnerOptions"
           />
-        </label>
-        <label class="field">
-          <span>System Icon</span>
-          <select id="systemIconSelect">
-            <option value="cube">⬛</option>
-            <option value="database">🗄️</option>
-            <option value="cloud">☁️</option>
-            <option value="server">🖥️</option>
-            <option value="project">📊</option>
-            <option value="building">🏢</option>
-            <option value="network">🌐</option>
-            <option value="growth">📈</option>
-            <option value="shield">🛡️</option>
-            <option value="rocket">🚀</option>
-          </select>
         </label>
         <section class="field">
           <div class="section-title">Entities</div>
