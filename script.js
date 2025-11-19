@@ -184,6 +184,7 @@ function startLinking(event, system) {
   line.classList.add("link-preview");
   line.setAttribute("stroke", "#7f8acb");
   line.setAttribute("stroke-width", "2");
+  line.setAttribute("stroke-dasharray", "6 6");
   connectionLayer.appendChild(line);
 
   const start = getSystemCenter(system);
@@ -240,6 +241,7 @@ function drawConnections() {
     line.setAttribute("stroke", "#c0c6e5");
     line.setAttribute("stroke-width", "2");
     line.setAttribute("stroke-linecap", "round");
+    line.setAttribute("stroke-dasharray", "6 6");
     const fromSystem = systems.find((s) => s.id === connection.from);
     const toSystem = systems.find((s) => s.id === connection.to);
     if (!fromSystem || !toSystem) return;
