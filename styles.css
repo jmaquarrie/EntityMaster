@@ -665,6 +665,16 @@ button.ghost {
   gap: 0.5rem;
 }
 
+.sidebar-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.sidebar-actions button {
+  flex: 1;
+}
+
 .section-title {
   font-size: 0.85rem;
   font-weight: 600;
@@ -987,6 +997,7 @@ button.ghost {
   background-size: 50px 50px;
   border-radius: 18px;
   border: 1px solid #e1e5f5;
+  padding: 1rem;
   overflow: hidden;
 }
 
