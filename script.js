@@ -1,5 +1,9 @@
 const CANVAS_WIDTH = 2400;
 const CANVAS_HEIGHT = 1600;
+const DEFAULT_NODE_WIDTH = 220;
+const DEFAULT_NODE_HEIGHT = 160;
+const SVG_NS = "http://www.w3.org/2000/svg";
+const HANDLE_OFFSET = 24;
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 1.5;
 const ZOOM_STEP = 0.1;
@@ -19,6 +23,8 @@ const DOMAIN_LIST = [
 
 const systems = [];
 const connections = [];
+let canvasWidth = CANVAS_WIDTH;
+let canvasHeight = CANVAS_HEIGHT;
 const activeDomainFilters = new Set();
 
 const functionOwnerOptions = new Set(FUNCTION_OWNER_DEFAULTS);
@@ -53,6 +59,9 @@ let bulkSelection = [];
 let filterMode = "fade";
 let sorFilterValue = "any";
 let lastDeletedSnapshot = null;
+let saveStatusTimer = null;
+let editingConnectionId = null;
+let editingConnectionOriginalLabel = "";
 
 const canvasContent = document.getElementById("canvasContent");
 const canvasViewport = document.getElementById("canvasViewport");
@@ -105,17 +114,19 @@ const filterModeSelect = document.getElementById("filterModeSelect");
 const sorFilterSelect = document.getElementById("sorFilter");
 const systemIconSelect = document.getElementById("systemIconSelect");
 const systemCommentsInput = document.getElementById("systemCommentsInput");
+const saveStatusLabel = document.getElementById("saveStatus");
+const spreadsheetSelect = document.getElementById("spreadsheetSelect");
 const settingsBtn = document.getElementById("settingsBtn");
 const settingsModal = document.getElementById("settingsModal");
 const closeSettingsModalBtn = document.getElementById("closeSettingsModal");
 const undoDeleteBtn = document.getElementById("undoDeleteBtn");
+const connectionLabelEditor = document.getElementById("connectionLabelEditor");
+const connectionLabelField = document.getElementById("connectionLabelField");
 
 let activePanelSystem = null;
 
 function init() {
-  connectionLayer.setAttribute("width", CANVAS_WIDTH);
-  connectionLayer.setAttribute("height", CANVAS_HEIGHT);
-  connectionLayer.setAttribute("viewBox", `0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`);
+  setCanvasDimensions(CANVAS_WIDTH, CANVAS_HEIGHT);
   applyZoom(currentZoom);
   searchType = searchTypeSelect.value;
   currentColorBy = colorBySelect.value || "none";
@@ -143,6 +154,7 @@ function init() {
   closePanelBtn.addEventListener("click", closePanel);
   entityForm.addEventListener("submit", handleAddEntity);
   canvas.addEventListener("click", handleCanvasClick);
+  connectionLayer.addEventListener("click", handleConnectionLayerClick);
   platformOwnerInput.addEventListener("input", handleOwnerFieldChange);
   businessOwnerInput.addEventListener("input", handleOwnerFieldChange);
   functionOwnerInput.addEventListener("input", handleFunctionOwnerChange);
@@ -209,6 +221,7 @@ function init() {
   setupPanning();
   setupContextMenuBlock();
   canvasViewport.addEventListener("wheel", handleWheelZoom, { passive: false });
+  spreadsheetSelect?.addEventListener("change", handleSpreadsheetChange);
   systemIconSelect?.addEventListener("change", () => {
     if (!activePanelSystem) return;
     activePanelSystem.icon = systemIconSelect.value;
@@ -218,6 +231,8 @@ function init() {
     if (!activePanelSystem) return;
     activePanelSystem.comments = systemCommentsInput.value;
   });
+  connectionLabelField?.addEventListener("keydown", handleConnectionLabelKeyDown);
+  connectionLabelField?.addEventListener("blur", commitConnectionLabel);
   settingsBtn?.addEventListener("click", openSettingsModal);
   closeSettingsModalBtn?.addEventListener("click", closeSettingsModal);
   settingsModal?.addEventListener("click", (event) => {
@@ -295,13 +310,17 @@ function addSystem({
   entities = [],
   icon = DEFAULT_ICON,
   comments = "",
+  isSpreadsheet = false,
 } = {}) {
   const resolvedId = id || `sys-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+  const defaultPosition = getNewSystemPosition();
+  const resolvedX = typeof x === "number" ? x : defaultPosition.x;
+  const resolvedY = typeof y === "number" ? y : defaultPosition.y;
   const system = {
     id: resolvedId,
     name: name || `System ${systemCounter++}`,
-    x: x ?? 100 + systems.length * 40,
-    y: y ?? 100 + systems.length * 30,
+    x: resolvedX,
+    y: resolvedY,
     entities: entities.map((entity) =>
       typeof entity === "string" ? { name: entity, isSor: false } : { name: entity.name, isSor: !!entity.isSor }
     ),
@@ -311,6 +330,7 @@ function addSystem({
     functionOwner: functionOwner || "",
     icon: icon || DEFAULT_ICON,
     comments: comments || "",
+    isSpreadsheet: !!isSpreadsheet,
     element: document.createElement("div"),
   };
 
@@ -338,6 +358,7 @@ function addSystem({
   systems.push(system);
 
   positionSystemElement(system);
+  ensureCanvasBoundsForSystem(system);
   attachNodeEvents(system);
   renderDomainBubbles(system);
   updateSystemMeta(system);
@@ -398,7 +419,11 @@ function handleCanvasClick(event) {
     shouldSkipCanvasClear = false;
     return;
   }
-  if (event.target !== canvas) return;
+  if (event.target !== canvas) {
+    closeConnectionLabelEditor();
+    return;
+  }
+  closeConnectionLabelEditor();
   closePanel();
   handleClearHighlights();
 }
@@ -418,6 +443,7 @@ function startDragging(event, system) {
     system.y = initialY + deltaY;
     positionSystemElement(system);
     updateConnectionPositions();
+    ensureCanvasBoundsForSystem(system);
   }
 
   function onUp() {
@@ -433,7 +459,7 @@ function startLinking(event, system) {
   if (event.button !== 0) return;
   event.stopPropagation();
   event.preventDefault();
-  const line = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  const line = document.createElementNS(SVG_NS, "path");
   line.classList.add("link-preview");
   line.setAttribute("stroke", "#7f8acb");
   line.setAttribute("stroke-width", "2");
@@ -480,7 +506,18 @@ function addConnection(source, target) {
   );
   if (exists) return;
 
-  connections.push({ id: `conn-${source.id}-${target.id}`, from: source.id, to: target.id });
+  connections.push({ id: `conn-${source.id}-${target.id}`, from: source.id, to: target.id, label: "" });
+  drawConnections();
+  updateHighlights();
+}
+
+function removeConnection(connectionId) {
+  const index = connections.findIndex((connection) => connection.id === connectionId);
+  if (index === -1) return;
+  connections.splice(index, 1);
+  if (editingConnectionId === connectionId) {
+    closeConnectionLabelEditor();
+  }
   drawConnections();
   updateHighlights();
 }
@@ -488,20 +525,40 @@ function addConnection(source, target) {
 function drawConnections() {
   connectionLayer.innerHTML = "";
   connections.forEach((connection) => {
-    const line = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    line.setAttribute("stroke", "#c0c6e5");
-    line.setAttribute("stroke-width", "2");
-    line.setAttribute("stroke-linecap", "round");
-    line.setAttribute("stroke-linejoin", "round");
-    line.setAttribute("stroke-dasharray", "6 6");
-    line.setAttribute("fill", "none");
     const fromSystem = systems.find((s) => s.id === connection.from);
     const toSystem = systems.find((s) => s.id === connection.to);
     if (!fromSystem || !toSystem) return;
     const fromPos = getSystemCenter(fromSystem);
     const toPos = getSystemCenter(toSystem);
-    line.setAttribute("d", getAngledPath(fromPos, toPos));
-    connectionLayer.appendChild(line);
+    const group = document.createElementNS(SVG_NS, "g");
+    group.classList.add("connection-group");
+    group.dataset.id = connection.id;
+
+    const path = document.createElementNS(SVG_NS, "path");
+    path.classList.add("connection-path");
+    if ((connection.label || "").toLowerCase() === "automated") {
+      path.classList.add("automated");
+    }
+    path.setAttribute("d", getAngledPath(fromPos, toPos));
+    group.appendChild(path);
+
+    const label = document.createElementNS(SVG_NS, "text");
+    label.classList.add("connection-label");
+    if (!connection.label) {
+      label.classList.add("placeholder");
+    }
+    label.textContent = connection.label || "text";
+    const labelPos = getConnectionLabelPosition(fromPos, toPos);
+    label.setAttribute("x", labelPos.x);
+    label.setAttribute("y", labelPos.y);
+    group.appendChild(label);
+
+    const startHandle = createConnectionHandle(connection, getHandleAnchorPosition(fromPos, toPos));
+    const endHandle = createConnectionHandle(connection, getHandleAnchorPosition(toPos, fromPos));
+    group.appendChild(startHandle);
+    group.appendChild(endHandle);
+
+    connectionLayer.appendChild(group);
   });
 }
 
@@ -514,6 +571,120 @@ function getSystemCenter(system) {
     x: system.x + system.element.offsetWidth / 2,
     y: system.y + system.element.offsetHeight / 2,
   };
+}
+
+function getConnectionLabelPosition(from, to) {
+  return {
+    x: from.x + (to.x - from.x) / 2,
+    y: from.y + (to.y - from.y) / 2 - 10,
+  };
+}
+
+function getHandleAnchorPosition(from, to) {
+  const angle = Math.atan2(to.y - from.y, to.x - from.x);
+  return {
+    x: from.x + Math.cos(angle) * HANDLE_OFFSET,
+    y: from.y + Math.sin(angle) * HANDLE_OFFSET,
+  };
+}
+
+function createConnectionHandle(connection, position) {
+  const handle = document.createElementNS(SVG_NS, "g");
+  handle.classList.add("connection-handle");
+  handle.dataset.connectionId = connection.id;
+
+  const circle = document.createElementNS(SVG_NS, "circle");
+  circle.setAttribute("cx", position.x);
+  circle.setAttribute("cy", position.y);
+  circle.setAttribute("r", 9);
+
+  const text = document.createElementNS(SVG_NS, "text");
+  text.setAttribute("x", position.x);
+  text.setAttribute("y", position.y + 0.5);
+  text.textContent = "×";
+
+  handle.appendChild(circle);
+  handle.appendChild(text);
+  handle.addEventListener("click", (event) => {
+    event.stopPropagation();
+    removeConnection(connection.id);
+  });
+
+  return handle;
+}
+
+function handleConnectionLayerClick(event) {
+  const group = event.target.closest?.(".connection-group");
+  if (!group) return;
+  const connection = connections.find((conn) => conn.id === group.dataset.id);
+  if (!connection) return;
+  if (event.target.closest?.(".connection-handle")) {
+    return;
+  }
+  event.stopPropagation();
+  openConnectionLabelEditor(connection, event);
+}
+
+function openConnectionLabelEditor(connection, event) {
+  if (!connectionLabelEditor || !connectionLabelField) return;
+  editingConnectionId = connection.id;
+  editingConnectionOriginalLabel = connection.label || "";
+  connectionLabelField.value = editingConnectionOriginalLabel;
+  connectionLabelEditor.style.left = `${event.clientX + 10}px`;
+  connectionLabelEditor.style.top = `${event.clientY - 10}px`;
+  connectionLabelEditor.classList.remove("hidden");
+  requestAnimationFrame(() => {
+    connectionLabelField.focus();
+    connectionLabelField.select();
+  });
+}
+
+function closeConnectionLabelEditor() {
+  if (!connectionLabelEditor) return;
+  connectionLabelEditor.classList.add("hidden");
+  editingConnectionId = null;
+  editingConnectionOriginalLabel = "";
+}
+
+function commitConnectionLabel() {
+  if (!connectionLabelEditor || !connectionLabelField) return;
+  if (!editingConnectionId) {
+    closeConnectionLabelEditor();
+    return;
+  }
+  const rawValue = connectionLabelField.value.trim();
+  let normalized = "";
+  if (rawValue) {
+    const lowered = rawValue.toLowerCase();
+    if (lowered === "manual") {
+      normalized = "Manual";
+    } else if (lowered === "automated") {
+      normalized = "Automated";
+    }
+  }
+  const connection = connections.find((conn) => conn.id === editingConnectionId);
+  if (connection) {
+    connection.label = normalized;
+    drawConnections();
+  }
+  closeConnectionLabelEditor();
+}
+
+function cancelConnectionLabelEdit() {
+  if (connectionLabelField) {
+    connectionLabelField.value = editingConnectionOriginalLabel;
+  }
+  closeConnectionLabelEditor();
+}
+
+function handleConnectionLabelKeyDown(event) {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    commitConnectionLabel();
+  } else if (event.key === "Escape") {
+    event.preventDefault();
+    cancelConnectionLabelEdit();
+  }
 }
 
 function selectSystem(system) {
@@ -530,6 +701,9 @@ function openPanel(system) {
   platformOwnerInput.value = system.platformOwner;
   businessOwnerInput.value = system.businessOwner;
   functionOwnerInput.value = system.functionOwner;
+  if (spreadsheetSelect) {
+    spreadsheetSelect.value = system.isSpreadsheet ? "yes" : "no";
+  }
   syncIconSelectValue(system.icon);
   if (systemCommentsInput) {
     systemCommentsInput.value = system.comments || "";
@@ -564,6 +738,12 @@ function handleFunctionOwnerChange() {
   activePanelSystem.functionOwner = functionOwnerInput.value.trim();
   updateSystemMeta(activePanelSystem);
   updateHighlights();
+}
+
+function handleSpreadsheetChange() {
+  if (!activePanelSystem) return;
+  activePanelSystem.isSpreadsheet = spreadsheetSelect.value === "yes";
+  updateSystemIcon(activePanelSystem);
 }
 
 function handleAddEntity(event) {
@@ -685,7 +865,8 @@ function updateSystemMeta(system) {
 function updateSystemIcon(system) {
   const iconElement = system.element.querySelector(".system-icon i");
   if (!iconElement) return;
-  iconElement.className = system.icon || DEFAULT_ICON;
+  const className = system.isSpreadsheet ? "fa-solid fa-file-excel" : system.icon || DEFAULT_ICON;
+  iconElement.className = className;
 }
 
 function syncIconSelectValue(value) {
@@ -764,6 +945,7 @@ function cloneSystemData(system) {
     functionOwner: system.functionOwner,
     icon: system.icon,
     comments: system.comments,
+    isSpreadsheet: system.isSpreadsheet,
     entities: system.entities.map((entity) => ({ name: entity.name, isSor: !!entity.isSor })),
   };
 }
@@ -776,6 +958,7 @@ function handleClearHighlights() {
   searchQuery = "";
   selectedSystemId = null;
   sorFilterValue = "any";
+  closeConnectionLabelEditor();
   platformOwnerFilterInput.value = "";
   businessOwnerFilterInput.value = "";
   functionOwnerFilterInput.value = "";
@@ -1278,6 +1461,7 @@ function handleSaveDiagram() {
   if (!saveManagerModal.classList.contains("hidden")) {
     renderSaveList();
   }
+  showSaveStatus();
 }
 
 function handleShareDiagram() {
@@ -1292,6 +1476,18 @@ function handleShareDiagram() {
   } catch (error) {
     console.warn("Unable to build shareable URL", error);
   }
+}
+
+function showSaveStatus(message = "Saved") {
+  if (!saveStatusLabel) return;
+  saveStatusLabel.textContent = message;
+  saveStatusLabel.classList.add("visible");
+  if (saveStatusTimer) {
+    window.clearTimeout(saveStatusTimer);
+  }
+  saveStatusTimer = window.setTimeout(() => {
+    saveStatusLabel.classList.remove("visible");
+  }, 1500);
 }
 
 function openSharePrompt(url) {
@@ -1437,6 +1633,7 @@ function serializeState() {
       functionOwner: system.functionOwner,
       icon: system.icon,
       comments: system.comments,
+      isSpreadsheet: system.isSpreadsheet,
       entities: system.entities.map((entity) => ({ name: entity.name, isSor: !!entity.isSor })),
     })),
     connections: connections.map((connection) => ({ ...connection })),
@@ -1450,10 +1647,12 @@ function loadSerializedState(snapshot) {
   if (!snapshot) return;
   closePanel();
   handleClearHighlights();
+  closeConnectionLabelEditor();
   systems.forEach((system) => system.element.remove());
   systems.length = 0;
   connections.length = 0;
   connectionLayer.innerHTML = "";
+  setCanvasDimensions(CANVAS_WIDTH, CANVAS_HEIGHT);
   functionOwnerOptions.clear();
   FUNCTION_OWNER_DEFAULTS.forEach((value) => functionOwnerOptions.add(value));
   if (Array.isArray(snapshot.functionOwners)) {
@@ -1473,9 +1672,15 @@ function loadSerializedState(snapshot) {
       entities: systemData.entities,
       icon: systemData.icon,
       comments: systemData.comments,
+      isSpreadsheet: !!systemData.isSpreadsheet,
     });
   });
-  connections.push(...(snapshot.connections || []));
+  connections.push(
+    ...(snapshot.connections || []).map((connection) => ({
+      ...connection,
+      label: connection.label || "",
+    }))
+  );
   drawConnections();
   systemCounter = snapshot.counter || systems.length + 1;
   currentColorBy = snapshot.colorBy || "none";
@@ -1542,6 +1747,44 @@ function loadFromUrlParams() {
 function getAngledPath(from, to) {
   const midX = from.x + (to.x - from.x) / 2;
   return `M ${from.x} ${from.y} L ${midX} ${from.y} L ${midX} ${to.y} L ${to.x} ${to.y}`;
+}
+
+function setCanvasDimensions(width, height) {
+  const minWidth = canvasViewport ? canvasViewport.clientWidth / currentZoom : width;
+  const minHeight = canvasViewport ? canvasViewport.clientHeight / currentZoom : height;
+  canvasWidth = Math.max(width, minWidth);
+  canvasHeight = Math.max(height, minHeight);
+  canvasContent.style.width = `${canvasWidth}px`;
+  canvasContent.style.height = `${canvasHeight}px`;
+  canvas.style.width = `${canvasWidth}px`;
+  canvas.style.height = `${canvasHeight}px`;
+  connectionLayer.setAttribute("width", canvasWidth);
+  connectionLayer.setAttribute("height", canvasHeight);
+  connectionLayer.setAttribute("viewBox", `0 0 ${canvasWidth} ${canvasHeight}`);
+}
+
+function ensureCanvasBoundsForSystem(system) {
+  if (!system?.element) return;
+  const padding = 200;
+  const nodeWidth = system.element.offsetWidth || DEFAULT_NODE_WIDTH;
+  const nodeHeight = system.element.offsetHeight || DEFAULT_NODE_HEIGHT;
+  const requiredWidth = system.x + nodeWidth + padding;
+  const requiredHeight = system.y + nodeHeight + padding;
+  if (requiredWidth > canvasWidth || requiredHeight > canvasHeight) {
+    setCanvasDimensions(Math.max(requiredWidth, canvasWidth), Math.max(requiredHeight, canvasHeight));
+  }
+}
+
+function getNewSystemPosition() {
+  if (!canvasViewport) {
+    return { x: 120, y: 120 };
+  }
+  const centerX = (canvasViewport.scrollLeft + canvasViewport.clientWidth / 2) / currentZoom;
+  const centerY = (canvasViewport.scrollTop + canvasViewport.clientHeight / 2) / currentZoom;
+  return {
+    x: Math.max(40, centerX - DEFAULT_NODE_WIDTH / 2),
+    y: Math.max(40, centerY - DEFAULT_NODE_HEIGHT / 2),
+  };
 }
 
 function centerCanvasView() {

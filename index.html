@@ -30,7 +30,10 @@
             </div>
             <div class="zoom-controls" aria-label="Zoom">
               <div class="storage-controls" aria-label="Diagram storage">
-                <button id="saveDiagramBtn" class="icon-btn" title="Save diagram" aria-label="Save diagram">💾</button>
+                <div class="save-control">
+                  <button id="saveDiagramBtn" class="icon-btn" title="Save diagram" aria-label="Save diagram">💾</button>
+                  <span id="saveStatus" class="save-status" aria-live="polite"></span>
+                </div>
                 <button id="loadDiagramBtn" class="icon-btn" title="Load diagram" aria-label="Load diagram">📂</button>
                 <button id="shareDiagramBtn" class="icon-btn" title="Share diagram" aria-label="Share diagram">
                   <i class="fa-solid fa-share-nodes" aria-hidden="true"></i>
@@ -124,8 +127,17 @@
           <h2 id="panelTitle">System</h2>
           <button id="closePanelBtn" aria-label="Close panel">×</button>
         </div>
-        <label class="field">
-          <span>System Name</span>
+        <label class="field field-inline-toggle">
+          <div class="field-top-row">
+            <span>System Name</span>
+            <label class="mini-toggle" for="spreadsheetSelect">
+              <span>Spreadsheet?</span>
+              <select id="spreadsheetSelect">
+                <option value="no">No</option>
+                <option value="yes">Yes</option>
+              </select>
+            </label>
+          </div>
           <input type="text" id="systemNameInput" />
         </label>
         <label class="field">
@@ -269,9 +281,21 @@
           </label>
         </div>
       </div>
+      <div id="connectionLabelEditor" class="connection-label-editor hidden">
+        <input
+          type="text"
+          id="connectionLabelField"
+          placeholder="Manual / Automated"
+          list="connectionLabelOptions"
+        />
+      </div>
       <datalist id="platformOwnerSuggestions"></datalist>
       <datalist id="businessOwnerSuggestions"></datalist>
       <datalist id="functionOwnerOptions"></datalist>
+      <datalist id="connectionLabelOptions">
+        <option value="Manual"></option>
+        <option value="Automated"></option>
+      </datalist>
       <button id="undoDeleteBtn" class="undo-button hidden" type="button">Undo delete</button>
     </div>
     <script src="script.js"></script>
