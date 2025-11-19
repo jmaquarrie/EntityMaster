@@ -71,6 +71,26 @@ html::-webkit-scrollbar,
   gap: 0.5rem;
 }
 
+.file-name {
+  padding: 0.35rem 0.6rem;
+  border: 1px dashed transparent;
+  border-radius: 8px;
+  font-weight: 600;
+  min-width: 120px;
+  color: #121839;
+  cursor: text;
+  align-self: center;
+}
+
+.file-name:hover {
+  border-color: rgba(18, 24, 57, 0.2);
+}
+
+.file-name.editing {
+  border-color: #7b8df3;
+  background: rgba(123, 141, 243, 0.12);
+}
+
 .zoom-controls {
   display: inline-flex;
   align-items: center;

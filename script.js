@@ -83,6 +83,8 @@ const suppressClickForIds = new Set();
 let undoTimer = null;
 let activeEntityLinkName = null;
 let systemHighlightState = new Map();
+let currentFileName = "Untitled";
+let fileNameBeforeEdit = "Untitled";
 
 const canvasContent = document.getElementById("canvasContent");
 const canvasViewport = document.getElementById("canvasViewport");
@@ -91,6 +93,7 @@ const connectionLayer = document.getElementById("connectionLayer");
 const entityLinkLayer = document.getElementById("entityLinkLayer");
 const connectionHandleLayer = document.getElementById("connectionHandleLayer");
 const addSystemBtn = document.getElementById("addSystemBtn");
+const fileNameDisplay = document.getElementById("fileNameDisplay");
 const panel = document.getElementById("systemPanel");
 const panelTitle = document.getElementById("panelTitle");
 const systemNameInput = document.getElementById("systemNameInput");
@@ -141,6 +144,7 @@ const systemCommentsInput = document.getElementById("systemCommentsInput");
 const systemDescriptionInput = document.getElementById("systemDescriptionInput");
 const saveStatusLabel = document.getElementById("saveStatus");
 const spreadsheetSelect = document.getElementById("spreadsheetSelect");
+const newDiagramBtn = document.getElementById("newDiagramBtn");
 const settingsBtn = document.getElementById("settingsBtn");
 const settingsModal = document.getElementById("settingsModal");
 const closeSettingsModalBtn = document.getElementById("closeSettingsModal");
@@ -151,6 +155,12 @@ const customDomainForm = document.getElementById("customDomainForm");
 const customDomainInput = document.getElementById("customDomainInput");
 const customDomainList = document.getElementById("customDomainList");
 const visualizeBtn = document.getElementById("visualizeBtn");
+const newDiagramModal = document.getElementById("newDiagramModal");
+const closeNewDiagramModalBtn = document.getElementById("closeNewDiagramModal");
+const newDiagramConfirmBtn = document.getElementById("newDiagramConfirmBtn");
+const newDiagramCancelBtn = document.getElementById("newDiagramCancelBtn");
+const newDiagramCloseBtn = document.getElementById("newDiagramCloseBtn");
+const newDiagramSaveCurrentBtn = document.getElementById("newDiagramSaveCurrentBtn");
 const visualModal = document.getElementById("visualModal");
 const closeVisualModalBtn = document.getElementById("closeVisualModal");
 const visualContainer = document.getElementById("visualContainer");
@@ -166,6 +176,7 @@ function init() {
   currentColorBy = colorBySelect.value || "none";
   filterMode = filterModeSelect?.value || "fade";
   sorFilterValue = sorFilterSelect?.value || "any";
+  setFileName(currentFileName);
   populateFunctionOwnerOptions();
 
   refreshDomainOptionsUi();
@@ -174,6 +185,9 @@ function init() {
   canvas.addEventListener("pointerdown", handleCanvasPointerDown);
   createSelectionBox();
   addSystemBtn.addEventListener("click", () => addSystem());
+  fileNameDisplay?.addEventListener("click", beginFileNameEdit);
+  fileNameDisplay?.addEventListener("keydown", handleFileNameKeyDown);
+  fileNameDisplay?.addEventListener("blur", commitFileNameEdit);
   closePanelBtn.addEventListener("click", closePanel);
   entityForm.addEventListener("submit", handleAddEntity);
   canvas.addEventListener("click", handleCanvasClick);
@@ -227,6 +241,7 @@ function init() {
   });
   resetFiltersBtn?.addEventListener("click", () => resetFilters({ alsoClearSelection: true }));
   filterPanelToggle.addEventListener("click", toggleFilterPanel);
+  newDiagramBtn?.addEventListener("click", handleNewDiagramClick);
   saveDiagramBtn.addEventListener("click", handleSaveDiagram);
   loadDiagramBtn.addEventListener("click", openSaveManager);
   shareDiagramBtn?.addEventListener("click", handleShareDiagram);
@@ -238,6 +253,19 @@ function init() {
   });
   saveManagerModal.addEventListener("click", (event) => {
     if (event.target === saveManagerModal) closeSaveManager();
+  });
+  newDiagramModal?.addEventListener("click", (event) => {
+    if (event.target === newDiagramModal) closeNewDiagramModal();
+  });
+  closeNewDiagramModalBtn?.addEventListener("click", closeNewDiagramModal);
+  newDiagramConfirmBtn?.addEventListener("click", () => {
+    resetDiagramToBlank();
+    closeNewDiagramModal();
+  });
+  newDiagramCancelBtn?.addEventListener("click", closeNewDiagramModal);
+  newDiagramCloseBtn?.addEventListener("click", closeNewDiagramModal);
+  newDiagramSaveCurrentBtn?.addEventListener("click", () => {
+    handleSaveDiagram();
   });
   bulkDomainControls.addEventListener("click", handleBulkDomainControlClick);
   saveListContainer.addEventListener("click", handleSaveListClick);
@@ -287,6 +315,47 @@ function init() {
   if (!loadedFromUrl) {
     centerCanvasView();
   }
+}
+
+function setFileName(name) {
+  const normalized = name && name.trim() ? name.trim() : "Untitled";
+  currentFileName = normalized;
+  if (fileNameDisplay) {
+    fileNameDisplay.textContent = normalized;
+  }
+}
+
+function beginFileNameEdit() {
+  if (!fileNameDisplay) return;
+  fileNameBeforeEdit = currentFileName;
+  fileNameDisplay.contentEditable = "true";
+  fileNameDisplay.classList.add("editing");
+  const range = document.createRange();
+  range.selectNodeContents(fileNameDisplay);
+  range.collapse(false);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+}
+
+function handleFileNameKeyDown(event) {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    fileNameDisplay?.blur();
+  } else if (event.key === "Escape") {
+    event.preventDefault();
+    if (fileNameDisplay) {
+      fileNameDisplay.textContent = fileNameBeforeEdit;
+      fileNameDisplay.blur();
+    }
+  }
+}
+
+function commitFileNameEdit() {
+  if (!fileNameDisplay) return;
+  fileNameDisplay.contentEditable = "false";
+  fileNameDisplay.classList.remove("editing");
+  setFileName(fileNameDisplay.textContent || "");
 }
 
 function refreshDomainOptionsUi() {
@@ -1405,6 +1474,77 @@ function handleUndoDelete() {
   lastDeletedSnapshot = null;
 }
 
+function handleNewDiagramClick() {
+  if (systems.length === 0 && connections.length === 0) {
+    resetDiagramToBlank();
+    return;
+  }
+  openNewDiagramModal();
+}
+
+function openNewDiagramModal() {
+  newDiagramModal?.classList.remove("hidden");
+}
+
+function closeNewDiagramModal() {
+  newDiagramModal?.classList.add("hidden");
+}
+
+function resetDiagramToBlank() {
+  closePanel();
+  clearEntityLinkHighlight(false);
+  multiSelectedIds.clear();
+  suppressClickForIds.clear();
+  bulkSelection = [];
+  marqueeState = null;
+  activeEntityLinkName = null;
+  selectedSystemId = null;
+  linkingState = null;
+  editingConnectionId = null;
+  editingConnectionOriginalLabel = "";
+  systemHighlightState = new Map();
+  systems.forEach((system) => system.element.remove());
+  systems.length = 0;
+  connections.length = 0;
+  connectionLayer.innerHTML = "";
+  connectionHandleLayer.innerHTML = "";
+  entityLinkLayer.innerHTML = "";
+  systemCounter = 1;
+  lastDeletedSnapshot = null;
+  if (undoDeleteBtn) {
+    undoDeleteBtn.classList.add("hidden");
+  }
+  if (undoTimer) {
+    clearTimeout(undoTimer);
+    undoTimer = null;
+  }
+  setCanvasDimensions(CANVAS_WIDTH, CANVAS_HEIGHT);
+  functionOwnerOptions.clear();
+  FUNCTION_OWNER_DEFAULTS.forEach((value) => functionOwnerOptions.add(value));
+  ownerSuggestionSets.platform.clear();
+  ownerSuggestionSets.business.clear();
+  Object.values(ownerColorMaps).forEach((map) => map.clear());
+  refreshOwnerSuggestionLists();
+  domainDefinitions = buildDomainDefinitions([]);
+  refreshDomainOptionsUi();
+  activeDomainFilters.clear();
+  filterMode = "fade";
+  if (filterModeSelect) filterModeSelect.value = "fade";
+  currentColorBy = "none";
+  if (colorBySelect) colorBySelect.value = "none";
+  sorFilterValue = "any";
+  if (sorFilterSelect) sorFilterSelect.value = "any";
+  searchType = "system";
+  if (searchTypeSelect) searchTypeSelect.value = "system";
+  currentZoom = 1;
+  applyZoom(currentZoom);
+  resetFilters({ alsoClearSelection: true });
+  applyColorCoding();
+  updateHighlights();
+  setFileName("Untitled");
+  centerCanvasView();
+}
+
 function cloneSystemData(system) {
   return {
     id: system.id,
@@ -2001,10 +2141,12 @@ function getBulkDomainActions() {
 
 function handleSaveDiagram() {
   const saves = getStoredDiagrams();
+  const now = new Date();
   const entry = {
     id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `save-${Date.now()}`,
-    name: formatSnapshotName(new Date()),
-    createdAt: Date.now(),
+    name: formatSaveEntryName(currentFileName, now),
+    fileName: currentFileName,
+    createdAt: now.getTime(),
     data: serializeState(),
   };
   saves.push(entry);
@@ -2283,6 +2425,9 @@ function loadSavedDiagram(id) {
   const saves = getStoredDiagrams();
   const entry = saves.find((save) => save.id === id);
   if (!entry) return;
+  if (entry.fileName && entry.data && !entry.data.fileName) {
+    entry.data.fileName = entry.fileName;
+  }
   loadSerializedState(entry.data);
   closeSaveManager();
 }
@@ -2309,6 +2454,7 @@ function deleteSavedDiagram(id) {
 
 function serializeState() {
   return {
+    fileName: currentFileName,
     systems: systems.map((system) => ({
       id: system.id,
       name: system.name,
@@ -2361,6 +2507,7 @@ function loadSerializedState(snapshot) {
   domainDefinitions = buildDomainDefinitions(snapshot.customDomains);
   refreshDomainOptionsUi();
   populateFunctionOwnerOptions();
+  setFileName(snapshot.fileName || "Untitled");
   (snapshot.systems || []).forEach((systemData) => {
     addSystem({
       id: systemData.id,
@@ -2397,6 +2544,11 @@ function loadSerializedState(snapshot) {
   centerCanvasView();
   lastDeletedSnapshot = null;
   undoDeleteBtn?.classList.add("hidden");
+}
+
+function formatSaveEntryName(fileName, date) {
+  const label = fileName && fileName.trim() ? fileName.trim() : "Untitled";
+  return `${label} — ${formatSnapshotName(date)}`;
 }
 
 function formatSnapshotName(date) {

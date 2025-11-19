@@ -25,9 +25,14 @@
         <div class="canvas-toolbar" aria-label="Canvas controls">
           <div class="toolbar-actions">
             <button id="addSystemBtn">Add System</button>
+            <span id="fileNameDisplay" class="file-name" title="Click to rename">Untitled</span>
           </div>
           <div class="zoom-controls" aria-label="Zoom">
             <div class="storage-controls" aria-label="Diagram storage">
+                <div class="icon-block">
+                  <button id="newDiagramBtn" class="icon-btn" title="Start new diagram" aria-label="Start new diagram">🆕</button>
+                  <div class="icon-label">New</div>
+                </div>
                 <div class="icon-block">
                   <div class="save-control">
                     <button id="saveDiagramBtn" class="icon-btn" title="Save diagram" aria-label="Save diagram">💾</button>
@@ -337,6 +342,21 @@
           placeholder="Manual / Automated"
           list="connectionLabelOptions"
         />
+      </div>
+      <div id="newDiagramModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="newDiagramModalTitle">
+        <div class="modal-card">
+          <div class="modal-header">
+            <h3 id="newDiagramModalTitle">Start Fresh?</h3>
+            <button id="closeNewDiagramModal" class="icon-btn" type="button" aria-label="Close start fresh dialog">×</button>
+          </div>
+          <p class="modal-description">Are you sure you want to start fresh? Any unsaved changes will be lost.</p>
+          <div class="modal-actions">
+            <button type="button" id="newDiagramConfirmBtn">Yes</button>
+            <button type="button" id="newDiagramSaveCurrentBtn">Save Current</button>
+            <button type="button" id="newDiagramCancelBtn" class="ghost">No</button>
+            <button type="button" id="newDiagramCloseBtn" class="ghost">Close</button>
+          </div>
+        </div>
       </div>
       <datalist id="platformOwnerSuggestions"></datalist>
       <datalist id="businessOwnerSuggestions"></datalist>
