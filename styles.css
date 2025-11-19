@@ -198,6 +198,23 @@ button.ghost {
   background-size: 40px 40px;
 }
 
+.brand-mark {
+  position: absolute;
+  top: 0.6rem;
+  left: 1rem;
+  color: #1a2040;
+  z-index: 4;
+  line-height: 1.2;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.brand-version {
+  font-size: 0.75rem;
+  color: #3f4563;
+  font-weight: 500;
+}
+
 #canvas {
   position: absolute;
   inset: 0;
@@ -465,6 +482,20 @@ button.ghost {
   pointer-events: visibleStroke;
 }
 
+.connection-group.hidden-filter {
+  display: none;
+}
+
+.connection-group.dimmed .connection-path,
+.connection-group.dimmed .connection-label {
+  opacity: 0.18;
+}
+
+.connection-group.entity-muted .connection-path,
+.connection-group.entity-muted .connection-label {
+  opacity: 0.2;
+}
+
 .connection-path {
   stroke: #c0c6e5;
   stroke-width: 2;
@@ -514,7 +545,7 @@ button.ghost {
   height: 20px;
   border-radius: 50%;
   border: none;
-  background: #e4e5eb;
+  background: #f1f2f6;
   color: #0f1424;
   font-size: 0.75rem;
   line-height: 1;
@@ -523,7 +554,7 @@ button.ghost {
   justify-content: center;
   cursor: pointer;
   pointer-events: auto;
-  box-shadow: 0 6px 20px rgba(15, 20, 36, 0.18);
+  box-shadow: 0 6px 16px rgba(15, 20, 36, 0.16);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 

@@ -82,6 +82,7 @@ const multiSelectedIds = new Set();
 const suppressClickForIds = new Set();
 let undoTimer = null;
 let activeEntityLinkName = null;
+let systemHighlightState = new Map();
 
 const canvasContent = document.getElementById("canvasContent");
 const canvasViewport = document.getElementById("canvasViewport");
@@ -90,7 +91,6 @@ const connectionLayer = document.getElementById("connectionLayer");
 const entityLinkLayer = document.getElementById("entityLinkLayer");
 const connectionHandleLayer = document.getElementById("connectionHandleLayer");
 const addSystemBtn = document.getElementById("addSystemBtn");
-const clearFocusBtn = document.getElementById("clearFocusBtn");
 const panel = document.getElementById("systemPanel");
 const panelTitle = document.getElementById("panelTitle");
 const systemNameInput = document.getElementById("systemNameInput");
@@ -166,7 +166,6 @@ function init() {
   canvas.addEventListener("pointerdown", handleCanvasPointerDown);
   createSelectionBox();
   addSystemBtn.addEventListener("click", () => addSystem());
-  clearFocusBtn.addEventListener("click", handleClearHighlights);
   closePanelBtn.addEventListener("click", closePanel);
   entityForm.addEventListener("submit", handleAddEntity);
   canvas.addEventListener("click", handleCanvasClick);
@@ -714,6 +713,7 @@ function drawConnections() {
   if (connectionHandleLayer) {
     connectionHandleLayer.innerHTML = "";
   }
+  const applyState = hasActiveFilters() || hasEntitySelection();
   connections.forEach((connection) => {
     const fromSystem = systems.find((s) => s.id === connection.from);
     const toSystem = systems.find((s) => s.id === connection.to);
@@ -745,17 +745,46 @@ function drawConnections() {
     connectionLayer.appendChild(group);
 
     const shouldShowHandles = selectedSystemId && (connection.from === selectedSystemId || connection.to === selectedSystemId);
-    if (shouldShowHandles) {
-      renderConnectionHandle(connection, getHandleAnchorPosition(fromPos, toPos));
-      renderConnectionHandle(connection, getHandleAnchorPosition(toPos, fromPos));
+    const endpointsHighlighted = !!(
+      systemHighlightState.get(connection.from)?.highlight && systemHighlightState.get(connection.to)?.highlight
+    );
+    const hideForMode = applyState && filterMode === "hide" && !endpointsHighlighted;
+
+    if (shouldShowHandles && !hideForMode) {
+      renderConnectionHandle(connection, getConnectionLabelPosition(fromPos, toPos));
     }
   });
 
   drawEntityLinks();
+  applyConnectionFilterClasses();
 }
 
 function updateConnectionPositions() {
   drawConnections();
+}
+
+function applyConnectionFilterClasses(shouldApplyState) {
+  if (!connectionLayer) return;
+  const groups = connectionLayer.querySelectorAll(".connection-group");
+  const applyEntityDim = !!activeEntityLinkName;
+  const applyState =
+    typeof shouldApplyState === "boolean"
+      ? shouldApplyState
+      : hasActiveFilters() || hasEntitySelection();
+
+  groups.forEach((group) => {
+    const connection = connections.find((conn) => conn.id === group.dataset.id);
+    if (!connection) return;
+    const fromState = systemHighlightState.get(connection.from);
+    const toState = systemHighlightState.get(connection.to);
+    const endpointsHighlighted = !!(fromState?.highlight && toState?.highlight);
+    const hide = applyState && filterMode === "hide" && !endpointsHighlighted;
+    const dim = applyState && filterMode === "fade" && !endpointsHighlighted;
+
+    group.classList.toggle("hidden-filter", hide);
+    group.classList.toggle("dimmed", dim);
+    group.classList.toggle("entity-muted", applyEntityDim);
+  });
 }
 
 function drawEntityLinks() {
@@ -1258,6 +1287,7 @@ function applyEntityLinkState() {
     renderInlineEntities(system);
   });
   updateConnectionPositions();
+  updateHighlights();
 }
 
 function refreshEntityLinkIfActive() {
@@ -1275,6 +1305,7 @@ function clearEntityLinkHighlight() {
   if (entityLinkLayer) {
     entityLinkLayer.innerHTML = "";
   }
+  updateHighlights();
 }
 
 function handleDeleteSystem(system) {
@@ -1396,6 +1427,12 @@ function updateHighlights() {
     !!searchQuery ||
     sorFilterValue !== "any";
 
+  const hasEntitySelection = !!activeEntityLinkName;
+  const normalizedEntity = hasEntitySelection ? activeEntityLinkName.toLowerCase() : "";
+  const shouldApplyState = !!selectedSystemId || filtersActive || hasEntitySelection;
+
+  const nextHighlightState = new Map();
+
   systems.forEach((system) => {
     let highlight = true;
 
@@ -1405,7 +1442,15 @@ function updateHighlights() {
       highlight = systemMatchesFilters(system);
     }
 
-    const shouldApplyState = selectedSystemId || filtersActive;
+    if (hasEntitySelection) {
+      const matchesEntity = system.entities.some(
+        (entity) => entity.name && entity.name.toLowerCase() === normalizedEntity
+      );
+      highlight = highlight && matchesEntity;
+    }
+
+    nextHighlightState.set(system.id, { highlight });
+
     system.element.classList.toggle("highlighted", highlight && shouldApplyState);
     system.element.classList.toggle("dimmed", !highlight && shouldApplyState && filterMode === "fade");
     system.element.classList.toggle("hidden-filter", !highlight && shouldApplyState && filterMode === "hide");
@@ -1415,8 +1460,10 @@ function updateHighlights() {
     system.element.classList.toggle("selected", system.id === selectedSystemId);
   });
 
+  systemHighlightState = nextHighlightState;
   applyColorCoding();
   drawConnections();
+  applyConnectionFilterClasses(shouldApplyState);
 }
 
 function getImmediateConnectedSystemIds(startId) {
@@ -1463,6 +1510,22 @@ function systemMatchesFilters(system) {
     return doesSystemMatchSearch(system);
   }
   return true;
+}
+
+function hasActiveFilters() {
+  return (
+    !!selectedSystemId ||
+    activeDomainFilters.size > 0 ||
+    !!platformOwnerFilterText ||
+    !!businessOwnerFilterText ||
+    !!functionOwnerFilterText ||
+    !!searchQuery ||
+    sorFilterValue !== "any"
+  );
+}
+
+function hasEntitySelection() {
+  return !!activeEntityLinkName;
 }
 
 function systemHasSor(system) {
