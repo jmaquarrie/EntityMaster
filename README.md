@@ -14,7 +14,7 @@ Interactive system/entity diagram you can open directly in a browser. The worksp
    - Individual filters for Platform, Business, and Function owners.
    - Multi-select domain chips for quick tagging/highlighting (any matching system stays highlighted).
    - A **System of Record** filter (Any/Yes/No) that keys off entity-level SOR toggles.
-   - Fade/Hide filter mode plus Colour By (Domains, Function Owner, Business Owner, Platform Owner) now live inside the ⚙️ settings modal, along with a **Reset Filters** button to clear every search/filter in one click without needing to tap the canvas.
+   - Fade/Hide filter mode plus Colour By (Domains, Function Owner, Business Owner, Platform Owner) now live inside the ⚙️ settings modal, along with bottom-row controls for **Reset Filters** and **Visual**. Visual opens a widescreen modal that squeezes the currently filtered systems together (keeping their relative spacing) so you can review a sprawling diagram at a glance.
 
 7. Hover any system to reveal a delete icon—removing a node also removes its connections, and you can undo the most recent deletion via the bottom-left **Undo delete** button. Connections remain dotted angled paths, the selected system gains a thicker border so it’s easy to spot, and each connector now meets the edge of the attached systems rather than the centers for a cleaner diagram.
 8. Click a dotted connector to type **Manual** or **Automated** (or use the suggestions) and the annotation will render directly on the path—Automated lines automatically turn green. Select a system to expose a centered ✕ handle on each adjacent connection so you can remove links without opening the attached systems.

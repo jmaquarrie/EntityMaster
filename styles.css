@@ -968,6 +968,89 @@ button.ghost {
   gap: 0.5rem;
 }
 
+.settings-footer-actions {
+  margin-top: 0.5rem;
+}
+
+.visual-modal-card {
+  width: min(92vw, 1100px);
+  height: min(82vh, 860px);
+  max-height: 90vh;
+}
+
+.visual-container {
+  position: relative;
+  width: 100%;
+  height: calc(100% - 4rem);
+  background: radial-gradient(circle at 25px 25px, #eef1fb 1px, transparent 0),
+    radial-gradient(circle at 25px 25px, #eef1fb 1px, transparent 0);
+  background-size: 50px 50px;
+  border-radius: 18px;
+  border: 1px solid #e1e5f5;
+  overflow: hidden;
+}
+
+.visual-connections {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.visual-nodes {
+  position: absolute;
+  inset: 0;
+}
+
+.visual-node {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  background: #fff;
+  border: 1px solid #d5daf0;
+  border-radius: 12px;
+  padding: 0.4rem 0.6rem;
+  min-width: 120px;
+  box-shadow: 0 12px 25px rgba(17, 22, 58, 0.12);
+}
+
+.visual-node .visual-name {
+  font-weight: 700;
+  color: #11163a;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.visual-node .visual-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: #555a7a;
+  font-size: 0.85rem;
+}
+
+.visual-node .visual-icon {
+  font-size: 1.2rem;
+}
+
+.visual-connection-path {
+  stroke: #b5bddc;
+  stroke-width: 2;
+  fill: none;
+}
+
+.visual-empty-state {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #4a4d63;
+  font-weight: 600;
+}
+
 .save-list {
   display: flex;
   flex-direction: column;

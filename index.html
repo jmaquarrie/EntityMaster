@@ -298,7 +298,6 @@
               <option value="platformOwner">Platform Owner</option>
             </select>
           </label>
-          <button id="resetFiltersBtn" type="button" class="ghost">Reset Filters</button>
           <section class="settings-section">
             <div class="section-title">Custom Domains</div>
             <form id="customDomainForm" class="settings-inline-form">
@@ -312,6 +311,23 @@
             </form>
             <ul id="customDomainList" class="token-list"></ul>
           </section>
+          <div class="modal-actions settings-footer-actions">
+            <button id="resetFiltersBtn" type="button" class="ghost">Reset Filters</button>
+            <button id="visualizeBtn" type="button">Visual</button>
+          </div>
+        </div>
+      </div>
+      <div id="visualModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="visualModalTitle">
+        <div class="modal-card visual-modal-card">
+          <div class="modal-header">
+            <h3 id="visualModalTitle">Condensed Visual</h3>
+            <button id="closeVisualModal" class="icon-btn" type="button" aria-label="Close condensed visual">×</button>
+          </div>
+          <p class="modal-description">Systems that match your current filters, pulled closer together for a single-screen view.</p>
+          <div id="visualContainer" class="visual-container">
+            <svg id="visualConnections" class="visual-connections" aria-hidden="true"></svg>
+            <div id="visualNodes" class="visual-nodes"></div>
+          </div>
         </div>
       </div>
       <div id="connectionLabelEditor" class="connection-label-editor hidden">

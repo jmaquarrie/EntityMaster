@@ -150,6 +150,12 @@ const connectionLabelField = document.getElementById("connectionLabelField");
 const customDomainForm = document.getElementById("customDomainForm");
 const customDomainInput = document.getElementById("customDomainInput");
 const customDomainList = document.getElementById("customDomainList");
+const visualizeBtn = document.getElementById("visualizeBtn");
+const visualModal = document.getElementById("visualModal");
+const closeVisualModalBtn = document.getElementById("closeVisualModal");
+const visualContainer = document.getElementById("visualContainer");
+const visualNodesContainer = document.getElementById("visualNodes");
+const visualConnectionsSvg = document.getElementById("visualConnections");
 
 let activePanelSystem = null;
 
@@ -263,6 +269,13 @@ function init() {
   settingsModal?.addEventListener("click", (event) => {
     if (event.target === settingsModal) {
       closeSettingsModal();
+    }
+  });
+  visualizeBtn?.addEventListener("click", openVisualModal);
+  closeVisualModalBtn?.addEventListener("click", closeVisualModal);
+  visualModal?.addEventListener("click", (event) => {
+    if (event.target === visualModal) {
+      closeVisualModal();
     }
   });
   undoDeleteBtn?.addEventListener("click", handleUndoDelete);
@@ -1490,6 +1503,17 @@ function updateHighlights() {
   applyConnectionFilterClasses(shouldApplyState);
 }
 
+function hasActiveFilters() {
+  return (
+    activeDomainFilters.size > 0 ||
+    !!platformOwnerFilterText ||
+    !!businessOwnerFilterText ||
+    !!functionOwnerFilterText ||
+    !!searchQuery ||
+    sorFilterValue !== "any"
+  );
+}
+
 function getImmediateConnectedSystemIds(startId) {
   const visited = new Set([startId]);
   connections.forEach((conn) => {
@@ -2040,6 +2064,104 @@ function openSettingsModal() {
 
 function closeSettingsModal() {
   settingsModal?.classList.add("hidden");
+}
+
+function openVisualModal() {
+  updateHighlights();
+  if (!visualModal) return;
+  visualModal.classList.remove("hidden");
+  window.requestAnimationFrame(renderVisualSnapshot);
+}
+
+function closeVisualModal() {
+  visualModal?.classList.add("hidden");
+}
+
+function renderVisualSnapshot() {
+  if (!visualContainer || !visualNodesContainer || !visualConnectionsSvg) return;
+
+  visualNodesContainer.innerHTML = "";
+  visualConnectionsSvg.innerHTML = "";
+
+  const filteredContextActive = hasActiveFilters() || !!selectedSystemId || !!activeEntityLinkName;
+  const systemsToShow = systems.filter((system) => {
+    if (!filteredContextActive) return true;
+    return systemHighlightState.get(system.id)?.highlight;
+  });
+
+  if (!systemsToShow.length) {
+    const empty = document.createElement("div");
+    empty.className = "visual-empty-state";
+    empty.textContent = "No systems match the current filters.";
+    visualNodesContainer.appendChild(empty);
+    return;
+  }
+
+  const rect = visualContainer.getBoundingClientRect();
+  const width = rect.width || 900;
+  const height = rect.height || 640;
+  const padding = 50;
+
+  const minX = Math.min(...systemsToShow.map((s) => s.x));
+  const minY = Math.min(...systemsToShow.map((s) => s.y));
+  const maxX = Math.max(...systemsToShow.map((s) => s.x));
+  const maxY = Math.max(...systemsToShow.map((s) => s.y));
+
+  const spanX = Math.max(maxX - minX, 1);
+  const spanY = Math.max(maxY - minY, 1);
+  const usableWidth = Math.max(width - padding * 2, 200);
+  const usableHeight = Math.max(height - padding * 2, 200);
+  const scale = Math.min(usableWidth / spanX, usableHeight / spanY);
+
+  const positionMap = new Map();
+  const nodesFragment = document.createDocumentFragment();
+
+  systemsToShow.forEach((system) => {
+    const left = padding + (system.x - minX) * scale;
+    const top = padding + (system.y - minY) * scale;
+    positionMap.set(system.id, { left, top });
+
+    const node = document.createElement("div");
+    node.className = "visual-node";
+    node.style.left = `${left}px`;
+    node.style.top = `${top}px`;
+
+    const meta = document.createElement("div");
+    meta.className = "visual-meta";
+    const iconSpan = document.createElement("span");
+    iconSpan.className = "visual-icon";
+    iconSpan.textContent = getSystemIconSymbol(system);
+    const nameSpan = document.createElement("div");
+    nameSpan.className = "visual-name";
+    nameSpan.textContent = system.name || "Untitled";
+    meta.append(iconSpan, nameSpan);
+
+    node.appendChild(meta);
+    nodesFragment.appendChild(node);
+  });
+
+  visualNodesContainer.appendChild(nodesFragment);
+
+  visualConnectionsSvg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  visualConnectionsSvg.setAttribute("width", width);
+  visualConnectionsSvg.setAttribute("height", height);
+
+  const includedIds = new Set(systemsToShow.map((s) => s.id));
+  connections
+    .filter((conn) => includedIds.has(conn.from) && includedIds.has(conn.to))
+    .forEach((conn) => {
+      const fromPos = positionMap.get(conn.from);
+      const toPos = positionMap.get(conn.to);
+      if (!fromPos || !toPos) return;
+      const midX = (fromPos.left + toPos.left) / 2;
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute(
+        "d",
+        `M ${fromPos.left} ${fromPos.top} L ${midX} ${fromPos.top} L ${toPos.left} ${toPos.top}`
+      );
+      path.setAttribute("class", "visual-connection-path");
+      visualConnectionsSvg.appendChild(path);
+    });
 }
 
 function renderSaveList() {
