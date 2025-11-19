@@ -472,6 +472,11 @@ button.ghost {
   border-width: 5px;
 }
 
+.system-node.multi-selected {
+  border-color: #26b172;
+  box-shadow: 0 12px 28px rgba(38, 177, 114, 0.35);
+}
+
 .system-node.dimmed {
   opacity: 0.25;
 }

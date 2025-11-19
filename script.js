@@ -65,6 +65,8 @@ let lastDeletedSnapshot = null;
 let saveStatusTimer = null;
 let editingConnectionId = null;
 let editingConnectionOriginalLabel = "";
+const multiSelectedIds = new Set();
+const suppressClickForIds = new Set();
 
 const canvasContent = document.getElementById("canvasContent");
 const canvasViewport = document.getElementById("canvasViewport");
@@ -530,6 +532,12 @@ function attachNodeEvents(system) {
   });
 
   system.element.addEventListener("pointerdown", (event) => {
+    if (event.button === 2) {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleMultiSelect(system);
+      return;
+    }
     if (event.button !== 0) return;
     if (
       event.target.closest(".connector") ||
@@ -542,6 +550,10 @@ function attachNodeEvents(system) {
   });
 
   system.element.addEventListener("click", (event) => {
+    if (suppressClickForIds.has(system.id)) {
+      suppressClickForIds.delete(system.id);
+      return;
+    }
     if (event.target.closest(".domain-bubble") || event.target.closest(".delete-node")) return;
     selectSystem(system);
   });
@@ -567,6 +579,7 @@ function handleCanvasClick(event) {
     return;
   }
   closeConnectionLabelEditor();
+  clearMultiSelect();
   closePanel();
   handleClearHighlights();
 }
@@ -576,22 +589,35 @@ function startDragging(event, system) {
   event.preventDefault();
   const startX = event.clientX;
   const startY = event.clientY;
-  const initialX = system.x;
-  const initialY = system.y;
+
+  const dragGroup = multiSelectedIds.size && multiSelectedIds.has(system.id)
+    ? systems.filter((item) => multiSelectedIds.has(item.id))
+    : [system];
+  const initialPositions = dragGroup.map((item) => ({ system: item, x: item.x, y: item.y }));
+  let moved = false;
 
   function onMove(moveEvent) {
+    moved = true;
     const deltaX = (moveEvent.clientX - startX) / currentZoom;
     const deltaY = (moveEvent.clientY - startY) / currentZoom;
-    system.x = snapCoordinate(initialX + deltaX);
-    system.y = snapCoordinate(initialY + deltaY);
-    positionSystemElement(system);
+    initialPositions.forEach((entry) => {
+      entry.system.x = snapCoordinate(entry.x + deltaX);
+      entry.system.y = snapCoordinate(entry.y + deltaY);
+      positionSystemElement(entry.system);
+      ensureCanvasBoundsForSystem(entry.system);
+    });
     updateConnectionPositions();
-    ensureCanvasBoundsForSystem(system);
   }
 
   function onUp() {
     window.removeEventListener("pointermove", onMove);
     window.removeEventListener("pointerup", onUp);
+    if (moved) {
+      initialPositions.forEach((entry) => suppressClickForIds.add(entry.system.id));
+      setTimeout(() => {
+        initialPositions.forEach((entry) => suppressClickForIds.delete(entry.system.id));
+      }, 80);
+    }
   }
 
   window.addEventListener("pointermove", onMove);
@@ -1099,6 +1125,10 @@ function handleDeleteSystem(system) {
       connections.splice(i, 1);
     }
   }
+  if (multiSelectedIds.has(system.id)) {
+    multiSelectedIds.delete(system.id);
+    refreshMultiSelectStyles();
+  }
   if (selectedSystemId === system.id) {
     selectedSystemId = null;
     closePanel();
@@ -1149,6 +1179,7 @@ function handleClearHighlights() {
   searchQuery = "";
   selectedSystemId = null;
   sorFilterValue = "any";
+  clearMultiSelect();
   closeConnectionLabelEditor();
   platformOwnerFilterInput.value = "";
   businessOwnerFilterInput.value = "";
@@ -1347,6 +1378,7 @@ function toggleFilterPanel() {
 function setupPanning() {
   canvasViewport.addEventListener("mousedown", (event) => {
     if (event.button !== 2) return;
+    if (event.target.closest && event.target.closest(".system-node")) return;
     event.preventDefault();
     isPanning = true;
     panStart = {
@@ -1380,6 +1412,29 @@ function setupContextMenuBlock() {
       event.preventDefault();
     }
   });
+}
+
+function refreshMultiSelectStyles() {
+  systems.forEach((system) => {
+    system.element.classList.toggle("multi-selected", multiSelectedIds.has(system.id));
+  });
+}
+
+function clearMultiSelect() {
+  multiSelectedIds.clear();
+  refreshMultiSelectStyles();
+}
+
+function toggleMultiSelect(system) {
+  if (multiSelectedIds.has(system.id)) {
+    multiSelectedIds.delete(system.id);
+  } else {
+    multiSelectedIds.add(system.id);
+  }
+  refreshMultiSelectStyles();
+  selectedSystemId = null;
+  closePanel();
+  updateHighlights();
 }
 
 function applyColorCoding() {
