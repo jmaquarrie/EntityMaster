@@ -1,3 +1,9 @@
+const CANVAS_WIDTH = 2400;
+const CANVAS_HEIGHT = 1600;
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 1.5;
+const ZOOM_STEP = 0.1;
+
 const DOMAIN_LIST = [
   { key: "people", label: "People", color: getComputedStyle(document.documentElement).getPropertyValue("--domain-people") || "#5d8dee" },
   { key: "assets", label: "Assets", color: getComputedStyle(document.documentElement).getPropertyValue("--domain-assets") || "#c266ff" },
@@ -11,10 +17,16 @@ const systems = [];
 const connections = [];
 
 let activeDomainFilter = null;
+let platformOwnerFilterText = "";
+let businessOwnerFilterText = "";
+let searchType = "system";
+let searchQuery = "";
+let currentZoom = 1;
 let selectedSystemId = null;
 let linkingState = null;
 let systemCounter = 1;
 
+const canvasContent = document.getElementById("canvasContent");
 const canvas = document.getElementById("canvas");
 const connectionLayer = document.getElementById("connectionLayer");
 const addSystemBtn = document.getElementById("addSystemBtn");
@@ -22,16 +34,30 @@ const clearFocusBtn = document.getElementById("clearFocusBtn");
 const panel = document.getElementById("systemPanel");
 const panelTitle = document.getElementById("panelTitle");
 const systemNameInput = document.getElementById("systemNameInput");
+const platformOwnerInput = document.getElementById("platformOwnerInput");
+const businessOwnerInput = document.getElementById("businessOwnerInput");
 const entityForm = document.getElementById("entityForm");
 const entityInput = document.getElementById("entityInput");
 const entityList = document.getElementById("entityList");
 const closePanelBtn = document.getElementById("closePanelBtn");
 const panelDomainChoices = document.getElementById("panelDomainChoices");
 const globalDomainChips = document.getElementById("globalDomainChips");
+const platformOwnerFilterInput = document.getElementById("platformOwnerFilter");
+const businessOwnerFilterInput = document.getElementById("businessOwnerFilter");
+const searchInput = document.getElementById("searchInput");
+const searchTypeSelect = document.getElementById("searchType");
+const zoomLabel = document.getElementById("zoomLabel");
+const zoomButtons = document.querySelectorAll(".zoom-btn");
 
 let activePanelSystem = null;
 
 function init() {
+  connectionLayer.setAttribute("width", CANVAS_WIDTH);
+  connectionLayer.setAttribute("height", CANVAS_HEIGHT);
+  connectionLayer.setAttribute("viewBox", `0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`);
+  applyZoom(currentZoom);
+  searchType = searchTypeSelect.value;
+
   renderGlobalDomainChips();
   panelDomainChoices.innerHTML = DOMAIN_LIST.map(
     (d) => `
@@ -44,15 +70,35 @@ function init() {
 
   panelDomainChoices.addEventListener("change", handleDomainSelection);
   addSystemBtn.addEventListener("click", () => addSystem());
-  clearFocusBtn.addEventListener("click", () => {
-    activeDomainFilter = null;
-    selectedSystemId = null;
-    updateGlobalDomainChips();
-    updateHighlights();
-  });
+  clearFocusBtn.addEventListener("click", handleClearHighlights);
   closePanelBtn.addEventListener("click", closePanel);
   entityForm.addEventListener("submit", handleAddEntity);
   canvas.addEventListener("click", handleCanvasClick);
+  platformOwnerInput.addEventListener("input", handleOwnerFieldChange);
+  businessOwnerInput.addEventListener("input", handleOwnerFieldChange);
+  platformOwnerFilterInput.addEventListener("input", (event) => {
+    platformOwnerFilterText = event.target.value.trim().toLowerCase();
+    selectedSystemId = null;
+    updateHighlights();
+  });
+  businessOwnerFilterInput.addEventListener("input", (event) => {
+    businessOwnerFilterText = event.target.value.trim().toLowerCase();
+    selectedSystemId = null;
+    updateHighlights();
+  });
+  searchInput.addEventListener("input", (event) => {
+    searchQuery = event.target.value.trim().toLowerCase();
+    selectedSystemId = null;
+    updateHighlights();
+  });
+  searchTypeSelect.addEventListener("change", (event) => {
+    searchType = event.target.value;
+    selectedSystemId = null;
+    updateHighlights();
+  });
+  zoomButtons.forEach((button) =>
+    button.addEventListener("click", () => adjustZoom(button.dataset.direction))
+  );
 
   // Seed with two systems to start.
   addSystem({ name: "Core Services", x: 80, y: 90, domains: ["products"] });
@@ -87,7 +133,7 @@ function updateGlobalDomainChips() {
   });
 }
 
-function addSystem({ name, x, y, domains = [] } = {}) {
+function addSystem({ name, x, y, domains = [], platformOwner = "", businessOwner = "" } = {}) {
   const id = `sys-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
   const system = {
     id,
@@ -96,6 +142,8 @@ function addSystem({ name, x, y, domains = [] } = {}) {
     y: y ?? 100 + systems.length * 30,
     entities: [],
     domains: new Set(domains),
+    platformOwner: platformOwner || "",
+    businessOwner: businessOwner || "",
     element: document.createElement("div"),
   };
 
@@ -160,8 +208,8 @@ function startDragging(event, system) {
   const initialY = system.y;
 
   function onMove(moveEvent) {
-    const deltaX = moveEvent.clientX - startX;
-    const deltaY = moveEvent.clientY - startY;
+    const deltaX = (moveEvent.clientX - startX) / currentZoom;
+    const deltaY = (moveEvent.clientY - startY) / currentZoom;
     system.x = initialX + deltaX;
     system.y = initialY + deltaY;
     positionSystemElement(system);
@@ -196,9 +244,9 @@ function startLinking(event, system) {
   linkingState = { source: system, line };
 
   function onMove(moveEvent) {
-    const rect = canvas.getBoundingClientRect();
-    line.setAttribute("x2", moveEvent.clientX - rect.left);
-    line.setAttribute("y2", moveEvent.clientY - rect.top);
+    const coords = getCanvasRelativeCoords(moveEvent.clientX, moveEvent.clientY);
+    line.setAttribute("x2", coords.x);
+    line.setAttribute("y2", coords.y);
   }
 
   function onUp(upEvent) {
@@ -260,11 +308,9 @@ function updateConnectionPositions() {
 }
 
 function getSystemCenter(system) {
-  const rect = canvas.getBoundingClientRect();
-  const nodeRect = system.element.getBoundingClientRect();
   return {
-    x: nodeRect.left - rect.left + nodeRect.width / 2,
-    y: nodeRect.top - rect.top + nodeRect.height / 2,
+    x: system.x + system.element.offsetWidth / 2,
+    y: system.y + system.element.offsetHeight / 2,
   };
 }
 
@@ -279,6 +325,8 @@ function openPanel(system) {
   panel.classList.remove("hidden");
   panelTitle.textContent = system.name;
   systemNameInput.value = system.name;
+  platformOwnerInput.value = system.platformOwner;
+  businessOwnerInput.value = system.businessOwner;
   renderEntityList(system);
   syncPanelDomainSelection(system);
 }
@@ -294,6 +342,13 @@ systemNameInput.addEventListener("input", () => {
   activePanelSystem.element.querySelector(".title").textContent = activePanelSystem.name;
   panelTitle.textContent = activePanelSystem.name;
 });
+
+function handleOwnerFieldChange() {
+  if (!activePanelSystem) return;
+  activePanelSystem.platformOwner = platformOwnerInput.value.trim();
+  activePanelSystem.businessOwner = businessOwnerInput.value.trim();
+  updateHighlights();
+}
 
 function handleAddEntity(event) {
   event.preventDefault();
@@ -351,6 +406,19 @@ function renderDomainBubbles(system) {
   });
 }
 
+function handleClearHighlights() {
+  activeDomainFilter = null;
+  platformOwnerFilterText = "";
+  businessOwnerFilterText = "";
+  searchQuery = "";
+  selectedSystemId = null;
+  platformOwnerFilterInput.value = "";
+  businessOwnerFilterInput.value = "";
+  searchInput.value = "";
+  updateGlobalDomainChips();
+  updateHighlights();
+}
+
 function updateHighlights() {
   const connectedSet = new Set();
   if (selectedSystemId) {
@@ -361,22 +429,90 @@ function updateHighlights() {
     });
   }
 
+  const filtersActive =
+    !!activeDomainFilter ||
+    !!platformOwnerFilterText ||
+    !!businessOwnerFilterText ||
+    !!searchQuery;
+
   systems.forEach((system) => {
     let highlight = true;
 
     if (selectedSystemId) {
       highlight = connectedSet.has(system.id);
-    } else if (activeDomainFilter) {
-      highlight = system.domains.has(activeDomainFilter);
+    } else if (filtersActive) {
+      highlight = systemMatchesFilters(system);
     }
 
-    system.element.classList.toggle("highlighted", highlight && (selectedSystemId || activeDomainFilter));
-    system.element.classList.toggle("dimmed", !highlight && (selectedSystemId || activeDomainFilter));
+    const shouldApplyState = selectedSystemId || filtersActive;
+    system.element.classList.toggle("highlighted", highlight && shouldApplyState);
+    system.element.classList.toggle("dimmed", !highlight && shouldApplyState);
 
-    if (!selectedSystemId && !activeDomainFilter) {
+    if (!shouldApplyState) {
       system.element.classList.remove("highlighted", "dimmed");
     }
   });
+}
+
+function systemMatchesFilters(system) {
+  if (activeDomainFilter && !system.domains.has(activeDomainFilter)) {
+    return false;
+  }
+  if (platformOwnerFilterText) {
+    if (!system.platformOwner.toLowerCase().includes(platformOwnerFilterText)) {
+      return false;
+    }
+  }
+  if (businessOwnerFilterText) {
+    if (!system.businessOwner.toLowerCase().includes(businessOwnerFilterText)) {
+      return false;
+    }
+  }
+  if (searchQuery) {
+    return doesSystemMatchSearch(system);
+  }
+  return true;
+}
+
+function doesSystemMatchSearch(system) {
+  const query = searchQuery;
+  if (!query) return true;
+  switch (searchType) {
+    case "domain":
+      return Array.from(system.domains).some((domainKey) => {
+        const definition = DOMAIN_LIST.find((d) => d.key === domainKey);
+        const label = definition ? definition.label : domainKey;
+        return label.toLowerCase().includes(query) || domainKey.toLowerCase().includes(query);
+      });
+    case "platformOwner":
+      return system.platformOwner.toLowerCase().includes(query);
+    case "businessOwner":
+      return system.businessOwner.toLowerCase().includes(query);
+    case "entity":
+      return system.entities.some((entity) => entity.toLowerCase().includes(query));
+    case "system":
+    default:
+      return system.name.toLowerCase().includes(query);
+  }
+}
+
+function adjustZoom(direction) {
+  const delta = direction === "in" ? ZOOM_STEP : -ZOOM_STEP;
+  applyZoom(currentZoom + delta);
+}
+
+function applyZoom(value) {
+  currentZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value));
+  canvasContent.style.transform = `scale(${currentZoom})`;
+  zoomLabel.textContent = `${Math.round(currentZoom * 100)}%`;
+}
+
+function getCanvasRelativeCoords(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: (clientX - rect.left) / currentZoom,
+    y: (clientY - rect.top) / currentZoom,
+  };
 }
 
 document.addEventListener("DOMContentLoaded", init);

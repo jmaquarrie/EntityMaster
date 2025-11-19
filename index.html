@@ -8,48 +8,95 @@
   </head>
   <body>
     <div class="app">
-      <header>
-        <div class="branding">
-          <h1>EntityMaster</h1>
-          <p>Create, tag, and connect systems in an interactive entity diagram.</p>
-        </div>
-        <div class="toolbar">
-          <button id="addSystemBtn">Add System</button>
-          <button id="clearFocusBtn" class="ghost">Clear Highlights</button>
-        </div>
-        <div class="domain-filter">
-          <span>Domains:</span>
-          <div id="globalDomainChips" class="domain-chips"></div>
-        </div>
-      </header>
-      <main>
-        <div id="canvasWrapper">
-          <svg id="connectionLayer"></svg>
-          <div id="canvas" tabindex="0"></div>
-        </div>
-        <aside id="systemPanel" class="panel hidden" aria-live="polite">
-          <div class="panel-header">
-            <h2 id="panelTitle">System</h2>
-            <button id="closePanelBtn" aria-label="Close panel">×</button>
+      <div class="workspace">
+        <div class="canvas-shell">
+          <div class="canvas-toolbar">
+            <div class="toolbar-actions">
+              <button id="addSystemBtn">Add System</button>
+              <button id="clearFocusBtn" class="ghost">Clear Highlights</button>
+            </div>
+            <div class="zoom-controls" aria-label="Zoom">
+              <button class="zoom-btn" data-direction="out" aria-label="Zoom out">−</button>
+              <span id="zoomLabel">100%</span>
+              <button class="zoom-btn" data-direction="in" aria-label="Zoom in">+</button>
+            </div>
           </div>
-          <label class="field">
-            <span>System Name</span>
-            <input type="text" id="systemNameInput" />
-          </label>
-          <section class="field">
-            <div class="section-title">Entities</div>
-            <form id="entityForm">
-              <input type="text" id="entityInput" placeholder="Add entity" required />
-              <button type="submit">Add</button>
-            </form>
-            <ul id="entityList" class="entity-list"></ul>
-          </section>
-          <section class="field">
+          <div id="canvasViewport">
+            <div id="canvasContent">
+              <svg id="connectionLayer"></svg>
+              <div id="canvas" tabindex="0"></div>
+            </div>
+          </div>
+        </div>
+        <aside id="filterPanel" class="sidebar" aria-label="Filters">
+          <div class="sidebar-section">
+            <label class="field">
+              <span>Search Type</span>
+              <select id="searchType">
+                <option value="system">System</option>
+                <option value="domain">Domain</option>
+                <option value="platformOwner">Platform Owner</option>
+                <option value="businessOwner">Business Owner</option>
+                <option value="entity">Entity</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Search</span>
+              <input type="text" id="searchInput" placeholder="Search…" />
+            </label>
+          </div>
+          <div class="sidebar-section">
             <div class="section-title">Domains</div>
-            <div id="panelDomainChoices" class="domain-choices"></div>
-          </section>
+            <div id="globalDomainChips" class="domain-chips"></div>
+          </div>
+          <div class="sidebar-section">
+            <div class="section-title">Platform Owner</div>
+            <input
+              type="text"
+              id="platformOwnerFilter"
+              placeholder="Filter by platform owner"
+            />
+          </div>
+          <div class="sidebar-section">
+            <div class="section-title">Business Owner</div>
+            <input
+              type="text"
+              id="businessOwnerFilter"
+              placeholder="Filter by business owner"
+            />
+          </div>
         </aside>
-      </main>
+      </div>
+      <aside id="systemPanel" class="panel hidden" aria-live="polite">
+        <div class="panel-header">
+          <h2 id="panelTitle">System</h2>
+          <button id="closePanelBtn" aria-label="Close panel">×</button>
+        </div>
+        <label class="field">
+          <span>System Name</span>
+          <input type="text" id="systemNameInput" />
+        </label>
+        <label class="field">
+          <span>Platform Owner</span>
+          <input type="text" id="platformOwnerInput" placeholder="Name or team" />
+        </label>
+        <label class="field">
+          <span>Business Owner</span>
+          <input type="text" id="businessOwnerInput" placeholder="Name or team" />
+        </label>
+        <section class="field">
+          <div class="section-title">Entities</div>
+          <form id="entityForm">
+            <input type="text" id="entityInput" placeholder="Add entity" required />
+            <button type="submit">Add</button>
+          </form>
+          <ul id="entityList" class="entity-list"></ul>
+        </section>
+        <section class="field">
+          <div class="section-title">Domains</div>
+          <div id="panelDomainChoices" class="domain-choices"></div>
+        </section>
+      </aside>
     </div>
     <script src="script.js"></script>
   </body>
