@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EntityMaster Diagram</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header>
+        <div class="branding">
+          <h1>EntityMaster</h1>
+          <p>Create, tag, and connect systems in an interactive entity diagram.</p>
+        </div>
+        <div class="toolbar">
+          <button id="addSystemBtn">Add System</button>
+          <button id="clearFocusBtn" class="ghost">Clear Highlights</button>
+        </div>
+        <div class="domain-filter">
+          <span>Domains:</span>
+          <div id="globalDomainChips" class="domain-chips"></div>
+        </div>
+      </header>
+      <main>
+        <div id="canvasWrapper">
+          <svg id="connectionLayer"></svg>
+          <div id="canvas" tabindex="0"></div>
+        </div>
+        <aside id="systemPanel" class="panel hidden" aria-live="polite">
+          <div class="panel-header">
+            <h2 id="panelTitle">System</h2>
+            <button id="closePanelBtn" aria-label="Close panel">×</button>
+          </div>
+          <label class="field">
+            <span>System Name</span>
+            <input type="text" id="systemNameInput" />
+          </label>
+          <section class="field">
+            <div class="section-title">Entities</div>
+            <form id="entityForm">
+              <input type="text" id="entityInput" placeholder="Add entity" required />
+              <button type="submit">Add</button>
+            </form>
+            <ul id="entityList" class="entity-list"></ul>
+          </section>
+          <section class="field">
+            <div class="section-title">Domains</div>
+            <div id="panelDomainChoices" class="domain-choices"></div>
+          </section>
+        </aside>
+      </main>
+    </div>
+    <script src="script.js"></script>
+  </body>
+</html>
