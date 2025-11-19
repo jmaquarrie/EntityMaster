@@ -103,6 +103,7 @@ html::-webkit-scrollbar,
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
+  position: relative;
 }
 
 .save-status {
@@ -111,6 +112,11 @@ html::-webkit-scrollbar,
   font-weight: 600;
   opacity: 0;
   transition: opacity 0.2s ease;
+  position: absolute;
+  left: calc(100% + 0.35rem);
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
 }
 
 .save-status.visible {
@@ -436,7 +442,10 @@ button.ghost {
 }
 
 .name-row {
-  align-items: flex-start;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
 }
 
 .name-left {

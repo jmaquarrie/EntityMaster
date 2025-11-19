@@ -108,6 +108,7 @@ const businessOwnerFilterInput = document.getElementById("businessOwnerFilter");
 const functionOwnerFilterInput = document.getElementById("functionOwnerFilter");
 const searchInput = document.getElementById("searchInput");
 const searchTypeSelect = document.getElementById("searchType");
+const fileUrlInput = document.getElementById("fileUrlInput");
 const zoomLabel = document.getElementById("zoomLabel");
 const zoomButtons = document.querySelectorAll(".zoom-btn");
 const colorBySelect = document.getElementById("colorBySelect");
@@ -117,6 +118,7 @@ const filterToggleIcon = filterPanelToggle?.querySelector(".toggle-icon");
 const platformOwnerSuggestionsList = document.getElementById("platformOwnerSuggestions");
 const businessOwnerSuggestionsList = document.getElementById("businessOwnerSuggestions");
 const functionOwnerOptionsList = document.getElementById("functionOwnerOptions");
+const resetFiltersBtn = document.getElementById("resetFiltersBtn");
 const saveDiagramBtn = document.getElementById("saveDiagramBtn");
 const loadDiagramBtn = document.getElementById("loadDiagramBtn");
 const shareDiagramBtn = document.getElementById("shareDiagramBtn");
@@ -178,6 +180,7 @@ function init() {
   functionOwnerInput.addEventListener("change", () => {
     ensureFunctionOwnerOption(functionOwnerInput.value.trim());
   });
+  fileUrlInput?.addEventListener("input", handleFileUrlChange);
   platformOwnerFilterInput.addEventListener("input", (event) => {
     platformOwnerFilterText = event.target.value.trim().toLowerCase();
     selectedSystemId = null;
@@ -216,6 +219,7 @@ function init() {
     currentColorBy = event.target.value;
     applyColorCoding();
   });
+  resetFiltersBtn?.addEventListener("click", () => resetFilters({ alsoClearSelection: true }));
   filterPanelToggle.addEventListener("click", toggleFilterPanel);
   saveDiagramBtn.addEventListener("click", handleSaveDiagram);
   loadDiagramBtn.addEventListener("click", openSaveManager);
@@ -453,6 +457,7 @@ function addSystem({
   icon = DEFAULT_ICON,
   comments = "",
   description = "",
+  fileUrl = "",
   isSpreadsheet = false,
 } = {}) {
   const resolvedId = id || `sys-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -476,6 +481,7 @@ function addSystem({
     icon: normalizeIconKey(icon),
     comments: comments || "",
     description: description || "",
+    fileUrl: fileUrl || "",
     isSpreadsheet: !!isSpreadsheet,
     element: document.createElement("div"),
     isEntityExpanded: false,
@@ -593,10 +599,10 @@ function handleCanvasClick(event) {
     return;
   }
   closeConnectionLabelEditor();
+  selectedSystemId = null;
   clearMultiSelect();
   closePanel();
   clearEntityLinkHighlight();
-  handleClearHighlights();
 }
 
 function startDragging(event, system) {
@@ -736,7 +742,7 @@ function drawConnections() {
     if (!connection.label) {
       label.classList.add("placeholder");
     }
-    label.textContent = connection.label || "text";
+    label.textContent = connection.label || "";
     const labelPos = getConnectionLabelPosition(fromPos, toPos);
     label.setAttribute("x", labelPos.x);
     label.setAttribute("y", labelPos.y);
@@ -1018,6 +1024,9 @@ function openPanel(system) {
   if (systemDescriptionInput) {
     systemDescriptionInput.value = system.description || "";
   }
+  if (fileUrlInput) {
+    fileUrlInput.value = system.fileUrl || "";
+  }
   renderEntityList(system);
   syncPanelDomainSelection(system);
 }
@@ -1048,6 +1057,11 @@ function handleFunctionOwnerChange() {
   activePanelSystem.functionOwner = functionOwnerInput.value.trim();
   updateSystemMeta(activePanelSystem);
   updateHighlights();
+}
+
+function handleFileUrlChange() {
+  if (!activePanelSystem) return;
+  activePanelSystem.fileUrl = fileUrlInput.value.trim();
 }
 
 function handleSpreadsheetChange() {
@@ -1296,7 +1310,7 @@ function refreshEntityLinkIfActive() {
   }
 }
 
-function clearEntityLinkHighlight() {
+function clearEntityLinkHighlight(shouldUpdate = true) {
   activeEntityLinkName = null;
   systems.forEach((system) => {
     system.forceEntityExpand = false;
@@ -1305,7 +1319,9 @@ function clearEntityLinkHighlight() {
   if (entityLinkLayer) {
     entityLinkLayer.innerHTML = "";
   }
-  updateHighlights();
+  if (shouldUpdate) {
+    updateHighlights();
+  }
 }
 
 function handleDeleteSystem(system) {
@@ -1389,31 +1405,39 @@ function cloneSystemData(system) {
     icon: system.icon,
     comments: system.comments,
     description: system.description,
+    fileUrl: system.fileUrl,
     isSpreadsheet: system.isSpreadsheet,
     entities: system.entities.map((entity) => ({ name: entity.name, isSor: !!entity.isSor })),
   };
 }
 
-function handleClearHighlights() {
+function resetFilters({ alsoClearSelection = false } = {}) {
   activeDomainFilters.clear();
   platformOwnerFilterText = "";
   businessOwnerFilterText = "";
   functionOwnerFilterText = "";
   searchQuery = "";
-  selectedSystemId = null;
   sorFilterValue = "any";
-  clearEntityLinkHighlight();
-  clearMultiSelect();
-  closeConnectionLabelEditor();
-  platformOwnerFilterInput.value = "";
-  businessOwnerFilterInput.value = "";
-  functionOwnerFilterInput.value = "";
-  searchInput.value = "";
+  clearEntityLinkHighlight(false);
+  if (alsoClearSelection) {
+    selectedSystemId = null;
+    clearMultiSelect();
+    closePanel();
+  }
+  if (platformOwnerFilterInput) platformOwnerFilterInput.value = "";
+  if (businessOwnerFilterInput) businessOwnerFilterInput.value = "";
+  if (functionOwnerFilterInput) functionOwnerFilterInput.value = "";
+  if (searchInput) searchInput.value = "";
   if (sorFilterSelect) {
     sorFilterSelect.value = "any";
   }
   updateGlobalDomainChips();
   updateHighlights();
+}
+
+function handleClearHighlights() {
+  resetFilters({ alsoClearSelection: true });
+  closeConnectionLabelEditor();
 }
 
 function updateHighlights() {
@@ -2137,6 +2161,7 @@ function serializeState() {
       icon: system.icon,
       comments: system.comments,
       description: system.description,
+      fileUrl: system.fileUrl,
       isSpreadsheet: system.isSpreadsheet,
       entities: system.entities.map((entity) => ({ name: entity.name, isSor: !!entity.isSor })),
     })),

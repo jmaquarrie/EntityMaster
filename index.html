@@ -126,30 +126,32 @@
           <h2 id="panelTitle">System</h2>
           <button id="closePanelBtn" aria-label="Close panel">×</button>
         </div>
+        <div class="field-top-row name-row">
+          <select id="systemIconSelect" class="icon-inline-select" aria-label="System icon">
+            <option value="cube">⬛</option>
+            <option value="database">🗄️</option>
+            <option value="cloud">☁️</option>
+            <option value="server">🖥️</option>
+            <option value="project">📊</option>
+            <option value="building">🏢</option>
+            <option value="network">🌐</option>
+            <option value="growth">📈</option>
+            <option value="shield">🛡️</option>
+            <option value="rocket">🚀</option>
+          </select>
+          <label class="mini-toggle" for="spreadsheetSelect">
+            <span>Spreadsheet?</span>
+            <select id="spreadsheetSelect">
+              <option value="no">No</option>
+              <option value="yes">Yes</option>
+            </select>
+          </label>
+        </div>
         <label class="field field-inline-toggle">
           <div class="field-top-row name-row">
             <div class="name-left">
               <span>System Name</span>
-              <select id="systemIconSelect" class="icon-inline-select">
-                <option value="cube">⬛</option>
-                <option value="database">🗄️</option>
-                <option value="cloud">☁️</option>
-                <option value="server">🖥️</option>
-                <option value="project">📊</option>
-                <option value="building">🏢</option>
-                <option value="network">🌐</option>
-                <option value="growth">📈</option>
-                <option value="shield">🛡️</option>
-                <option value="rocket">🚀</option>
-              </select>
             </div>
-            <label class="mini-toggle" for="spreadsheetSelect">
-              <span>Spreadsheet?</span>
-              <select id="spreadsheetSelect">
-                <option value="no">No</option>
-                <option value="yes">Yes</option>
-              </select>
-            </label>
           </div>
           <input type="text" id="systemNameInput" />
         </label>
@@ -179,6 +181,10 @@
             placeholder="Select or add"
             list="functionOwnerOptions"
           />
+        </label>
+        <label class="field">
+          <span>File URL</span>
+          <input type="text" id="fileUrlInput" placeholder="https://" />
         </label>
         <section class="field">
           <div class="section-title">Entities</div>
@@ -292,6 +298,7 @@
               <option value="platformOwner">Platform Owner</option>
             </select>
           </label>
+          <button id="resetFiltersBtn" type="button" class="ghost">Reset Filters</button>
           <section class="settings-section">
             <div class="section-title">Custom Domains</div>
             <form id="customDomainForm" class="settings-inline-form">
