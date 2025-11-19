@@ -4,6 +4,8 @@ const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 1.5;
 const ZOOM_STEP = 0.1;
 
+const FUNCTION_OWNER_DEFAULTS = ["IT", "Fleet", "HR", "Payroll", "OCUOne", "Data", "L&D"];
+
 const DOMAIN_LIST = [
   { key: "people", label: "People", color: getComputedStyle(document.documentElement).getPropertyValue("--domain-people") || "#5d8dee" },
   { key: "assets", label: "Assets", color: getComputedStyle(document.documentElement).getPropertyValue("--domain-assets") || "#c266ff" },
@@ -16,17 +18,35 @@ const DOMAIN_LIST = [
 const systems = [];
 const connections = [];
 
+const functionOwnerOptions = new Set(FUNCTION_OWNER_DEFAULTS);
+const ownerSuggestionSets = {
+  platform: new Set(),
+  business: new Set(),
+};
+const ownerColorMaps = {
+  functionOwner: new Map(),
+  businessOwner: new Map(),
+  platformOwner: new Map(),
+};
+const COLOR_POOL = ["#5d8dee", "#c266ff", "#ffa447", "#3fb28a", "#dd5f68", "#2f9edc", "#6f7bf7", "#ff6ea9", "#29c6b7", "#845ef7"];
+
 let activeDomainFilter = null;
 let platformOwnerFilterText = "";
 let businessOwnerFilterText = "";
+let functionOwnerFilterText = "";
 let searchType = "system";
 let searchQuery = "";
 let currentZoom = 1;
 let selectedSystemId = null;
 let linkingState = null;
 let systemCounter = 1;
+let currentColorBy = "none";
+let isSidebarCollapsed = false;
+let isPanning = false;
+let panStart = null;
 
 const canvasContent = document.getElementById("canvasContent");
+const canvasViewport = document.getElementById("canvasViewport");
 const canvas = document.getElementById("canvas");
 const connectionLayer = document.getElementById("connectionLayer");
 const addSystemBtn = document.getElementById("addSystemBtn");
@@ -36,6 +56,7 @@ const panelTitle = document.getElementById("panelTitle");
 const systemNameInput = document.getElementById("systemNameInput");
 const platformOwnerInput = document.getElementById("platformOwnerInput");
 const businessOwnerInput = document.getElementById("businessOwnerInput");
+const functionOwnerInput = document.getElementById("functionOwnerInput");
 const entityForm = document.getElementById("entityForm");
 const entityInput = document.getElementById("entityInput");
 const entityList = document.getElementById("entityList");
@@ -44,10 +65,17 @@ const panelDomainChoices = document.getElementById("panelDomainChoices");
 const globalDomainChips = document.getElementById("globalDomainChips");
 const platformOwnerFilterInput = document.getElementById("platformOwnerFilter");
 const businessOwnerFilterInput = document.getElementById("businessOwnerFilter");
+const functionOwnerFilterInput = document.getElementById("functionOwnerFilter");
 const searchInput = document.getElementById("searchInput");
 const searchTypeSelect = document.getElementById("searchType");
 const zoomLabel = document.getElementById("zoomLabel");
 const zoomButtons = document.querySelectorAll(".zoom-btn");
+const colorBySelect = document.getElementById("colorBySelect");
+const filterPanel = document.getElementById("filterPanel");
+const filterPanelToggle = document.getElementById("filterPanelToggle");
+const platformOwnerSuggestionsList = document.getElementById("platformOwnerSuggestions");
+const businessOwnerSuggestionsList = document.getElementById("businessOwnerSuggestions");
+const functionOwnerOptionsList = document.getElementById("functionOwnerOptions");
 
 let activePanelSystem = null;
 
@@ -57,6 +85,8 @@ function init() {
   connectionLayer.setAttribute("viewBox", `0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`);
   applyZoom(currentZoom);
   searchType = searchTypeSelect.value;
+  currentColorBy = colorBySelect.value || "none";
+  populateFunctionOwnerOptions();
 
   renderGlobalDomainChips();
   panelDomainChoices.innerHTML = DOMAIN_LIST.map(
@@ -76,6 +106,10 @@ function init() {
   canvas.addEventListener("click", handleCanvasClick);
   platformOwnerInput.addEventListener("input", handleOwnerFieldChange);
   businessOwnerInput.addEventListener("input", handleOwnerFieldChange);
+  functionOwnerInput.addEventListener("input", handleFunctionOwnerChange);
+  functionOwnerInput.addEventListener("change", () => {
+    ensureFunctionOwnerOption(functionOwnerInput.value.trim());
+  });
   platformOwnerFilterInput.addEventListener("input", (event) => {
     platformOwnerFilterText = event.target.value.trim().toLowerCase();
     selectedSystemId = null;
@@ -83,6 +117,11 @@ function init() {
   });
   businessOwnerFilterInput.addEventListener("input", (event) => {
     businessOwnerFilterText = event.target.value.trim().toLowerCase();
+    selectedSystemId = null;
+    updateHighlights();
+  });
+  functionOwnerFilterInput.addEventListener("input", (event) => {
+    functionOwnerFilterText = event.target.value.trim().toLowerCase();
     selectedSystemId = null;
     updateHighlights();
   });
@@ -96,13 +135,32 @@ function init() {
     selectedSystemId = null;
     updateHighlights();
   });
+  colorBySelect.addEventListener("change", (event) => {
+    currentColorBy = event.target.value;
+    applyColorCoding();
+  });
+  filterPanelToggle.addEventListener("click", toggleFilterPanel);
   zoomButtons.forEach((button) =>
     button.addEventListener("click", () => adjustZoom(button.dataset.direction))
   );
+  setupPanning();
+  setupContextMenuBlock();
 
   // Seed with two systems to start.
-  addSystem({ name: "Core Services", x: 80, y: 90, domains: ["products"] });
-  addSystem({ name: "Client Portal", x: 320, y: 260, domains: ["clients", "people"] });
+  addSystem({
+    name: "Core Services",
+    x: 80,
+    y: 90,
+    domains: ["products"],
+    functionOwner: "IT",
+  });
+  addSystem({
+    name: "Client Portal",
+    x: 320,
+    y: 260,
+    domains: ["clients", "people"],
+    functionOwner: "Data",
+  });
 }
 
 function renderGlobalDomainChips() {
@@ -133,17 +191,29 @@ function updateGlobalDomainChips() {
   });
 }
 
-function addSystem({ name, x, y, domains = [], platformOwner = "", businessOwner = "" } = {}) {
+function addSystem({
+  name,
+  x,
+  y,
+  domains = [],
+  platformOwner = "",
+  businessOwner = "",
+  functionOwner = "",
+  entities = [],
+} = {}) {
   const id = `sys-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
   const system = {
     id,
     name: name || `System ${systemCounter++}`,
     x: x ?? 100 + systems.length * 40,
     y: y ?? 100 + systems.length * 30,
-    entities: [],
+    entities: entities.map((entity) =>
+      typeof entity === "string" ? { name: entity, isSor: false } : { name: entity.name, isSor: !!entity.isSor }
+    ),
     domains: new Set(domains),
     platformOwner: platformOwner || "",
     businessOwner: businessOwner || "",
+    functionOwner: functionOwner || "",
     element: document.createElement("div"),
   };
 
@@ -154,6 +224,10 @@ function addSystem({ name, x, y, domains = [], platformOwner = "", businessOwner
       <div class="title">${system.name}</div>
       <div class="connector" title="Drag to connect"></div>
     </div>
+    <div class="meta">
+      <div class="owner-info"></div>
+      <div class="entity-count hidden"></div>
+    </div>
     <div class="domain-bubbles"></div>
   `;
 
@@ -163,6 +237,9 @@ function addSystem({ name, x, y, domains = [], platformOwner = "", businessOwner
   positionSystemElement(system);
   attachNodeEvents(system);
   renderDomainBubbles(system);
+  updateSystemMeta(system);
+  ensureFunctionOwnerOption(system.functionOwner);
+  refreshOwnerSuggestionLists();
   updateHighlights();
 }
 
@@ -172,9 +249,13 @@ function positionSystemElement(system) {
 
 function attachNodeEvents(system) {
   const connector = system.element.querySelector(".connector");
-  connector.addEventListener("pointerdown", (event) => startLinking(event, system));
+  connector.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    startLinking(event, system);
+  });
 
   system.element.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
     if (event.target.closest(".connector") || event.target.closest(".domain-bubble")) return;
     startDragging(event, system);
   });
@@ -183,6 +264,8 @@ function attachNodeEvents(system) {
     if (event.target.closest(".domain-bubble")) return;
     selectSystem(system);
   });
+
+  system.element.addEventListener("contextmenu", (event) => event.preventDefault());
 
   system.element.querySelector(".domain-bubbles").addEventListener("click", (event) => {
     if (!(event.target instanceof HTMLElement)) return;
@@ -195,12 +278,12 @@ function attachNodeEvents(system) {
 
 function handleCanvasClick(event) {
   if (event.target !== canvas) return;
-  selectedSystemId = null;
   closePanel();
-  updateHighlights();
+  handleClearHighlights();
 }
 
 function startDragging(event, system) {
+  if (event.button !== 0) return;
   event.preventDefault();
   const startX = event.clientX;
   const startY = event.clientY;
@@ -226,6 +309,7 @@ function startDragging(event, system) {
 }
 
 function startLinking(event, system) {
+  if (event.button !== 0) return;
   event.stopPropagation();
   event.preventDefault();
   const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
@@ -327,6 +411,7 @@ function openPanel(system) {
   systemNameInput.value = system.name;
   platformOwnerInput.value = system.platformOwner;
   businessOwnerInput.value = system.businessOwner;
+  functionOwnerInput.value = system.functionOwner;
   renderEntityList(system);
   syncPanelDomainSelection(system);
 }
@@ -347,6 +432,15 @@ function handleOwnerFieldChange() {
   if (!activePanelSystem) return;
   activePanelSystem.platformOwner = platformOwnerInput.value.trim();
   activePanelSystem.businessOwner = businessOwnerInput.value.trim();
+  updateSystemMeta(activePanelSystem);
+  refreshOwnerSuggestionLists();
+  updateHighlights();
+}
+
+function handleFunctionOwnerChange() {
+  if (!activePanelSystem) return;
+  activePanelSystem.functionOwner = functionOwnerInput.value.trim();
+  updateSystemMeta(activePanelSystem);
   updateHighlights();
 }
 
@@ -355,22 +449,50 @@ function handleAddEntity(event) {
   if (!activePanelSystem) return;
   const value = entityInput.value.trim();
   if (!value) return;
-  activePanelSystem.entities.push(value);
+  activePanelSystem.entities.push({ name: value, isSor: false });
   entityInput.value = "";
   renderEntityList(activePanelSystem);
+  updateSystemMeta(activePanelSystem);
 }
 
 function renderEntityList(system) {
   entityList.innerHTML = "";
   system.entities.forEach((entity, index) => {
     const li = document.createElement("li");
-    li.innerHTML = `<span>${entity}</span><button aria-label="Remove">×</button>`;
-    li.querySelector("button").addEventListener("click", () => {
-      system.entities.splice(index, 1);
+    if (entity.isSor) li.classList.add("sor");
+
+    const nameSpan = document.createElement("span");
+    nameSpan.textContent = entity.name;
+
+    const actions = document.createElement("div");
+    actions.className = "entity-actions";
+
+    const sorLabel = document.createElement("label");
+    sorLabel.className = "sor-toggle";
+    const sorInput = document.createElement("input");
+    sorInput.type = "checkbox";
+    sorInput.checked = entity.isSor;
+    sorInput.addEventListener("change", () => {
+      entity.isSor = sorInput.checked;
       renderEntityList(system);
     });
+    sorLabel.append(sorInput, document.createTextNode("SOR"));
+
+    const removeBtn = document.createElement("button");
+    removeBtn.setAttribute("aria-label", "Remove entity");
+    removeBtn.textContent = "×";
+    removeBtn.addEventListener("click", () => {
+      system.entities.splice(index, 1);
+      renderEntityList(system);
+      updateSystemMeta(system);
+    });
+
+    actions.append(sorLabel, removeBtn);
+    li.append(nameSpan, actions);
     entityList.appendChild(li);
   });
+
+  updateSystemMeta(system);
 }
 
 function handleDomainSelection(event) {
@@ -406,40 +528,63 @@ function renderDomainBubbles(system) {
   });
 }
 
+function updateSystemMeta(system) {
+  const ownerContainer = system.element.querySelector(".owner-info");
+  if (ownerContainer) {
+    ownerContainer.innerHTML = "";
+    const ownerBits = [];
+    if (system.platformOwner) ownerBits.push({ label: "Platform", value: system.platformOwner });
+    if (system.businessOwner) ownerBits.push({ label: "Business", value: system.businessOwner });
+    if (system.functionOwner) ownerBits.push({ label: "Function", value: system.functionOwner });
+    ownerBits.forEach((info) => {
+      const pill = document.createElement("span");
+      pill.className = "owner-pill";
+      pill.textContent = `${info.label}: ${info.value}`;
+      ownerContainer.appendChild(pill);
+    });
+  }
+
+  const entityBadge = system.element.querySelector(".entity-count");
+  if (entityBadge) {
+    if (system.entities.length > 0) {
+      entityBadge.textContent = `${system.entities.length} ${system.entities.length === 1 ? "entity" : "entities"}`;
+      entityBadge.classList.remove("hidden");
+    } else {
+      entityBadge.classList.add("hidden");
+    }
+  }
+}
+
 function handleClearHighlights() {
   activeDomainFilter = null;
   platformOwnerFilterText = "";
   businessOwnerFilterText = "";
+  functionOwnerFilterText = "";
   searchQuery = "";
   selectedSystemId = null;
   platformOwnerFilterInput.value = "";
   businessOwnerFilterInput.value = "";
+  functionOwnerFilterInput.value = "";
   searchInput.value = "";
   updateGlobalDomainChips();
   updateHighlights();
 }
 
 function updateHighlights() {
-  const connectedSet = new Set();
-  if (selectedSystemId) {
-    connectedSet.add(selectedSystemId);
-    connections.forEach((conn) => {
-      if (conn.from === selectedSystemId) connectedSet.add(conn.to);
-      if (conn.to === selectedSystemId) connectedSet.add(conn.from);
-    });
-  }
+  const connectedSet = selectedSystemId ? getConnectedSystemIds(selectedSystemId) : null;
 
   const filtersActive =
     !!activeDomainFilter ||
     !!platformOwnerFilterText ||
     !!businessOwnerFilterText ||
+    !!functionOwnerFilterText ||
     !!searchQuery;
 
   systems.forEach((system) => {
     let highlight = true;
 
     if (selectedSystemId) {
-      highlight = connectedSet.has(system.id);
+      highlight = connectedSet ? connectedSet.has(system.id) : false;
     } else if (filtersActive) {
       highlight = systemMatchesFilters(system);
     }
@@ -452,6 +597,26 @@ function updateHighlights() {
       system.element.classList.remove("highlighted", "dimmed");
     }
   });
+
+  applyColorCoding();
+}
+
+function getConnectedSystemIds(startId) {
+  const visited = new Set();
+  const queue = [startId];
+  while (queue.length) {
+    const current = queue.shift();
+    if (visited.has(current)) continue;
+    visited.add(current);
+    connections.forEach((conn) => {
+      if (conn.from === current && !visited.has(conn.to)) {
+        queue.push(conn.to);
+      } else if (conn.to === current && !visited.has(conn.from)) {
+        queue.push(conn.from);
+      }
+    });
+  }
+  return visited;
 }
 
 function systemMatchesFilters(system) {
@@ -465,6 +630,11 @@ function systemMatchesFilters(system) {
   }
   if (businessOwnerFilterText) {
     if (!system.businessOwner.toLowerCase().includes(businessOwnerFilterText)) {
+      return false;
+    }
+  }
+  if (functionOwnerFilterText) {
+    if (!system.functionOwner.toLowerCase().includes(functionOwnerFilterText)) {
       return false;
     }
   }
@@ -488,8 +658,10 @@ function doesSystemMatchSearch(system) {
       return system.platformOwner.toLowerCase().includes(query);
     case "businessOwner":
       return system.businessOwner.toLowerCase().includes(query);
+    case "functionOwner":
+      return system.functionOwner.toLowerCase().includes(query);
     case "entity":
-      return system.entities.some((entity) => entity.toLowerCase().includes(query));
+      return system.entities.some((entity) => entity.name.toLowerCase().includes(query));
     case "system":
     default:
       return system.name.toLowerCase().includes(query);
@@ -513,6 +685,140 @@ function getCanvasRelativeCoords(clientX, clientY) {
     x: (clientX - rect.left) / currentZoom,
     y: (clientY - rect.top) / currentZoom,
   };
+}
+
+function populateFunctionOwnerOptions() {
+  functionOwnerOptionsList.innerHTML = Array.from(functionOwnerOptions)
+    .filter((value) => !!value)
+    .sort((a, b) => a.localeCompare(b))
+    .map((value) => `<option value="${value}"></option>`)
+    .join("");
+}
+
+function ensureFunctionOwnerOption(value) {
+  if (!value) return;
+  if (!functionOwnerOptions.has(value)) {
+    functionOwnerOptions.add(value);
+    populateFunctionOwnerOptions();
+  }
+}
+
+function refreshOwnerSuggestionLists() {
+  ownerSuggestionSets.platform.clear();
+  ownerSuggestionSets.business.clear();
+  systems.forEach((system) => {
+    if (system.platformOwner) ownerSuggestionSets.platform.add(system.platformOwner);
+    if (system.businessOwner) ownerSuggestionSets.business.add(system.businessOwner);
+  });
+  platformOwnerSuggestionsList.innerHTML = Array.from(ownerSuggestionSets.platform)
+    .sort((a, b) => a.localeCompare(b))
+    .map((value) => `<option value="${value}"></option>`)
+    .join("");
+  businessOwnerSuggestionsList.innerHTML = Array.from(ownerSuggestionSets.business)
+    .sort((a, b) => a.localeCompare(b))
+    .map((value) => `<option value="${value}"></option>`)
+    .join("");
+}
+
+function toggleFilterPanel() {
+  isSidebarCollapsed = !isSidebarCollapsed;
+  filterPanel.classList.toggle("collapsed", isSidebarCollapsed);
+  filterPanelToggle.setAttribute("aria-expanded", String(!isSidebarCollapsed));
+}
+
+function setupPanning() {
+  canvasViewport.addEventListener("mousedown", (event) => {
+    if (event.button !== 2) return;
+    event.preventDefault();
+    isPanning = true;
+    panStart = {
+      x: event.clientX,
+      y: event.clientY,
+      left: canvasViewport.scrollLeft,
+      top: canvasViewport.scrollTop,
+    };
+    canvasViewport.classList.add("panning");
+  });
+
+  window.addEventListener("mousemove", (event) => {
+    if (!isPanning || !panStart) return;
+    const deltaX = event.clientX - panStart.x;
+    const deltaY = event.clientY - panStart.y;
+    canvasViewport.scrollLeft = panStart.left - deltaX;
+    canvasViewport.scrollTop = panStart.top - deltaY;
+  });
+
+  window.addEventListener("mouseup", (event) => {
+    if (event.button !== 2 || !isPanning) return;
+    isPanning = false;
+    panStart = null;
+    canvasViewport.classList.remove("panning");
+  });
+}
+
+function setupContextMenuBlock() {
+  document.addEventListener("contextmenu", (event) => {
+    if (event.target.closest && event.target.closest("#canvasViewport")) {
+      event.preventDefault();
+    }
+  });
+}
+
+function applyColorCoding() {
+  systems.forEach((system) => {
+    const colorInfo = getColorForSystem(system);
+    if (colorInfo.background) {
+      system.element.style.setProperty("--node-bg-color", colorInfo.background);
+      system.element.style.setProperty("--node-border-color", colorInfo.border ?? "transparent");
+    } else {
+      system.element.style.removeProperty("--node-bg-color");
+      system.element.style.removeProperty("--node-border-color");
+    }
+  });
+}
+
+function getColorForSystem(system) {
+  if (currentColorBy === "none") {
+    return { background: "", border: "" };
+  }
+  if (currentColorBy === "domains") {
+    const [firstDomain] = Array.from(system.domains);
+    if (!firstDomain) return { background: "", border: "" };
+    const definition = DOMAIN_LIST.find((d) => d.key === firstDomain);
+    const domainColor = definition?.color;
+    if (!domainColor) return { background: "", border: "" };
+    return { background: tintColor(domainColor, 0.85), border: domainColor };
+  }
+  let value = "";
+  if (currentColorBy === "functionOwner") value = system.functionOwner;
+  if (currentColorBy === "platformOwner") value = system.platformOwner;
+  if (currentColorBy === "businessOwner") value = system.businessOwner;
+  if (!value) return { background: "", border: "" };
+  const color = getValueColor(currentColorBy, value);
+  return { background: tintColor(color, 0.85), border: color };
+}
+
+function getValueColor(type, value) {
+  const map = ownerColorMaps[type];
+  if (!map) return "";
+  if (!map.has(value)) {
+    map.set(value, COLOR_POOL[map.size % COLOR_POOL.length]);
+  }
+  return map.get(value);
+}
+
+function tintColor(hex, amount = 0.85) {
+  if (!hex) return "";
+  const sanitized = hex.replace("#", "");
+  if (sanitized.length !== 6) {
+    return hex;
+  }
+  const num = parseInt(sanitized, 16);
+  const r = (num >> 16) & 255;
+  const g = (num >> 8) & 255;
+  const b = num & 255;
+  const mix = (channel) => Math.round(channel + (255 - channel) * amount);
+  return `rgba(${mix(r)}, ${mix(g)}, ${mix(b)}, 0.85)`;
 }
 
 document.addEventListener("DOMContentLoaded", init);

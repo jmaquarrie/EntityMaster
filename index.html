@@ -10,7 +10,13 @@
     <div class="app">
       <div class="workspace">
         <div class="canvas-shell">
-          <div class="canvas-toolbar">
+          <div id="canvasViewport">
+            <div id="canvasContent">
+              <svg id="connectionLayer"></svg>
+              <div id="canvas" tabindex="0"></div>
+            </div>
+          </div>
+          <div class="canvas-toolbar" aria-label="Canvas controls">
             <div class="toolbar-actions">
               <button id="addSystemBtn">Add System</button>
               <button id="clearFocusBtn" class="ghost">Clear Highlights</button>
@@ -21,49 +27,70 @@
               <button class="zoom-btn" data-direction="in" aria-label="Zoom in">+</button>
             </div>
           </div>
-          <div id="canvasViewport">
-            <div id="canvasContent">
-              <svg id="connectionLayer"></svg>
-              <div id="canvas" tabindex="0"></div>
-            </div>
-          </div>
         </div>
         <aside id="filterPanel" class="sidebar" aria-label="Filters">
-          <div class="sidebar-section">
-            <label class="field">
-              <span>Search Type</span>
-              <select id="searchType">
-                <option value="system">System</option>
-                <option value="domain">Domain</option>
-                <option value="platformOwner">Platform Owner</option>
+          <button id="filterPanelToggle" class="sidebar-toggle" aria-expanded="true">
+            Filters &amp; Search
+          </button>
+          <div class="sidebar-content">
+            <div class="sidebar-section">
+              <label class="field">
+                <span>Search Type</span>
+                <select id="searchType">
+                  <option value="system">System</option>
+                  <option value="domain">Domain</option>
+                  <option value="platformOwner">Platform Owner</option>
+                  <option value="businessOwner">Business Owner</option>
+                  <option value="functionOwner">Function Owner</option>
+                  <option value="entity">Entity</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Search</span>
+                <input type="text" id="searchInput" placeholder="Search…" />
+              </label>
+            </div>
+            <div class="sidebar-section">
+              <div class="section-title">Domains</div>
+              <div id="globalDomainChips" class="domain-chips"></div>
+            </div>
+            <div class="sidebar-section">
+              <div class="section-title">Platform Owner</div>
+              <input
+                type="text"
+                id="platformOwnerFilter"
+                placeholder="Filter by platform owner"
+                list="platformOwnerSuggestions"
+              />
+            </div>
+            <div class="sidebar-section">
+              <div class="section-title">Business Owner</div>
+              <input
+                type="text"
+                id="businessOwnerFilter"
+                placeholder="Filter by business owner"
+                list="businessOwnerSuggestions"
+              />
+            </div>
+            <div class="sidebar-section">
+              <div class="section-title">Function Owner</div>
+              <input
+                type="text"
+                id="functionOwnerFilter"
+                placeholder="Filter by function owner"
+                list="functionOwnerOptions"
+              />
+            </div>
+            <div class="sidebar-section">
+              <div class="section-title">Colour By</div>
+              <select id="colorBySelect">
+                <option value="none">None</option>
+                <option value="domains">Domains</option>
+                <option value="functionOwner">Function Owner</option>
                 <option value="businessOwner">Business Owner</option>
-                <option value="entity">Entity</option>
+                <option value="platformOwner">Platform Owner</option>
               </select>
-            </label>
-            <label class="field">
-              <span>Search</span>
-              <input type="text" id="searchInput" placeholder="Search…" />
-            </label>
-          </div>
-          <div class="sidebar-section">
-            <div class="section-title">Domains</div>
-            <div id="globalDomainChips" class="domain-chips"></div>
-          </div>
-          <div class="sidebar-section">
-            <div class="section-title">Platform Owner</div>
-            <input
-              type="text"
-              id="platformOwnerFilter"
-              placeholder="Filter by platform owner"
-            />
-          </div>
-          <div class="sidebar-section">
-            <div class="section-title">Business Owner</div>
-            <input
-              type="text"
-              id="businessOwnerFilter"
-              placeholder="Filter by business owner"
-            />
+            </div>
           </div>
         </aside>
       </div>
@@ -78,11 +105,30 @@
         </label>
         <label class="field">
           <span>Platform Owner</span>
-          <input type="text" id="platformOwnerInput" placeholder="Name or team" />
+          <input
+            type="text"
+            id="platformOwnerInput"
+            placeholder="Name or team"
+            list="platformOwnerSuggestions"
+          />
         </label>
         <label class="field">
           <span>Business Owner</span>
-          <input type="text" id="businessOwnerInput" placeholder="Name or team" />
+          <input
+            type="text"
+            id="businessOwnerInput"
+            placeholder="Name or team"
+            list="businessOwnerSuggestions"
+          />
+        </label>
+        <label class="field">
+          <span>Function Owner</span>
+          <input
+            type="text"
+            id="functionOwnerInput"
+            placeholder="Select or add"
+            list="functionOwnerOptions"
+          />
         </label>
         <section class="field">
           <div class="section-title">Entities</div>
@@ -97,6 +143,9 @@
           <div id="panelDomainChoices" class="domain-choices"></div>
         </section>
       </aside>
+      <datalist id="platformOwnerSuggestions"></datalist>
+      <datalist id="businessOwnerSuggestions"></datalist>
+      <datalist id="functionOwnerOptions"></datalist>
     </div>
     <script src="script.js"></script>
   </body>
