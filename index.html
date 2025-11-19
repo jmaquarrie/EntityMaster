@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EntityMaster Diagram</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <div class="workspace">
+        <div class="canvas-shell">
+          <div id="canvasViewport">
+          <div id="canvasContent">
+            <svg id="connectionLayer"></svg>
+            <svg id="entityLinkLayer"></svg>
+            <div id="canvas" tabindex="0"></div>
+            <div id="connectionHandleLayer" aria-hidden="true"></div>
+          </div>
+        </div>
+        <div class="brand-mark" aria-hidden="true">
+          <div class="brand-name">EntityMaster</div>
+          <div class="brand-version">Version 0.1</div>
+        </div>
+        <div class="canvas-toolbar" aria-label="Canvas controls">
+          <div class="toolbar-actions">
+            <button id="addSystemBtn">Add System</button>
+            <span id="fileNameDisplay" class="file-name" title="Click to rename">Untitled</span>
+          </div>
+          <div class="zoom-controls" aria-label="Zoom">
+            <div class="storage-controls" aria-label="Diagram storage">
+                <div class="icon-block">
+                  <button id="newDiagramBtn" class="icon-btn" title="Start new diagram" aria-label="Start new diagram">🆕</button>
+                  <div class="icon-label">New</div>
+                </div>
+                <div class="icon-block">
+                  <div class="save-control">
+                    <button id="saveDiagramBtn" class="icon-btn" title="Save diagram" aria-label="Save diagram">💾</button>
+                    <span id="saveStatus" class="save-status" aria-live="polite"></span>
+                  </div>
+                  <div class="icon-label">Save</div>
+                </div>
+                <div class="icon-block">
+                  <button id="loadDiagramBtn" class="icon-btn" title="Load diagram" aria-label="Load diagram">📂</button>
+                  <div class="icon-label">Load</div>
+                </div>
+                <div class="icon-block">
+                  <button id="shareDiagramBtn" class="icon-btn" title="Share diagram" aria-label="Share diagram">🔗</button>
+                  <div class="icon-label">Share</div>
+                </div>
+              </div>
+              <div class="icon-block">
+                <button id="settingsBtn" class="icon-btn" title="Diagram settings" aria-label="Diagram settings">⚙️</button>
+                <div class="icon-label">Settings</div>
+              </div>
+              <button class="zoom-btn" data-direction="out" aria-label="Zoom out">−</button>
+              <span id="zoomLabel">100%</span>
+              <button class="zoom-btn" data-direction="in" aria-label="Zoom in">+</button>
+            </div>
+          </div>
+        </div>
+        <aside id="filterPanel" class="sidebar collapsed" aria-label="Filters">
+          <button id="filterPanelToggle" class="sidebar-toggle" aria-expanded="false">
+            <span class="toggle-label">Filters &amp; Search</span>
+            <span class="toggle-icon" aria-hidden="true">+</span>
+          </button>
+          <div class="sidebar-content">
+            <div class="sidebar-section">
+              <label class="field">
+                <span>Search Type</span>
+                <select id="searchType">
+                  <option value="system">System</option>
+                  <option value="domain">Domain</option>
+                  <option value="platformOwner">Platform Owner</option>
+                  <option value="businessOwner">Business Owner</option>
+                  <option value="functionOwner">Function Owner</option>
+                  <option value="entity">Entity</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Search</span>
+                <input type="text" id="searchInput" placeholder="Search…" />
+              </label>
+            </div>
+            <div class="sidebar-section">
+              <div class="section-title">Domains</div>
+              <div id="globalDomainChips" class="domain-chips"></div>
+            </div>
+            <div class="sidebar-section">
+              <div class="section-title">Platform Owner</div>
+              <input
+                type="text"
+                id="platformOwnerFilter"
+                placeholder="Filter by platform owner"
+                list="platformOwnerSuggestions"
+              />
+            </div>
+            <div class="sidebar-section">
+              <div class="section-title">Business Owner</div>
+              <input
+                type="text"
+                id="businessOwnerFilter"
+                placeholder="Filter by business owner"
+                list="businessOwnerSuggestions"
+              />
+            </div>
+            <div class="sidebar-section">
+              <div class="section-title">Function Owner</div>
+              <input
+                type="text"
+                id="functionOwnerFilter"
+                placeholder="Filter by function owner"
+                list="functionOwnerOptions"
+              />
+            </div>
+            <div class="sidebar-section">
+              <label class="field">
+                <span>System of Record</span>
+                <select id="sorFilter">
+                  <option value="any">Any</option>
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              </label>
+            </div>
+            <div class="sidebar-actions">
+              <button id="resetFiltersBtn" type="button">Reset</button>
+              <button id="visualizeBtn" type="button" class="ghost">Visual</button>
+            </div>
+          </div>
+        </aside>
+      </div>
+      <aside id="systemPanel" class="panel hidden" aria-live="polite">
+        <div class="panel-header">
+          <h2 id="panelTitle">System</h2>
+          <button id="closePanelBtn" aria-label="Close panel">×</button>
+        </div>
+        <div class="field-top-row name-row">
+          <select id="systemIconSelect" class="icon-inline-select" aria-label="System icon">
+            <option value="cube">⬛</option>
+            <option value="database">🗄️</option>
+            <option value="cloud">☁️</option>
+            <option value="server">🖥️</option>
+            <option value="project">📊</option>
+            <option value="building">🏢</option>
+            <option value="network">🌐</option>
+            <option value="growth">📈</option>
+            <option value="shield">🛡️</option>
+            <option value="rocket">🚀</option>
+          </select>
+          <label class="mini-toggle" for="spreadsheetSelect">
+            <span>Spreadsheet?</span>
+            <select id="spreadsheetSelect">
+              <option value="no">No</option>
+              <option value="yes">Yes</option>
+            </select>
+          </label>
+        </div>
+        <label class="field field-inline-toggle">
+          <div class="field-top-row name-row">
+            <div class="name-left">
+              <span>System Name</span>
+            </div>
+          </div>
+          <input type="text" id="systemNameInput" />
+        </label>
+        <label class="field">
+          <span>Platform Owner</span>
+          <input
+            type="text"
+            id="platformOwnerInput"
+            placeholder="Name or team"
+            list="platformOwnerSuggestions"
+          />
+        </label>
+        <label class="field">
+          <span>Business Owner</span>
+          <input
+            type="text"
+            id="businessOwnerInput"
+            placeholder="Name or team"
+            list="businessOwnerSuggestions"
+          />
+        </label>
+        <label class="field">
+          <span>Function Owner</span>
+          <input
+            type="text"
+            id="functionOwnerInput"
+            placeholder="Select or add"
+            list="functionOwnerOptions"
+          />
+        </label>
+        <label class="field">
+          <span>File URL</span>
+          <input type="text" id="fileUrlInput" placeholder="https://" />
+        </label>
+        <section class="field">
+          <div class="section-title">Entities</div>
+          <form id="entityForm">
+            <input type="text" id="entityInput" placeholder="Add entity" required />
+            <button type="submit">Add</button>
+          </form>
+          <ul id="entityList" class="entity-list"></ul>
+        </section>
+        <section class="field">
+          <div class="section-title">Domains</div>
+          <div id="panelDomainChoices" class="domain-choices"></div>
+        </section>
+        <label class="field">
+          <span>System Description</span>
+          <textarea
+            id="systemDescriptionInput"
+            rows="2"
+            placeholder="Short description of the system"
+          ></textarea>
+        </label>
+        <label class="field">
+          <span>Comments</span>
+          <textarea id="systemCommentsInput" rows="3" placeholder="Add notes or context"></textarea>
+        </label>
+      </aside>
+      <div id="bulkModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="bulkModalTitle">
+        <div class="modal-card">
+          <div class="modal-header">
+            <h3 id="bulkModalTitle">Bulk Edit Systems</h3>
+            <button id="closeBulkModal" class="icon-btn" type="button" aria-label="Close bulk edit">×</button>
+          </div>
+          <p class="modal-description">Apply owner or domain changes to every system inside your selection.</p>
+          <ul id="bulkSelectionList" class="selection-list"></ul>
+          <form id="bulkForm">
+            <label class="field">
+              <span>Platform Owner</span>
+              <input
+                type="text"
+                id="bulkPlatformOwner"
+                placeholder="Leave blank to keep current"
+                list="platformOwnerSuggestions"
+              />
+            </label>
+            <label class="field">
+              <span>Business Owner</span>
+              <input
+                type="text"
+                id="bulkBusinessOwner"
+                placeholder="Leave blank to keep current"
+                list="businessOwnerSuggestions"
+              />
+            </label>
+            <label class="field">
+              <span>Function Owner</span>
+              <input
+                type="text"
+                id="bulkFunctionOwner"
+                placeholder="Leave blank to keep current"
+                list="functionOwnerOptions"
+              />
+            </label>
+            <div class="field">
+              <div class="section-title">Domains</div>
+              <p class="modal-hint">Click a domain to toggle between Add → Remove → Ignore.</p>
+              <div id="bulkDomainControls" class="bulk-domain-controls"></div>
+            </div>
+            <div class="modal-actions">
+              <button type="button" id="cancelBulkBtn" class="ghost">Cancel</button>
+              <button type="submit">Apply Changes</button>
+            </div>
+          </form>
+        </div>
+      </div>
+      <div
+        id="saveManagerModal"
+        class="modal hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="saveModalTitle"
+      >
+        <div class="modal-card">
+          <div class="modal-header">
+            <h3 id="saveModalTitle">Saved Diagrams</h3>
+            <button id="closeSaveModal" class="icon-btn" type="button" aria-label="Close saved diagrams">×</button>
+          </div>
+          <p class="modal-description">Load, rename, or delete any saved snapshot.</p>
+          <div id="saveList" class="save-list"></div>
+        </div>
+      </div>
+      <div id="settingsModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
+        <div class="modal-card">
+          <div class="modal-header">
+            <h3 id="settingsModalTitle">Diagram Settings</h3>
+            <button id="closeSettingsModal" class="icon-btn" type="button" aria-label="Close settings">×</button>
+          </div>
+          <label class="field">
+            <span>Filter Mode</span>
+            <select id="filterModeSelect">
+              <option value="fade">Fade</option>
+              <option value="hide">Hide</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Colour By</span>
+            <select id="colorBySelect">
+              <option value="none">None</option>
+              <option value="domains">Domains</option>
+              <option value="functionOwner">Function Owner</option>
+              <option value="businessOwner">Business Owner</option>
+              <option value="platformOwner">Platform Owner</option>
+            </select>
+          </label>
+          <section class="settings-section">
+            <div class="section-title">Custom Domains</div>
+            <form id="customDomainForm" class="settings-inline-form">
+              <input
+                type="text"
+                id="customDomainInput"
+                placeholder="Add a domain name"
+                aria-label="Custom domain name"
+              />
+              <button type="submit">Add</button>
+            </form>
+            <ul id="customDomainList" class="token-list"></ul>
+          </section>
+        </div>
+      </div>
+      <div id="visualModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="visualModalTitle">
+        <div class="modal-card visual-modal-card">
+          <div class="modal-header">
+            <h3 id="visualModalTitle">Condensed Visual</h3>
+            <button id="closeVisualModal" class="icon-btn" type="button" aria-label="Close condensed visual">×</button>
+          </div>
+          <p class="modal-description">Systems that match your current filters, pulled closer together for a single-screen view.</p>
+          <div id="visualContainer" class="visual-container">
+            <svg id="visualConnections" class="visual-connections" aria-hidden="true"></svg>
+            <div id="visualNodes" class="visual-nodes"></div>
+          </div>
+        </div>
+      </div>
+      <div id="connectionLabelEditor" class="connection-label-editor hidden">
+        <input
+          type="text"
+          id="connectionLabelField"
+          placeholder="Manual / Automated"
+          list="connectionLabelOptions"
+        />
+      </div>
+      <div id="newDiagramModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="newDiagramModalTitle">
+        <div class="modal-card">
+          <div class="modal-header">
+            <h3 id="newDiagramModalTitle">Start Fresh?</h3>
+            <button id="closeNewDiagramModal" class="icon-btn" type="button" aria-label="Close start fresh dialog">×</button>
+          </div>
+          <p class="modal-description">Are you sure you want to start fresh? Any unsaved changes will be lost.</p>
+          <div class="modal-actions">
+            <button type="button" id="newDiagramConfirmBtn">Yes</button>
+            <button type="button" id="newDiagramSaveCurrentBtn">Save Current</button>
+            <button type="button" id="newDiagramCancelBtn" class="ghost">No</button>
+            <button type="button" id="newDiagramCloseBtn" class="ghost">Close</button>
+          </div>
+        </div>
+      </div>
+      <datalist id="platformOwnerSuggestions"></datalist>
+      <datalist id="businessOwnerSuggestions"></datalist>
+      <datalist id="functionOwnerOptions"></datalist>
+      <datalist id="connectionLabelOptions">
+        <option value="Manual"></option>
+        <option value="Automated"></option>
+      </datalist>
+      <button id="undoDeleteBtn" class="undo-button hidden" type="button">Undo delete</button>
+    </div>
+    <script src="script.js"></script>
+  </body>
+</html>
