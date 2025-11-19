@@ -1,5 +1,5 @@
-const CANVAS_WIDTH = 2400;
-const CANVAS_HEIGHT = 1600;
+const CANVAS_WIDTH = 7200;
+const CANVAS_HEIGHT = 4800;
 const DEFAULT_NODE_WIDTH = 220;
 const DEFAULT_NODE_HEIGHT = 160;
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -9,6 +9,7 @@ const MAX_ZOOM = 1.5;
 const ZOOM_STEP = 0.1;
 const STORAGE_KEY = "entityMasterSaves";
 const DEFAULT_ICON = "fa-solid fa-cube";
+const GRID_SIZE = 40;
 
 const FUNCTION_OWNER_DEFAULTS = ["IT", "Fleet", "HR", "Payroll", "OCUOne", "Data", "L&D"];
 
@@ -114,6 +115,7 @@ const filterModeSelect = document.getElementById("filterModeSelect");
 const sorFilterSelect = document.getElementById("sorFilter");
 const systemIconSelect = document.getElementById("systemIconSelect");
 const systemCommentsInput = document.getElementById("systemCommentsInput");
+const systemDescriptionInput = document.getElementById("systemDescriptionInput");
 const saveStatusLabel = document.getElementById("saveStatus");
 const spreadsheetSelect = document.getElementById("spreadsheetSelect");
 const settingsBtn = document.getElementById("settingsBtn");
@@ -231,6 +233,10 @@ function init() {
     if (!activePanelSystem) return;
     activePanelSystem.comments = systemCommentsInput.value;
   });
+  systemDescriptionInput?.addEventListener("input", () => {
+    if (!activePanelSystem) return;
+    activePanelSystem.description = systemDescriptionInput.value;
+  });
   connectionLabelField?.addEventListener("keydown", handleConnectionLabelKeyDown);
   connectionLabelField?.addEventListener("blur", commitConnectionLabel);
   settingsBtn?.addEventListener("click", openSettingsModal);
@@ -310,17 +316,20 @@ function addSystem({
   entities = [],
   icon = DEFAULT_ICON,
   comments = "",
+  description = "",
   isSpreadsheet = false,
 } = {}) {
   const resolvedId = id || `sys-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
   const defaultPosition = getNewSystemPosition();
   const resolvedX = typeof x === "number" ? x : defaultPosition.x;
   const resolvedY = typeof y === "number" ? y : defaultPosition.y;
+  const snappedX = snapCoordinate(resolvedX);
+  const snappedY = snapCoordinate(resolvedY);
   const system = {
     id: resolvedId,
     name: name || `System ${systemCounter++}`,
-    x: resolvedX,
-    y: resolvedY,
+    x: snappedX,
+    y: snappedY,
     entities: entities.map((entity) =>
       typeof entity === "string" ? { name: entity, isSor: false } : { name: entity.name, isSor: !!entity.isSor }
     ),
@@ -330,6 +339,7 @@ function addSystem({
     functionOwner: functionOwner || "",
     icon: icon || DEFAULT_ICON,
     comments: comments || "",
+    description: description || "",
     isSpreadsheet: !!isSpreadsheet,
     element: document.createElement("div"),
   };
@@ -439,8 +449,8 @@ function startDragging(event, system) {
   function onMove(moveEvent) {
     const deltaX = (moveEvent.clientX - startX) / currentZoom;
     const deltaY = (moveEvent.clientY - startY) / currentZoom;
-    system.x = initialX + deltaX;
-    system.y = initialY + deltaY;
+    system.x = snapCoordinate(initialX + deltaX);
+    system.y = snapCoordinate(initialY + deltaY);
     positionSystemElement(system);
     updateConnectionPositions();
     ensureCanvasBoundsForSystem(system);
@@ -468,14 +478,16 @@ function startLinking(event, system) {
   line.setAttribute("stroke-linejoin", "round");
   connectionLayer.appendChild(line);
 
-  const start = getSystemCenter(system);
-  line.setAttribute("d", getAngledPath(start, start));
+  const initialCoords = getSystemCenter(system);
+  const startPoint = getEdgeAttachmentPoint(system, initialCoords);
+  line.setAttribute("d", getAngledPath(startPoint, initialCoords));
 
   linkingState = { source: system, line };
 
   function onMove(moveEvent) {
     const coords = getCanvasRelativeCoords(moveEvent.clientX, moveEvent.clientY);
-    line.setAttribute("d", getAngledPath(start, coords));
+    const updatedStart = getEdgeAttachmentPoint(system, coords);
+    line.setAttribute("d", getAngledPath(updatedStart, coords));
   }
 
   function onUp(upEvent) {
@@ -528,8 +540,7 @@ function drawConnections() {
     const fromSystem = systems.find((s) => s.id === connection.from);
     const toSystem = systems.find((s) => s.id === connection.to);
     if (!fromSystem || !toSystem) return;
-    const fromPos = getSystemCenter(fromSystem);
-    const toPos = getSystemCenter(toSystem);
+    const { from: fromPos, to: toPos } = getConnectionPoints(fromSystem, toSystem);
     const group = document.createElementNS(SVG_NS, "g");
     group.classList.add("connection-group");
     group.dataset.id = connection.id;
@@ -567,9 +578,57 @@ function updateConnectionPositions() {
 }
 
 function getSystemCenter(system) {
+  const rect = getSystemRect(system);
   return {
-    x: system.x + system.element.offsetWidth / 2,
-    y: system.y + system.element.offsetHeight / 2,
+    x: rect.x + rect.width / 2,
+    y: rect.y + rect.height / 2,
+  };
+}
+
+function getSystemRect(system) {
+  if (!system) {
+    return { x: 0, y: 0, width: DEFAULT_NODE_WIDTH, height: DEFAULT_NODE_HEIGHT };
+  }
+  return {
+    x: typeof system.x === "number" ? system.x : 0,
+    y: typeof system.y === "number" ? system.y : 0,
+    width: system.element?.offsetWidth || DEFAULT_NODE_WIDTH,
+    height: system.element?.offsetHeight || DEFAULT_NODE_HEIGHT,
+  };
+}
+
+function getEdgeAttachmentPoint(system, targetPoint) {
+  const rect = getSystemRect(system);
+  const center = {
+    x: rect.x + rect.width / 2,
+    y: rect.y + rect.height / 2,
+  };
+  const target = targetPoint || center;
+  const dx = target.x - center.x;
+  const dy = target.y - center.y;
+  const absDx = Math.abs(dx);
+  const absDy = Math.abs(dy);
+  if (absDx === 0 && absDy === 0) {
+    return center;
+  }
+  const halfWidth = rect.width / 2;
+  const halfHeight = rect.height / 2;
+  let scale;
+  if (absDx * halfHeight > absDy * halfWidth) {
+    scale = halfWidth / (absDx || 1);
+  } else {
+    scale = halfHeight / (absDy || 1);
+  }
+  return {
+    x: center.x + dx * scale,
+    y: center.y + dy * scale,
+  };
+}
+
+function getConnectionPoints(fromSystem, toSystem) {
+  return {
+    from: getEdgeAttachmentPoint(fromSystem, getSystemCenter(toSystem)),
+    to: getEdgeAttachmentPoint(toSystem, getSystemCenter(fromSystem)),
   };
 }
 
@@ -581,6 +640,9 @@ function getConnectionLabelPosition(from, to) {
 }
 
 function getHandleAnchorPosition(from, to) {
+  if (from.x === to.x && from.y === to.y) {
+    return { ...from };
+  }
   const angle = Math.atan2(to.y - from.y, to.x - from.x);
   return {
     x: from.x + Math.cos(angle) * HANDLE_OFFSET,
@@ -707,6 +769,9 @@ function openPanel(system) {
   syncIconSelectValue(system.icon);
   if (systemCommentsInput) {
     systemCommentsInput.value = system.comments || "";
+  }
+  if (systemDescriptionInput) {
+    systemDescriptionInput.value = system.description || "";
   }
   renderEntityList(system);
   syncPanelDomainSelection(system);
@@ -1633,6 +1698,7 @@ function serializeState() {
       functionOwner: system.functionOwner,
       icon: system.icon,
       comments: system.comments,
+      description: system.description,
       isSpreadsheet: system.isSpreadsheet,
       entities: system.entities.map((entity) => ({ name: entity.name, isSor: !!entity.isSor })),
     })),
@@ -1672,6 +1738,7 @@ function loadSerializedState(snapshot) {
       entities: systemData.entities,
       icon: systemData.icon,
       comments: systemData.comments,
+      description: systemData.description,
       isSpreadsheet: !!systemData.isSpreadsheet,
     });
   });
@@ -1749,6 +1816,14 @@ function getAngledPath(from, to) {
   return `M ${from.x} ${from.y} L ${midX} ${from.y} L ${midX} ${to.y} L ${to.x} ${to.y}`;
 }
 
+function snapCoordinate(value) {
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    return 0;
+  }
+  const snapped = Math.round(value / GRID_SIZE) * GRID_SIZE;
+  return Math.max(0, snapped);
+}
+
 function setCanvasDimensions(width, height) {
   const minWidth = canvasViewport ? canvasViewport.clientWidth / currentZoom : width;
   const minHeight = canvasViewport ? canvasViewport.clientHeight / currentZoom : height;
@@ -1777,13 +1852,15 @@ function ensureCanvasBoundsForSystem(system) {
 
 function getNewSystemPosition() {
   if (!canvasViewport) {
-    return { x: 120, y: 120 };
+    return { x: snapCoordinate(120), y: snapCoordinate(120) };
   }
   const centerX = (canvasViewport.scrollLeft + canvasViewport.clientWidth / 2) / currentZoom;
   const centerY = (canvasViewport.scrollTop + canvasViewport.clientHeight / 2) / currentZoom;
+  const rawX = Math.max(40, centerX - DEFAULT_NODE_WIDTH / 2);
+  const rawY = Math.max(40, centerY - DEFAULT_NODE_HEIGHT / 2);
   return {
-    x: Math.max(40, centerX - DEFAULT_NODE_WIDTH / 2),
-    y: Math.max(40, centerY - DEFAULT_NODE_HEIGHT / 2),
+    x: snapCoordinate(rawX),
+    y: snapCoordinate(rawY),
   };
 }
 

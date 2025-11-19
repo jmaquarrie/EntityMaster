@@ -4,8 +4,8 @@
   background: #edf0f7;
   --panel-width: 340px;
   --filter-width: 260px;
-  --canvas-width: 2400px;
-  --canvas-height: 1600px;
+  --canvas-width: 7200px;
+  --canvas-height: 4800px;
   --domain-people: #5d8dee;
   --domain-assets: #c266ff;
   --domain-org: #ffa447;
@@ -175,6 +175,13 @@ button.ghost {
   transform-origin: top left;
   min-width: 100%;
   min-height: 100%;
+  background-image: linear-gradient(
+      to right,
+      rgba(15, 20, 36, 0.06) 1px,
+      transparent 1px
+    ),
+    linear-gradient(to bottom, rgba(15, 20, 36, 0.06) 1px, transparent 1px);
+  background-size: 40px 40px;
 }
 
 #canvas {
@@ -448,7 +455,7 @@ button.ghost {
 }
 
 .system-node.selected {
-  border-width: 3px;
+  border-width: 5px;
 }
 
 .system-node.dimmed {
@@ -467,7 +474,7 @@ button.ghost {
   background: rgba(255, 255, 255, 0.8);
   backdrop-filter: blur(12px);
   border-radius: 18px;
-  padding: 0.5rem 0.75rem 1rem;
+  padding: 1rem 1rem 1rem;
   box-shadow: 0 12px 30px rgba(15, 20, 50, 0.25);
   display: flex;
   flex-direction: column;
@@ -535,6 +542,16 @@ button.ghost {
 
 .field textarea {
   resize: vertical;
+}
+
+.sidebar-section input[type="text"],
+.sidebar-section input[list] {
+  border: 1px solid #c7cce2;
+  border-radius: 12px;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.9rem;
+  background: #fff;
+  font-family: inherit;
 }
 
 .domain-chips {
