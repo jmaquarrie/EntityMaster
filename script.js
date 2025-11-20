@@ -9,6 +9,7 @@ const MAX_ZOOM = 1.5;
 const ZOOM_STEP = 0.1;
 const STORAGE_KEY = "entityMasterSaves";
 const DEFAULT_ICON = "cube";
+const DEFAULT_OBJECT_COLOR = "#d1d5db";
 const ICON_LIBRARY = {
   cube: "⬛",
   database: "🗄️",
@@ -92,6 +93,7 @@ let systemHighlightState = new Map();
 let currentFileName = "Untitled";
 let fileNameBeforeEdit = "Untitled";
 let marqueePreviewIds = new Set();
+let relationFocus = null;
 
 const canvasContent = document.getElementById("canvasContent");
 const canvasViewport = document.getElementById("canvasViewport");
@@ -169,6 +171,8 @@ const newDiagramModal = document.getElementById("newDiagramModal");
 const objectModal = document.getElementById("objectModal");
 const objectLabelInput = document.getElementById("objectLabelInput");
 const objectTypeSelect = document.getElementById("objectTypeSelect");
+const objectColorInput = document.getElementById("objectColorInput");
+const objectCommentsInput = document.getElementById("objectCommentsInput");
 const saveObjectBtn = document.getElementById("saveObjectBtn");
 const closeObjectModalBtn = document.getElementById("closeObjectModal");
 const closeNewDiagramModalBtn = document.getElementById("closeNewDiagramModal");
@@ -199,7 +203,7 @@ function init() {
   canvas.addEventListener("pointerdown", handleCanvasPointerDown);
   createSelectionBox();
   addSystemBtn.addEventListener("click", () => addSystem());
-  addObjectBtn?.addEventListener("click", toggleObjectMenu);
+  addObjectBtn?.addEventListener("click", handleAddObjectClick);
   fileNameDisplay?.addEventListener("click", beginFileNameEdit);
   fileNameDisplay?.addEventListener("keydown", handleFileNameKeyDown);
   fileNameDisplay?.addEventListener("blur", commitFileNameEdit);
@@ -207,8 +211,6 @@ function init() {
   entityForm.addEventListener("submit", handleAddEntity);
   canvas.addEventListener("click", handleCanvasClick);
   connectionLayer.addEventListener("click", handleConnectionLayerClick);
-  objectMenu?.addEventListener("click", handleObjectMenuClick);
-  document.addEventListener("click", handleDocumentClickForObjectMenu);
   saveObjectBtn?.addEventListener("click", commitObjectChanges);
   closeObjectModalBtn?.addEventListener("click", closeObjectModal);
   customDomainForm?.addEventListener("submit", handleCustomDomainSubmit);
@@ -562,6 +564,8 @@ function addSystem({
   isObject = false,
   shapeType = "gateway",
   shapeLabel = "",
+  shapeColor = DEFAULT_OBJECT_COLOR,
+  shapeComments = "",
 } = {}) {
   const resolvedId = id || `sys-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
   const defaultPosition = getNewSystemPosition();
@@ -590,6 +594,8 @@ function addSystem({
     isObject: !!isObject,
     shapeType: resolvedShape,
     shapeLabel: shapeLabel || name || OBJECT_TYPES[resolvedShape].label,
+    shapeColor: shapeColor || DEFAULT_OBJECT_COLOR,
+    shapeComments: shapeComments || "",
     element: document.createElement("div"),
     isEntityExpanded: false,
     forceEntityExpand: false,
@@ -842,14 +848,19 @@ function startLinking(event, system) {
 }
 
 function addConnection(source, target) {
-  const exists = connections.some(
+  const existing = connections.find(
     (conn) =>
       (conn.from === source.id && conn.to === target.id) ||
       (conn.from === target.id && conn.to === source.id)
   );
-  if (exists) return;
+  if (existing) {
+    existing.bidirectional = true;
+    drawConnections();
+    updateHighlights();
+    return;
+  }
 
-  connections.push({ id: `conn-${source.id}-${target.id}`, from: source.id, to: target.id, label: "" });
+  connections.push({ id: `conn-${source.id}-${target.id}`, from: source.id, to: target.id, label: "", bidirectional: false });
   drawConnections();
   updateHighlights();
 }
@@ -888,6 +899,9 @@ function drawConnections() {
     }
     path.setAttribute("d", getAngledPath(fromPos, toPos));
     path.setAttribute("marker-end", "url(#connection-arrow)");
+    if (connection.bidirectional) {
+      path.setAttribute("marker-start", "url(#connection-arrow)");
+    }
     group.appendChild(path);
 
     const label = document.createElementNS(SVG_NS, "text");
@@ -1130,30 +1144,16 @@ function openConnectionLabelEditor(connection, event) {
   });
 }
 
-function toggleObjectMenu(event) {
-  event?.stopPropagation();
-  if (!objectMenu || !addObjectBtn) return;
-  const rect = addObjectBtn.getBoundingClientRect();
-  objectMenu.style.left = `${rect.left}px`;
-  objectMenu.style.top = `${rect.bottom + 6}px`;
-  objectMenu.classList.toggle("hidden");
-}
-
-function handleObjectMenuClick(event) {
-  const target = event.target.closest("button[data-shape]");
-  if (!target) return;
-  const shape = target.dataset.shape;
-  const node = addSystem({ isObject: true, shapeType: shape, name: OBJECT_TYPES[shape]?.label || "Object" });
+function handleAddObjectClick() {
+  const node = addSystem({
+    isObject: true,
+    shapeType: "gateway",
+    name: OBJECT_TYPES.gateway.label,
+    shapeColor: DEFAULT_OBJECT_COLOR,
+  });
   if (node) {
     selectSystem(node);
   }
-  objectMenu?.classList.add("hidden");
-}
-
-function handleDocumentClickForObjectMenu(event) {
-  if (!objectMenu || objectMenu.classList.contains("hidden")) return;
-  if (objectMenu.contains(event.target) || addObjectBtn.contains(event.target)) return;
-  objectMenu.classList.add("hidden");
 }
 
 function closeConnectionLabelEditor() {
@@ -1205,6 +1205,7 @@ function handleConnectionLabelKeyDown(event) {
 }
 
 function selectSystem(system) {
+  relationFocus = null;
   selectedSystemId = system.id;
   if (system.isObject) {
     activePanelSystem = null;
@@ -1245,6 +1246,12 @@ function openObjectModal(system) {
   activeObjectNode = system;
   objectLabelInput.value = system.shapeLabel || "";
   objectTypeSelect.value = system.shapeType || "gateway";
+  if (objectColorInput) {
+    objectColorInput.value = system.shapeColor || DEFAULT_OBJECT_COLOR;
+  }
+  if (objectCommentsInput) {
+    objectCommentsInput.value = system.shapeComments || "";
+  }
   objectModal.classList.remove("hidden");
 }
 
@@ -1261,6 +1268,8 @@ function commitObjectChanges() {
   const def = OBJECT_TYPES[typeKey] || OBJECT_TYPES.gateway;
   activeObjectNode.shapeType = typeKey;
   activeObjectNode.shapeLabel = objectLabelInput.value.trim() || def.label;
+  activeObjectNode.shapeColor = objectColorInput?.value || DEFAULT_OBJECT_COLOR;
+  activeObjectNode.shapeComments = objectCommentsInput?.value.trim() || "";
   renderObjectLabel(activeObjectNode);
   closeObjectModal();
 }
@@ -1440,6 +1449,7 @@ function renderObjectLabel(system) {
   const shape = system.element.querySelector(".object-shape");
   if (shape) {
     shape.className = `object-shape ${def.className}`;
+    shape.style.setProperty("--shape-color", system.shapeColor || DEFAULT_OBJECT_COLOR);
   }
   const textNode = system.element.querySelector(".object-text");
   if (textNode) {
@@ -1739,6 +1749,8 @@ function cloneSystemData(system) {
     isObject: system.isObject,
     shapeType: system.shapeType,
     shapeLabel: system.shapeLabel,
+    shapeColor: system.shapeColor,
+    shapeComments: system.shapeComments,
     entities: system.entities.map((entity) => ({ name: entity.name, isSor: !!entity.isSor })),
   };
 }
@@ -1766,6 +1778,7 @@ function resetFilters({ alsoClearSelection = false } = {}) {
   functionOwnerFilterText = "";
   searchQuery = "";
   sorFilterValue = "any";
+  relationFocus = null;
   clearEntityLinkHighlight(false);
   if (alsoClearSelection) {
     selectedSystemId = null;
@@ -1790,8 +1803,10 @@ function handleClearHighlights() {
 
 function updateHighlights() {
   const connectedSet = selectedSystemId ? getImmediateConnectedSystemIds(selectedSystemId) : null;
+  const focusActive = !!relationFocus;
 
   const filtersActive =
+    focusActive ||
     activeDomainFilters.size > 0 ||
     !!platformOwnerFilterText ||
     !!businessOwnerFilterText ||
@@ -1808,7 +1823,9 @@ function updateHighlights() {
   systems.forEach((system) => {
     let highlight = true;
 
-    if (selectedSystemId) {
+    if (relationFocus) {
+      highlight = relationFocus.visibleIds.has(system.id);
+    } else if (selectedSystemId) {
       highlight = connectedSet ? connectedSet.has(system.id) : false;
     } else if (filtersActive) {
       highlight = systemMatchesFilters(system);
@@ -1840,6 +1857,7 @@ function updateHighlights() {
 
 function hasActiveFilters() {
   return (
+    !!relationFocus ||
     activeDomainFilters.size > 0 ||
     !!platformOwnerFilterText ||
     !!businessOwnerFilterText ||
@@ -1859,6 +1877,26 @@ function getImmediateConnectedSystemIds(startId) {
     }
   });
   return visited;
+}
+
+function getRelationFocusIds(sourceId, mode) {
+  const related = new Set([sourceId]);
+  connections.forEach((conn) => {
+    if (mode === "children" && conn.from === sourceId) {
+      related.add(conn.to);
+    }
+    if (mode === "parents" && conn.to === sourceId) {
+      related.add(conn.from);
+    }
+  });
+  return related;
+}
+
+function focusOnSystemRelations(system, mode) {
+  relationFocus = { sourceId: system.id, mode, visibleIds: getRelationFocusIds(system.id, mode) };
+  selectedSystemId = system.id;
+  clearMultiSelect();
+  updateHighlights();
 }
 
 function systemMatchesFilters(system) {
@@ -2152,6 +2190,8 @@ function handleSystemContextMenu(event, system) {
     : [
         { label: "Clone", onClick: () => cloneSystem(system) },
         { label: "Edit", onClick: () => selectSystem(system) },
+        { label: "Show children", onClick: () => focusOnSystemRelations(system, "children") },
+        { label: "Show parents", onClick: () => focusOnSystemRelations(system, "parents") },
         { label: "Delete", onClick: () => handleDeleteSystem(system) },
       ];
   openContextMenu(menuOptions, event.pageX, event.pageY);
@@ -2774,6 +2814,8 @@ function serializeState() {
       isObject: system.isObject,
       shapeType: system.shapeType,
       shapeLabel: system.shapeLabel,
+      shapeColor: system.shapeColor,
+      shapeComments: system.shapeComments,
       entities: system.entities.map((entity) => ({ name: entity.name, isSor: !!entity.isSor })),
     })),
     connections: connections.map((connection) => ({ ...connection })),
@@ -2831,12 +2873,15 @@ function loadSerializedState(snapshot) {
       isObject: !!systemData.isObject,
       shapeType: systemData.shapeType,
       shapeLabel: systemData.shapeLabel,
+      shapeColor: systemData.shapeColor,
+      shapeComments: systemData.shapeComments,
     });
   });
   connections.push(
     ...(snapshot.connections || []).map((connection) => ({
       ...connection,
       label: connection.label || "",
+      bidirectional: !!connection.bidirectional,
     }))
   );
   drawConnections();

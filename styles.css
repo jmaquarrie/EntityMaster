@@ -342,25 +342,25 @@ button.ghost {
 }
 
 .direction-adder.top {
-  top: -12px;
+  top: -18px;
   left: 50%;
   transform: translateX(-50%);
 }
 
 .direction-adder.bottom {
-  bottom: -12px;
+  bottom: -18px;
   left: 50%;
   transform: translateX(-50%);
 }
 
 .direction-adder.left {
-  left: -12px;
+  left: -18px;
   top: 50%;
   transform: translateY(-50%);
 }
 
 .direction-adder.right {
-  right: -12px;
+  right: -18px;
   top: 50%;
   transform: translateY(-50%);
 }
@@ -541,12 +541,12 @@ button.ghost {
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 10px auto;
-  width: 120px;
-  height: 80px;
+  margin: 8px auto;
+  width: 148px;
+  height: 108px;
   color: #222;
   font-weight: 600;
-  background: #f5f7fb;
+  background: var(--shape-color, #d1d5db);
 }
 
 .shape-gateway {
@@ -557,18 +557,6 @@ button.ghost {
 .shape-start,
 .shape-end {
   border-radius: 999px;
-}
-
-.shape-event {
-  background: #e6f4ff;
-}
-
-.shape-start {
-  background: #e5f8ef;
-}
-
-.shape-end {
-  background: #ffecec;
 }
 
 .object-text {
