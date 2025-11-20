@@ -14,6 +14,7 @@
           <div id="canvasContent">
             <svg id="connectionLayer"></svg>
             <svg id="entityLinkLayer"></svg>
+            <div id="groupLayer"></div>
             <div id="canvas" tabindex="0"></div>
             <div id="connectionHandleLayer" aria-hidden="true"></div>
           </div>
@@ -364,6 +365,27 @@
             </form>
             <ul id="customDomainList" class="token-list"></ul>
           </section>
+        </div>
+      </div>
+      <div
+        id="groupColorModal"
+        class="modal hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="groupColorModalTitle"
+      >
+        <div class="modal-card">
+          <div class="modal-header">
+            <h3 id="groupColorModalTitle">Group Colour</h3>
+            <button id="closeGroupColorModal" aria-label="Close group colour modal">×</button>
+          </div>
+          <label class="field">
+            <span>Colour</span>
+            <input type="color" id="groupColorInput" value="#ffffff" />
+          </label>
+          <div class="modal-actions">
+            <button id="saveGroupColorBtn" type="button">Save</button>
+          </div>
         </div>
       </div>
       <div id="visualModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="visualModalTitle">

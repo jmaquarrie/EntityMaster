@@ -46,6 +46,7 @@ const OBJECT_TYPES = {
   end: { label: "End", className: "shape-end" },
 };
 const connections = [];
+const groups = [];
 let canvasWidth = CANVAS_WIDTH;
 let canvasHeight = CANVAS_HEIGHT;
 const activeDomainFilters = new Set();
@@ -85,6 +86,7 @@ let lastDeletedSnapshot = null;
 let saveStatusTimer = null;
 let editingConnectionId = null;
 let editingConnectionOriginalLabel = "";
+let editingGroupId = null;
 const multiSelectedIds = new Set();
 const suppressClickForIds = new Set();
 let undoTimer = null;
@@ -123,6 +125,7 @@ const canvasViewport = document.getElementById("canvasViewport");
 const canvas = document.getElementById("canvas");
 const connectionLayer = document.getElementById("connectionLayer");
 const entityLinkLayer = document.getElementById("entityLinkLayer");
+const groupLayer = document.getElementById("groupLayer");
 const connectionHandleLayer = document.getElementById("connectionHandleLayer");
 const addSystemBtn = document.getElementById("addSystemBtn");
 const addObjectBtn = document.getElementById("addObjectBtn");
@@ -183,6 +186,10 @@ const newDiagramBtn = document.getElementById("newDiagramBtn");
 const settingsBtn = document.getElementById("settingsBtn");
 const settingsModal = document.getElementById("settingsModal");
 const closeSettingsModalBtn = document.getElementById("closeSettingsModal");
+const groupColorModal = document.getElementById("groupColorModal");
+const groupColorInput = document.getElementById("groupColorInput");
+const closeGroupColorModalBtn = document.getElementById("closeGroupColorModal");
+const saveGroupColorBtn = document.getElementById("saveGroupColorBtn");
 const undoDeleteBtn = document.getElementById("undoDeleteBtn");
 const connectionLabelEditor = document.getElementById("connectionLabelEditor");
 const connectionLabelField = document.getElementById("connectionLabelField");
@@ -425,6 +432,13 @@ function init() {
       closeSettingsModal();
     }
   });
+  closeGroupColorModalBtn?.addEventListener("click", closeGroupColorPicker);
+  groupColorModal?.addEventListener("click", (event) => {
+    if (event.target === groupColorModal) {
+      closeGroupColorPicker();
+    }
+  });
+  saveGroupColorBtn?.addEventListener("click", applyGroupColor);
   visualizeBtn?.addEventListener("click", openVisualModal);
   closeVisualModalBtn?.addEventListener("click", closeVisualModal);
   visualModal?.addEventListener("click", (event) => {
@@ -777,6 +791,7 @@ function addSystem({
     renderObjectLabel(system);
   }
   updateHighlights();
+  renderGroups();
   return system;
 }
 
@@ -1180,6 +1195,7 @@ function drawConnections() {
 
 function updateConnectionPositions() {
   drawConnections();
+  renderGroups();
 }
 
 function applyConnectionFilterClasses(shouldApplyState) {
@@ -1272,6 +1288,19 @@ function getSystemRect(system) {
   };
 }
 
+function hexToRgba(hex, alpha) {
+  const sanitized = (hex || "").replace("#", "");
+  if (![3, 6].includes(sanitized.length)) {
+    return `rgba(255, 255, 255, ${alpha})`;
+  }
+  const full = sanitized.length === 3 ? sanitized.split("").map((c) => c + c).join("") : sanitized;
+  const intVal = parseInt(full, 16);
+  const r = (intVal >> 16) & 255;
+  const g = (intVal >> 8) & 255;
+  const b = intVal & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 function getEdgeAttachmentPoint(system, targetPoint) {
   const rect = getSystemRect(system);
   const center = {
@@ -1336,6 +1365,35 @@ function getConnectionPoints(fromSystem, toSystem) {
     x: toRect.x + toRect.width / 2,
     y: toRect.y + toRect.height / 2,
   };
+
+  const horizontalOverlap =
+    !(fromRect.x + fromRect.width < toRect.x) && !(toRect.x + toRect.width < fromRect.x);
+  const verticalOverlap =
+    !(fromRect.y + fromRect.height < toRect.y) && !(toRect.y + toRect.height < fromRect.y);
+
+  if (!horizontalOverlap) {
+    const toIsRight = toRect.x > fromRect.x;
+    const fromX = toIsRight ? fromRect.x + fromRect.width : fromRect.x;
+    const toX = toIsRight ? toRect.x : toRect.x + toRect.width;
+    const yAnchorFrom = fromRect.y + fromRect.height / 2;
+    const yAnchorTo = toRect.y + toRect.height / 2;
+    return {
+      from: { x: fromX, y: yAnchorFrom },
+      to: { x: toX, y: yAnchorTo },
+    };
+  }
+
+  if (!verticalOverlap) {
+    const toIsBelow = toRect.y > fromRect.y;
+    const fromY = toIsBelow ? fromRect.y + fromRect.height : fromRect.y;
+    const toY = toIsBelow ? toRect.y : toRect.y + toRect.height;
+    const xAnchorFrom = fromRect.x + fromRect.width / 2;
+    const xAnchorTo = toRect.x + toRect.width / 2;
+    return {
+      from: { x: xAnchorFrom, y: fromY },
+      to: { x: xAnchorTo, y: toY },
+    };
+  }
 
   const dx = toCenter.x - fromCenter.x;
   const dy = toCenter.y - fromCenter.y;
@@ -1463,6 +1521,109 @@ function handleConnectionLayerDoubleClick(event) {
   drawConnections();
   updateHighlights();
   scheduleShareUrlSync();
+}
+
+function getGroupBounds(group) {
+  if (!group) return null;
+  const members = systems.filter((system) => group.systemIds?.includes(system.id));
+  if (!members.length) return null;
+  const padding = 16;
+  const rects = members.map((system) => getSystemRect(system));
+  const minX = Math.min(...rects.map((rect) => rect.x));
+  const minY = Math.min(...rects.map((rect) => rect.y));
+  const maxX = Math.max(...rects.map((rect) => rect.x + rect.width));
+  const maxY = Math.max(...rects.map((rect) => rect.y + rect.height));
+  return {
+    x: minX - padding,
+    y: minY - padding,
+    width: maxX - minX + padding * 2,
+    height: maxY - minY + padding * 2,
+  };
+}
+
+function renderGroups() {
+  if (!groupLayer) return;
+  groupLayer.innerHTML = "";
+  groups.forEach((group) => {
+    const bounds = getGroupBounds(group);
+    if (!bounds) return;
+    const box = document.createElement("div");
+    box.className = "system-group";
+    box.dataset.id = group.id;
+    box.style.left = `${bounds.x}px`;
+    box.style.top = `${bounds.y}px`;
+    box.style.width = `${bounds.width}px`;
+    box.style.height = `${bounds.height}px`;
+    box.style.background = hexToRgba(group.color || "#ffffff", 0.1);
+    box.style.borderColor = group.color || "#0f1424";
+    box.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openGroupContextMenu(group, event.pageX, event.pageY);
+    });
+    groupLayer.appendChild(box);
+  });
+}
+
+function openGroupContextMenu(group, x, y) {
+  if (isEditingLocked()) return;
+  openContextMenu(
+    [
+      { label: "Ungroup", onClick: () => removeGroup(group.id) },
+      { label: "Change colour", onClick: () => openGroupColorPicker(group) },
+    ],
+    x,
+    y
+  );
+}
+
+function removeGroup(groupId) {
+  const index = groups.findIndex((entry) => entry.id === groupId);
+  if (index === -1) return;
+  groups.splice(index, 1);
+  renderGroups();
+  scheduleShareUrlSync();
+}
+
+function createGroupFromSelection(selectedSystems = []) {
+  if (!selectedSystems.length) return;
+  const group = {
+    id: `group-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    color: "#ffffff",
+    systemIds: selectedSystems.map((item) => item.id),
+  };
+  groups.push(group);
+  renderGroups();
+  scheduleShareUrlSync();
+}
+
+function openGroupColorPicker(group) {
+  if (!groupColorModal || !groupColorInput) return;
+  editingGroupId = group.id;
+  groupColorInput.value = group.color || "#ffffff";
+  groupColorModal.classList.remove("hidden");
+  requestAnimationFrame(() => groupColorInput.focus());
+}
+
+function closeGroupColorPicker() {
+  editingGroupId = null;
+  groupColorModal?.classList.add("hidden");
+}
+
+function applyGroupColor() {
+  if (!editingGroupId) {
+    closeGroupColorPicker();
+    return;
+  }
+  const group = groups.find((entry) => entry.id === editingGroupId);
+  if (!group) {
+    closeGroupColorPicker();
+    return;
+  }
+  group.color = groupColorInput?.value || group.color || "#ffffff";
+  renderGroups();
+  scheduleShareUrlSync();
+  closeGroupColorPicker();
 }
 
 function openConnectionLabelEditor(connection, event) {
@@ -1956,6 +2117,15 @@ function handleDeleteSystem(system) {
     multiSelectedIds.delete(system.id);
     refreshMultiSelectStyles();
   }
+  groups.forEach((group) => {
+    if (!Array.isArray(group.systemIds)) return;
+    group.systemIds = group.systemIds.filter((id) => id !== system.id);
+  });
+  for (let i = groups.length - 1; i >= 0; i -= 1) {
+    if (!groups[i].systemIds.length) {
+      groups.splice(i, 1);
+    }
+  }
   if (selectedSystemId === system.id) {
     selectedSystemId = null;
     closePanel();
@@ -1965,7 +2135,9 @@ function handleDeleteSystem(system) {
   }
   refreshOwnerSuggestionLists();
   drawConnections();
+  renderGroups();
   updateHighlights();
+  scheduleShareUrlSync();
   if (activeEntityLinkName) {
     const target = activeEntityLinkName.toLowerCase();
     const stillExists = systems.some((entry) =>
@@ -2040,9 +2212,13 @@ function resetDiagramToBlank() {
   systems.forEach((system) => system.element.remove());
   systems.length = 0;
   connections.length = 0;
+  groups.length = 0;
   connectionLayer.innerHTML = "";
   connectionHandleLayer.innerHTML = "";
   entityLinkLayer.innerHTML = "";
+  if (groupLayer) {
+    groupLayer.innerHTML = "";
+  }
   systemCounter = 1;
   lastDeletedSnapshot = null;
   if (undoDeleteBtn) {
@@ -2546,6 +2722,14 @@ function handleSystemContextMenu(event, system) {
           { label: "Show parents", onClick: () => focusOnSystemRelations(system, "parents") },
         ]
       : [
+          {
+            label: "Group",
+            onClick: () => {
+              if (selectedSystems.length) {
+                createGroupFromSelection(selectedSystems);
+              }
+            },
+          },
           {
             label: "Bulk edit",
             onClick: () => {
@@ -3279,6 +3463,11 @@ function serializeState(accessModeOverride) {
       entities: system.entities.map((entity) => ({ name: entity.name, isSor: !!entity.isSor })),
     })),
     connections: connections.map((connection) => ({ ...connection })),
+    groups: groups.map((group) => ({
+      id: group.id,
+      color: group.color,
+      systemIds: Array.isArray(group.systemIds) ? group.systemIds : Array.from(group.systemIds || []),
+    })),
     functionOwners: Array.from(functionOwnerOptions),
     counter: systemCounter,
     colorBy: currentColorBy,
@@ -3310,12 +3499,16 @@ function loadSerializedState(snapshot) {
   systems.forEach((system) => system.element.remove());
   systems.length = 0;
   connections.length = 0;
+  groups.length = 0;
   connectionLayer.innerHTML = "";
   if (connectionHandleLayer) {
     connectionHandleLayer.innerHTML = "";
   }
   if (entityLinkLayer) {
     entityLinkLayer.innerHTML = "";
+  }
+  if (groupLayer) {
+    groupLayer.innerHTML = "";
   }
   setCanvasDimensions(CANVAS_WIDTH, CANVAS_HEIGHT);
   functionOwnerOptions.clear();
@@ -3360,7 +3553,16 @@ function loadSerializedState(snapshot) {
         : !!connection.bidirectional,
     }))
   );
+  (snapshot.groups || []).forEach((group) => {
+    if (!group || !Array.isArray(group.systemIds)) return;
+    groups.push({
+      id: group.id || `group-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      color: group.color || "#ffffff",
+      systemIds: [...group.systemIds],
+    });
+  });
   drawConnections();
+  renderGroups();
   systemCounter = snapshot.counter || systems.length + 1;
   currentColorBy = snapshot.colorBy || "none";
   if (colorBySelect) {
