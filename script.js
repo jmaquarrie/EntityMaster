@@ -2723,6 +2723,7 @@ function handleFileUrlChange() {
   if (isEditingLocked()) return;
   if (!activePanelSystem) return;
   activePanelSystem.fileUrl = fileUrlInput.value.trim();
+  renderFileLinkIndicator(activePanelSystem);
 }
 
 function handleSpreadsheetChange() {
@@ -3025,6 +3026,7 @@ function renderDomainBubbles(system) {
 }
 
 function updateSystemMeta(system) {
+  if (!system) return;
   if (system.isObject) {
     renderObjectLabel(system);
     return;
@@ -3058,12 +3060,38 @@ function updateSystemMeta(system) {
 
   updateSystemIcon(system);
   renderInlineEntities(system);
+  renderFileLinkIndicator(system);
 }
 
 function updateSystemIcon(system) {
   const iconElement = system.element.querySelector(".system-icon span");
   if (!iconElement) return;
   iconElement.textContent = getSystemIconSymbol(system);
+}
+
+function renderFileLinkIndicator(system) {
+  if (!system || system.isObject) return;
+  const hasFileUrl = !!(system.fileUrl && system.fileUrl.trim());
+  let fileLink = system.element.querySelector(".file-link");
+  if (!hasFileUrl) {
+    if (fileLink) {
+      fileLink.remove();
+    }
+    return;
+  }
+
+  if (!fileLink) {
+    fileLink = document.createElement("a");
+    fileLink.className = "file-link";
+    fileLink.target = "_blank";
+    fileLink.rel = "noopener noreferrer";
+    fileLink.title = "Open attached file";
+    fileLink.setAttribute("aria-label", "Open attached file");
+    fileLink.textContent = "📂";
+    system.element.appendChild(fileLink);
+  }
+
+  fileLink.href = system.fileUrl;
 }
 
 function renderObjectLabel(system) {

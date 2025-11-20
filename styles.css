@@ -596,6 +596,32 @@ button.ghost {
   pointer-events: auto;
 }
 
+.system-node .file-link {
+  position: absolute;
+  bottom: -10px;
+  right: -10px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(142, 220, 180, 0.9);
+  color: #0f1424;
+  font-size: 0.9rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  text-decoration: none;
+  box-shadow: 0 4px 12px rgba(114, 188, 154, 0.35);
+  transition: opacity 0.2s ease;
+}
+
+.system-node:hover .file-link,
+.system-node:focus-within .file-link {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .system-node .domain-bubbles {
   display: flex;
   flex-wrap: wrap;
