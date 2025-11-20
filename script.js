@@ -47,6 +47,7 @@ const OBJECT_TYPES = {
 };
 const connections = [];
 const groups = [];
+const GROUP_OVERLAY_PADDING = 24;
 let canvasWidth = CANVAS_WIDTH;
 let canvasHeight = CANVAS_HEIGHT;
 const activeDomainFilters = new Set();
@@ -1124,21 +1125,21 @@ function drawConnections() {
     const fromSystem = systems.find((s) => s.id === connection.from);
     const toSystem = systems.find((s) => s.id === connection.to);
     if (!fromSystem || !toSystem) return;
-    const { from: fromPos, to: toPos } = getConnectionPoints(fromSystem, toSystem);
+    const { from: fromPos, to: toPos, fromSide, toSide } = getConnectionPoints(fromSystem, toSystem);
     const group = document.createElementNS(SVG_NS, "g");
     group.classList.add("connection-group");
     group.dataset.id = connection.id;
 
     const hitPath = document.createElementNS(SVG_NS, "path");
     hitPath.classList.add("connection-hit");
-    hitPath.setAttribute("d", getAngledPath(fromPos, toPos));
+    hitPath.setAttribute("d", getAngledPath(fromPos, toPos, fromSide, toSide));
 
     const path = document.createElementNS(SVG_NS, "path");
     path.classList.add("connection-path");
     if ((connection.label || "").toLowerCase() === "automated") {
       path.classList.add("automated");
     }
-    path.setAttribute("d", getAngledPath(fromPos, toPos));
+    path.setAttribute("d", getAngledPath(fromPos, toPos, fromSide, toSide));
     const arrowMode = getConnectionArrowMode(connection);
     const hasStartArrow = !!connection.arrowStart;
     const hasEndArrow = !!connection.arrowEnd;
@@ -1315,7 +1316,7 @@ function getEdgeAttachmentPoint(system, targetPoint) {
   const absDy = Math.abs(dy);
 
   if (absDx === 0 && absDy === 0) {
-    return center;
+    return { ...center, side: "center" };
   }
 
   const horizontalPriority = absDx >= absDy;
@@ -1324,12 +1325,14 @@ function getEdgeAttachmentPoint(system, targetPoint) {
     return {
       x: dx >= 0 ? rect.x + rect.width : rect.x,
       y: rect.y + rect.height / 2,
+      side: dx >= 0 ? "right" : "left",
     };
   }
 
   return {
     x: rect.x + rect.width / 2,
     y: dy >= 0 ? rect.y + rect.height : rect.y,
+    side: dy >= 0 ? "bottom" : "top",
   };
 }
 
@@ -1370,9 +1373,14 @@ function getConnectionPoints(fromSystem, toSystem) {
     y: toRect.y + toRect.height / 2,
   };
 
+  const fromAnchor = getEdgeAttachmentPoint(fromSystem, toCenter);
+  const toAnchor = getEdgeAttachmentPoint(toSystem, fromCenter);
+
   return {
-    from: getEdgeAttachmentPoint(fromSystem, toCenter),
-    to: getEdgeAttachmentPoint(toSystem, fromCenter),
+    from: fromAnchor,
+    to: toAnchor,
+    fromSide: fromAnchor.side,
+    toSide: toAnchor.side,
   };
 }
 
@@ -1483,7 +1491,7 @@ function getGroupHull(group) {
   if (!group) return null;
   const members = systems.filter((system) => group.systemIds?.includes(system.id));
   if (!members.length) return null;
-  const padding = 16;
+  const padding = GROUP_OVERLAY_PADDING;
   const points = [];
   members.forEach((system) => {
     const rect = getSystemRect(system);
@@ -1575,14 +1583,16 @@ function renderGroups() {
     const shape = getGroupHull(group);
     if (!shape) return;
     const { bounds, hull } = shape;
+    const labelOffset = 14;
     const svg = document.createElementNS(SVG_NS, "svg");
     svg.classList.add("system-group");
     svg.dataset.id = group.id;
-    svg.setAttribute("width", bounds.width + 4);
-    svg.setAttribute("height", bounds.height + 4);
+    svg.setAttribute("width", bounds.width + labelOffset + 4);
+    svg.setAttribute("height", bounds.height + 4 + labelOffset);
     svg.style.left = `${bounds.x - 2}px`;
     svg.style.top = `${bounds.y - 2}px`;
     svg.style.position = "absolute";
+    svg.style.overflow = "visible";
 
     const polygon = document.createElementNS(SVG_NS, "polygon");
     const points = hull
@@ -1601,8 +1611,10 @@ function renderGroups() {
     if (group.name) {
       const label = document.createElementNS(SVG_NS, "text");
       label.textContent = group.name;
-      label.setAttribute("x", 8);
-      label.setAttribute("y", 14);
+      label.setAttribute("x", bounds.width + labelOffset);
+      label.setAttribute("y", 12);
+      label.setAttribute("dominant-baseline", "hanging");
+      label.style.pointerEvents = "none";
       svg.appendChild(label);
     }
     groupLayer.appendChild(svg);
@@ -3780,7 +3792,7 @@ function loadFromUrlParams() {
   }
 }
 
-function getAngledPath(from, to) {
+function getAngledPath(from, to, fromSide = null, toSide = null) {
   const isVertical = Math.abs(from.x - to.x) < 0.5;
   const isHorizontal = Math.abs(from.y - to.y) < 0.5;
   if (isVertical) {
@@ -3789,6 +3801,30 @@ function getAngledPath(from, to) {
   if (isHorizontal) {
     return `M ${from.x} ${from.y} L ${to.x} ${to.y}`;
   }
+
+  const wantsVerticalEntry = toSide === "top" || toSide === "bottom";
+  const wantsHorizontalEntry = toSide === "left" || toSide === "right";
+  const exitsVertically = fromSide === "top" || fromSide === "bottom";
+  const exitsHorizontally = fromSide === "left" || fromSide === "right";
+
+  if (wantsVerticalEntry) {
+    const anchorX = to.x;
+    if (exitsVertically) {
+      const midY = from.y + (to.y - from.y) / 2;
+      return `M ${from.x} ${from.y} L ${from.x} ${midY} L ${anchorX} ${midY} L ${anchorX} ${to.y}`;
+    }
+    return `M ${from.x} ${from.y} L ${anchorX} ${from.y} L ${anchorX} ${to.y}`;
+  }
+
+  if (wantsHorizontalEntry) {
+    const anchorY = to.y;
+    if (exitsHorizontally) {
+      const midX = from.x + (to.x - from.x) / 2;
+      return `M ${from.x} ${from.y} L ${midX} ${from.y} L ${midX} ${anchorY} L ${to.x} ${anchorY}`;
+    }
+    return `M ${from.x} ${from.y} L ${from.x} ${anchorY} L ${to.x} ${anchorY}`;
+  }
+
   const midX = from.x + (to.x - from.x) / 2;
   return `M ${from.x} ${from.y} L ${midX} ${from.y} L ${midX} ${to.y} L ${to.x} ${to.y}`;
 }
