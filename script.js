@@ -1315,7 +1315,7 @@ function ensureArrowMarker() {
     marker.setAttribute("markerHeight", "10");
     marker.setAttribute("refX", "6");
     marker.setAttribute("refY", "3");
-    marker.setAttribute("orient", "auto");
+    marker.setAttribute("orient", "auto-start-reverse");
     marker.setAttribute("markerUnits", "strokeWidth");
     const arrowPath = document.createElementNS(SVG_NS, "path");
     arrowPath.setAttribute("d", "M0 0 L6 3 L0 6 z");
