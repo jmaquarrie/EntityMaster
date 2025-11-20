@@ -92,6 +92,7 @@ const multiSelectedIds = new Set();
 const suppressClickForIds = new Set();
 let undoTimer = null;
 let activeEntityLinkName = null;
+let activeEntitySourceId = null;
 let systemHighlightState = new Map();
 let currentFileName = "Untitled";
 let fileNameBeforeEdit = "Untitled";
@@ -1126,20 +1127,21 @@ function drawConnections() {
     const toSystem = systems.find((s) => s.id === connection.to);
     if (!fromSystem || !toSystem) return;
     const { from: fromPos, to: toPos, fromSide, toSide } = getConnectionPoints(fromSystem, toSystem);
+    const route = getConnectionRoute(fromSystem, toSystem, fromPos, toPos, fromSide, toSide);
     const group = document.createElementNS(SVG_NS, "g");
     group.classList.add("connection-group");
     group.dataset.id = connection.id;
 
     const hitPath = document.createElementNS(SVG_NS, "path");
     hitPath.classList.add("connection-hit");
-    hitPath.setAttribute("d", getAngledPath(fromPos, toPos, fromSide, toSide));
+    hitPath.setAttribute("d", route.path);
 
     const path = document.createElementNS(SVG_NS, "path");
     path.classList.add("connection-path");
     if ((connection.label || "").toLowerCase() === "automated") {
       path.classList.add("automated");
     }
-    path.setAttribute("d", getAngledPath(fromPos, toPos, fromSide, toSide));
+    path.setAttribute("d", route.path);
     const arrowMode = getConnectionArrowMode(connection);
     const hasStartArrow = !!connection.arrowStart;
     const hasEndArrow = !!connection.arrowEnd;
@@ -1173,7 +1175,7 @@ function drawConnections() {
       label.classList.add("placeholder");
     }
     label.textContent = connection.label || "";
-    const labelPos = getConnectionLabelPosition(fromPos, toPos);
+    const labelPos = route.midpoint || getConnectionLabelPosition(fromPos, toPos);
     label.setAttribute("x", labelPos.x);
     label.setAttribute("y", labelPos.y);
     group.appendChild(label);
@@ -1187,7 +1189,7 @@ function drawConnections() {
     const hideForMode = applyState && filterMode === "hide" && !endpointsHighlighted;
 
     if (shouldShowHandles && !hideForMode) {
-      renderConnectionHandle(connection, getConnectionLabelPosition(fromPos, toPos));
+      renderConnectionHandle(connection, labelPos);
     }
   });
 
@@ -1245,14 +1247,22 @@ function drawEntityLinks() {
 
   if (anchors.length < 2) return;
 
-  for (let i = 0; i < anchors.length - 1; i += 1) {
-    for (let j = i + 1; j < anchors.length; j += 1) {
+  const sourceAnchor =
+    (activeEntitySourceId && anchors.find((anchor) => anchor.systemId === activeEntitySourceId)) || anchors[0];
+
+  if (!sourceAnchor) return;
+  if (!activeEntitySourceId) {
+    activeEntitySourceId = sourceAnchor.systemId;
+  }
+
+  anchors
+    .filter((anchor) => anchor.systemId !== sourceAnchor.systemId)
+    .forEach((anchor) => {
       const path = document.createElementNS(SVG_NS, "path");
       path.classList.add("entity-link-path");
-      path.setAttribute("d", getCurvedPath(anchors[i].point, anchors[j].point));
+      path.setAttribute("d", getCurvedPath(sourceAnchor.point, anchor.point));
       entityLinkLayer.appendChild(path);
-    }
-  }
+    });
 }
 
 function getEntityRowAnchor(row) {
@@ -1382,6 +1392,209 @@ function getConnectionPoints(fromSystem, toSystem) {
     fromSide: fromAnchor.side,
     toSide: toAnchor.side,
   };
+}
+
+function getConnectionRoute(fromSystem, toSystem, fromPos, toPos, fromSide, toSide) {
+  const basePoints = buildBasePathPoints(fromPos, toPos, fromSide, toSide);
+  const obstacles = systems
+    .filter((system) => system.id !== fromSystem.id && system.id !== toSystem.id)
+    .map((system) => ({ ...getSystemRect(system), id: system.id }));
+
+  const baseLength = getPathLength(basePoints);
+  const blockingRect = findFirstIntersectingRect(basePoints, obstacles);
+  let chosenPoints = basePoints;
+
+  if (blockingRect) {
+    const detour = findDetourPath(fromPos, toPos, blockingRect, obstacles, baseLength);
+    if (detour) {
+      chosenPoints = detour;
+    }
+  }
+
+  return {
+    path: pathPointsToString(chosenPoints),
+    points: chosenPoints,
+    midpoint: getPathMidpoint(chosenPoints),
+  };
+}
+
+function buildBasePathPoints(from, to, fromSide = null, toSide = null) {
+  const isVertical = Math.abs(from.x - to.x) < 0.5;
+  const isHorizontal = Math.abs(from.y - to.y) < 0.5;
+  if (isVertical || isHorizontal) {
+    return [from, to];
+  }
+
+  const wantsVerticalEntry = toSide === "top" || toSide === "bottom";
+  const wantsHorizontalEntry = toSide === "left" || toSide === "right";
+  const exitsVertically = fromSide === "top" || fromSide === "bottom";
+  const exitsHorizontally = fromSide === "left" || fromSide === "right";
+
+  if (wantsVerticalEntry) {
+    const anchorX = to.x;
+    if (exitsVertically) {
+      const midY = from.y + (to.y - from.y) / 2;
+      return [from, { x: from.x, y: midY }, { x: anchorX, y: midY }, { x: anchorX, y: to.y }];
+    }
+    return [from, { x: anchorX, y: from.y }, { x: anchorX, y: to.y }];
+  }
+
+  if (wantsHorizontalEntry) {
+    const anchorY = to.y;
+    if (exitsHorizontally) {
+      const midX = from.x + (to.x - from.x) / 2;
+      return [from, { x: midX, y: from.y }, { x: midX, y: anchorY }, { x: to.x, y: anchorY }];
+    }
+    return [from, { x: from.x, y: anchorY }, { x: to.x, y: anchorY }];
+  }
+
+  const midX = from.x + (to.x - from.x) / 2;
+  return [from, { x: midX, y: from.y }, { x: midX, y: to.y }, { x: to.x, y: to.y }];
+}
+
+function pathPointsToString(points) {
+  if (!points.length) return "";
+  const [first, ...rest] = points;
+  const segments = rest.map((point) => `L ${point.x} ${point.y}`).join(" ");
+  return `M ${first.x} ${first.y}${segments ? ` ${segments}` : ""}`;
+}
+
+function getPathLength(points) {
+  if (!points?.length) return 0;
+  let total = 0;
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const dx = points[i + 1].x - points[i].x;
+    const dy = points[i + 1].y - points[i].y;
+    total += Math.hypot(dx, dy);
+  }
+  return total;
+}
+
+function getPathMidpoint(points) {
+  const total = getPathLength(points);
+  if (!total) return points?.[0] ? { ...points[0] } : null;
+  const halfway = total / 2;
+  let traversed = 0;
+
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const start = points[i];
+    const end = points[i + 1];
+    const segmentLength = Math.hypot(end.x - start.x, end.y - start.y);
+    if (traversed + segmentLength >= halfway) {
+      const ratio = (halfway - traversed) / segmentLength;
+      return {
+        x: start.x + (end.x - start.x) * ratio,
+        y: start.y + (end.y - start.y) * ratio,
+      };
+    }
+    traversed += segmentLength;
+  }
+
+  return { ...points[points.length - 1] };
+}
+
+function findDetourPath(from, to, obstacle, obstacles, baseLength) {
+  const padding = 20;
+  const candidates = [
+    [
+      { x: obstacle.x - padding, y: from.y },
+      { x: obstacle.x - padding, y: to.y },
+    ],
+    [
+      { x: obstacle.x + obstacle.width + padding, y: from.y },
+      { x: obstacle.x + obstacle.width + padding, y: to.y },
+    ],
+    [
+      { x: from.x, y: obstacle.y - padding },
+      { x: to.x, y: obstacle.y - padding },
+    ],
+    [
+      { x: from.x, y: obstacle.y + obstacle.height + padding },
+      { x: to.x, y: obstacle.y + obstacle.height + padding },
+    ],
+  ];
+
+  const viable = candidates
+    .map((midpoints) => [from, ...midpoints, to])
+    .filter((points) => {
+      const length = getPathLength(points);
+      return length && length <= baseLength * 2 && !pathIntersectsRectangles(points, obstacles);
+    })
+    .sort((a, b) => getPathLength(a) - getPathLength(b));
+
+  return viable[0] || null;
+}
+
+function findFirstIntersectingRect(points, rects) {
+  return rects.find((rect) => pathIntersectsRect(points, rect)) || null;
+}
+
+function pathIntersectsRectangles(points, rects) {
+  return rects.some((rect) => pathIntersectsRect(points, rect));
+}
+
+function pathIntersectsRect(points, rect) {
+  for (let i = 0; i < points.length - 1; i += 1) {
+    if (lineIntersectsRect(points[i], points[i + 1], rect)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function lineIntersectsRect(p1, p2, rect) {
+  const withinX = (value) => value >= rect.x && value <= rect.x + rect.width;
+  const withinY = (value) => value >= rect.y && value <= rect.y + rect.height;
+  const pointInside = (point) => withinX(point.x) && withinY(point.y);
+
+  if (pointInside(p1) || pointInside(p2)) {
+    return true;
+  }
+
+  const rectPoints = [
+    { x: rect.x, y: rect.y },
+    { x: rect.x + rect.width, y: rect.y },
+    { x: rect.x + rect.width, y: rect.y + rect.height },
+    { x: rect.x, y: rect.y + rect.height },
+  ];
+  const edges = [
+    [rectPoints[0], rectPoints[1]],
+    [rectPoints[1], rectPoints[2]],
+    [rectPoints[2], rectPoints[3]],
+    [rectPoints[3], rectPoints[0]],
+  ];
+
+  return edges.some(([start, end]) => segmentsIntersect(p1, p2, start, end));
+}
+
+function segmentsIntersect(p1, p2, p3, p4) {
+  const orientation = (a, b, c) => {
+    const value = (b.y - a.y) * (c.x - b.x) - (b.x - a.x) * (c.y - b.y);
+    if (Math.abs(value) < 0.0001) return 0;
+    return value > 0 ? 1 : 2;
+  };
+
+  const onSegment = (a, b, c) =>
+    Math.min(a.x, c.x) <= b.x + 0.0001 &&
+    b.x <= Math.max(a.x, c.x) + 0.0001 &&
+    Math.min(a.y, c.y) <= b.y + 0.0001 &&
+    b.y <= Math.max(a.y, c.y) + 0.0001;
+
+  const o1 = orientation(p1, p2, p3);
+  const o2 = orientation(p1, p2, p4);
+  const o3 = orientation(p3, p4, p1);
+  const o4 = orientation(p3, p4, p2);
+
+  if (o1 !== o2 && o3 !== o4) {
+    return true;
+  }
+
+  if (o1 === 0 && onSegment(p1, p3, p2)) return true;
+  if (o2 === 0 && onSegment(p1, p4, p2)) return true;
+  if (o3 === 0 && onSegment(p3, p1, p4)) return true;
+  if (o4 === 0 && onSegment(p3, p2, p4)) return true;
+
+  return false;
 }
 
 function getConnectionLabelPosition(from, to) {
@@ -2094,7 +2307,7 @@ function renderInlineEntities(system) {
     row.dataset.entityName = entity.name;
     row.addEventListener("click", (event) => {
       event.stopPropagation();
-      handleEntityRowActivation(entity.name);
+      handleEntityRowActivation(entity.name, system.id);
     });
 
     const nameCell = document.createElement("td");
@@ -2152,9 +2365,10 @@ function normalizeIconKey(rawValue) {
   return legacyMap[rawValue] || DEFAULT_ICON;
 }
 
-function handleEntityRowActivation(entityName) {
+function handleEntityRowActivation(entityName, sourceSystemId) {
   if (!entityName) return;
   activeEntityLinkName = entityName;
+  activeEntitySourceId = sourceSystemId || null;
   applyEntityLinkState();
 }
 
@@ -2177,6 +2391,7 @@ function refreshEntityLinkIfActive() {
 
 function clearEntityLinkHighlight(shouldUpdate = true) {
   activeEntityLinkName = null;
+  activeEntitySourceId = null;
   systems.forEach((system) => {
     system.forceEntityExpand = false;
     renderInlineEntities(system);
@@ -2232,7 +2447,9 @@ function handleDeleteSystem(system) {
   renderGroups();
   updateHighlights();
   scheduleShareUrlSync();
-  if (activeEntityLinkName) {
+  if (activeEntitySourceId === system.id) {
+    clearEntityLinkHighlight();
+  } else if (activeEntityLinkName) {
     const target = activeEntityLinkName.toLowerCase();
     const stillExists = systems.some((entry) =>
       entry.entities.some((entity) => entity.name.toLowerCase() === target)
@@ -2298,6 +2515,7 @@ function resetDiagramToBlank() {
   bulkSelection = [];
   marqueeState = null;
   activeEntityLinkName = null;
+  activeEntitySourceId = null;
   selectedSystemId = null;
   linkingState = null;
   editingConnectionId = null;
@@ -3642,6 +3860,8 @@ function loadSerializedState(snapshot) {
   if (groupLayer) {
     groupLayer.innerHTML = "";
   }
+  activeEntityLinkName = null;
+  activeEntitySourceId = null;
   setCanvasDimensions(CANVAS_WIDTH, CANVAS_HEIGHT);
   functionOwnerOptions.clear();
   FUNCTION_OWNER_DEFAULTS.forEach((value) => functionOwnerOptions.add(value));
