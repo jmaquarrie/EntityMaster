@@ -2718,7 +2718,8 @@ function getImmediateConnectedSystemIds(startId) {
 function getRelationFocusIds(sourceId, mode) {
   const related = new Set([sourceId]);
   const queue = [sourceId];
-  const followChildren = mode === "children";
+  const followChildren = mode === "children" || mode === "lineage";
+  const followParents = mode === "parents" || mode === "lineage";
 
   const enqueue = (id) => {
     if (!related.has(id)) {
@@ -2732,7 +2733,8 @@ function getRelationFocusIds(sourceId, mode) {
     connections.forEach((conn) => {
       if (followChildren) {
         getOutgoingTargetsFrom(conn, current).forEach(enqueue);
-      } else {
+      }
+      if (followParents) {
         getIncomingSourcesTo(conn, current).forEach(enqueue);
       }
     });
@@ -3055,6 +3057,7 @@ function handleSystemContextMenu(event, system) {
   const menuOptions = multiSelectedIds.size
     ? readOnly
       ? [
+          { label: "Data Lineage", onClick: () => focusOnSystemRelations(system, "lineage") },
           { label: "Show children", onClick: () => focusOnSystemRelations(system, "children") },
           { label: "Show parents", onClick: () => focusOnSystemRelations(system, "parents") },
         ]
@@ -3089,12 +3092,14 @@ function handleSystemContextMenu(event, system) {
     : readOnly
     ? [
         { label: "Edit", onClick: () => selectSystem(system) },
+        { label: "Data Lineage", onClick: () => focusOnSystemRelations(system, "lineage") },
         { label: "Show children", onClick: () => focusOnSystemRelations(system, "children") },
         { label: "Show parents", onClick: () => focusOnSystemRelations(system, "parents") },
       ]
     : [
         { label: "Clone", onClick: () => cloneSystem(system) },
         { label: "Edit", onClick: () => selectSystem(system) },
+        { label: "Data Lineage", onClick: () => focusOnSystemRelations(system, "lineage") },
         { label: "Show children", onClick: () => focusOnSystemRelations(system, "children") },
         { label: "Show parents", onClick: () => focusOnSystemRelations(system, "parents") },
         ...(owningGroup && !readOnly
