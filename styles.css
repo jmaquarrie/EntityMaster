@@ -653,7 +653,7 @@ button.ghost {
 }
 
 .connection-group {
-  pointer-events: none;
+  pointer-events: all;
 }
 
 .connection-hit {
