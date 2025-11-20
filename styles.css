@@ -1226,12 +1226,24 @@ button.ghost {
   max-height: 90vh;
 }
 
+
 .visual-controls {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 1rem;
   flex-wrap: wrap;
   margin: 0.25rem 0 0.75rem;
+}
+
+.visual-control-group {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.visual-control-group.hidden {
+  display: none;
 }
 
 .visual-controls .inline-toggle {
@@ -1291,7 +1303,7 @@ button.ghost {
 .visual-domain {
   position: absolute;
   transform: translate(-50%, -50%);
-  background: rgba(15, 20, 36, 0.08);
+  background: #fff;
   border: 1px solid var(--domain-color, #0f1424);
   color: #0f1424;
   padding: 0.45rem 0.75rem;

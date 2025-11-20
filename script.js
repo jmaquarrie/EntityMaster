@@ -221,10 +221,12 @@ const visualNodesContainer = document.getElementById("visualNodes");
 const visualConnectionsSvg = document.getElementById("visualConnections");
 const visualGroupByDomainCheckbox = document.getElementById("visualGroupByDomain");
 const visualDomainSelect = document.getElementById("visualDomainSelect");
+const visualDomainControls = document.getElementById("visualDomainControls");
 const accessBadge = document.getElementById("accessBadge");
 
 let activePanelSystem = null;
 let activeObjectNode = null;
+let visualNodeZIndex = 10;
 
 function applyAccessMode(mode = "full") {
   currentAccessMode = mode || "full";
@@ -463,6 +465,7 @@ function init() {
   });
   visualGroupByDomainCheckbox?.addEventListener("change", () => {
     if (!visualModal || visualModal.classList.contains("hidden")) return;
+    updateVisualDomainControlVisibility();
     renderVisualSnapshot();
   });
   visualDomainSelect?.addEventListener("change", () => {
@@ -478,6 +481,7 @@ function init() {
   setSidebarCollapsedState(isSidebarCollapsed);
 
   renderVisualDomainOptions();
+  updateVisualDomainControlVisibility();
 
   const loadedFromUrl = loadFromUrlParams();
   if (!loadedFromUrl) {
@@ -578,6 +582,12 @@ function renderVisualDomainOptions() {
   } else {
     visualDomainSelect.value = "people";
   }
+}
+
+function updateVisualDomainControlVisibility() {
+  if (!visualDomainControls) return;
+  const shouldShow = !!visualGroupByDomainCheckbox?.checked;
+  visualDomainControls.classList.toggle("hidden", !shouldShow);
 }
 
 function handleDomainChipClick(event) {
@@ -3594,6 +3604,7 @@ function openVisualModal() {
   updateHighlights();
   if (!visualModal) return;
   visualModal.classList.remove("hidden");
+  updateVisualDomainControlVisibility();
   window.requestAnimationFrame(renderVisualSnapshot);
 }
 
@@ -3632,28 +3643,30 @@ function renderVisualSnapshot() {
 
   if (groupByDomain) {
     const domainGroups = new Map();
+    const targetDomainKey = visualDomainSelect?.value || fallbackDomainKey;
     systemsToShow.forEach((system) => {
-      const [primaryDomain] = Array.from(system.domains);
-      const domainKey = primaryDomain || fallbackDomainKey;
-      const bucket = domainGroups.get(domainKey) || [];
+      const hasTarget = system.domains.has(targetDomainKey);
+      const hasAnyDomain = system.domains.size > 0;
+      if (!hasTarget && hasAnyDomain) return;
+      const bucket = domainGroups.get(targetDomainKey) || [];
       bucket.push(system);
-      domainGroups.set(domainKey, bucket);
+      domainGroups.set(targetDomainKey, bucket);
     });
+
+    if (!domainGroups.size) {
+      domainGroups.set(targetDomainKey, []);
+    }
 
     const domainKeys = Array.from(domainGroups.keys());
     const centerX = width / 2;
     const centerY = height / 2;
-    const ringRadius = Math.min(width, height) / 3;
     const anchors = new Map();
     const positionMap = new Map();
     const nodesFragment = document.createDocumentFragment();
 
-    domainKeys.forEach((domainKey, index) => {
-      const angle = domainKeys.length === 1 ? -Math.PI / 2 : (index / domainKeys.length) * Math.PI * 2;
-      const anchorX =
-        domainKeys.length === 1 ? centerX : centerX + Math.cos(angle) * ringRadius * 0.55;
-      const anchorY =
-        domainKeys.length === 1 ? centerY : centerY + Math.sin(angle) * ringRadius * 0.55;
+    domainKeys.forEach((domainKey) => {
+      const anchorX = centerX;
+      const anchorY = centerY;
       anchors.set(domainKey, { left: anchorX, top: anchorY });
 
       const domainNode = document.createElement("div");
@@ -3667,7 +3680,7 @@ function renderVisualSnapshot() {
       nodesFragment.appendChild(domainNode);
 
       const cluster = domainGroups.get(domainKey) || [];
-      const clusterRadius = 120 + Math.min(cluster.length, 8) * 10;
+      const clusterRadius = 140 + Math.min(cluster.length, 8) * 12;
       cluster.forEach((system, systemIndex) => {
         const clusterAngle = cluster.length === 1 ? -Math.PI / 2 : (systemIndex / cluster.length) * Math.PI * 2;
         const left = anchorX + Math.cos(clusterAngle) * clusterRadius;
@@ -3722,6 +3735,8 @@ function renderVisualSnapshot() {
       node.style.top = `${top}px`;
       positionMap.set(systemId, { left, top });
     });
+
+    attachVisualNodeBringToFront();
 
     visualConnectionsSvg.setAttribute("viewBox", `0 0 ${width} ${height}`);
     visualConnectionsSvg.setAttribute("width", width);
@@ -3834,6 +3849,8 @@ function renderVisualSnapshot() {
     positionMap.set(id, { left: clampedLeft, top: clampedTop });
   });
 
+  attachVisualNodeBringToFront();
+
   visualConnectionsSvg.setAttribute("viewBox", `0 0 ${width} ${height}`);
   visualConnectionsSvg.setAttribute("width", width);
   visualConnectionsSvg.setAttribute("height", height);
@@ -3854,6 +3871,16 @@ function renderVisualSnapshot() {
       path.setAttribute("class", "visual-connection-path");
       visualConnectionsSvg.appendChild(path);
     });
+}
+
+function attachVisualNodeBringToFront() {
+  visualNodesContainer?.querySelectorAll(".visual-node").forEach((node) => {
+    node.addEventListener("click", () => {
+      visualNodeZIndex += 1;
+      node.style.zIndex = `${visualNodeZIndex}`;
+      node.parentElement?.appendChild(node);
+    });
+  });
 }
 
 function renderSaveList() {

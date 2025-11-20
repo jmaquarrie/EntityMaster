@@ -409,14 +409,18 @@
           </div>
           <p class="modal-description">Systems that match your current filters, pulled closer together for a single-screen view.</p>
           <div class="visual-controls">
-            <label class="inline-toggle">
-              <input type="checkbox" id="visualGroupByDomain" />
-              <span>Group by Domain</span>
-            </label>
-            <label class="field compact">
-              <span>Domain</span>
-              <select id="visualDomainSelect" aria-label="Visual domain choice"></select>
-            </label>
+            <div class="visual-control-group">
+              <label class="inline-toggle">
+                <input type="checkbox" id="visualGroupByDomain" />
+                <span>Group by Domain</span>
+              </label>
+            </div>
+            <div id="visualDomainControls" class="visual-control-group domain-controls hidden">
+              <label class="field compact">
+                <span>Domain</span>
+                <select id="visualDomainSelect" aria-label="Visual domain choice"></select>
+              </label>
+            </div>
           </div>
           <div id="visualContainer" class="visual-container">
             <svg id="visualConnections" class="visual-connections" aria-hidden="true"></svg>
