@@ -326,15 +326,19 @@ button.ghost {
 
 .direction-adder {
   position: absolute;
-  width: 24px;
-  height: 24px;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.05);
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.08);
   border: none;
   pointer-events: auto;
   opacity: 0;
   transition: opacity 0.15s ease;
   cursor: pointer;
+  font-size: 16px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
 }
 
 .system-node:hover .direction-adder {
@@ -342,25 +346,25 @@ button.ghost {
 }
 
 .direction-adder.top {
-  top: -18px;
+  top: -32px;
   left: 50%;
   transform: translateX(-50%);
 }
 
 .direction-adder.bottom {
-  bottom: -18px;
+  bottom: -32px;
   left: 50%;
   transform: translateX(-50%);
 }
 
 .direction-adder.left {
-  left: -18px;
+  left: -32px;
   top: 50%;
   transform: translateY(-50%);
 }
 
 .direction-adder.right {
-  right: -18px;
+  right: -32px;
   top: 50%;
   transform: translateY(-50%);
 }

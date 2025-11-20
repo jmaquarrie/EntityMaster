@@ -94,6 +94,7 @@ let currentFileName = "Untitled";
 let fileNameBeforeEdit = "Untitled";
 let marqueePreviewIds = new Set();
 let relationFocus = null;
+let urlSyncTimer = null;
 
 const canvasContent = document.getElementById("canvasContent");
 const canvasViewport = document.getElementById("canvasViewport");
@@ -259,6 +260,7 @@ function init() {
   colorBySelect.addEventListener("change", (event) => {
     currentColorBy = event.target.value;
     applyColorCoding();
+    scheduleShareUrlSync();
   });
   resetFiltersBtn?.addEventListener("click", () => resetFilters({ alsoClearSelection: true }));
   filterPanelToggle.addEventListener("click", toggleFilterPanel);
@@ -327,9 +329,7 @@ function init() {
   document.addEventListener("click", handleDocumentClickForContextMenu);
   canvasViewport?.addEventListener("scroll", closeContextMenu);
   window.addEventListener("resize", closeContextMenu);
-  filterPanel.classList.toggle("collapsed", isSidebarCollapsed);
-  filterPanelToggle.setAttribute("aria-expanded", String(!isSidebarCollapsed));
-  updateSidebarToggleIcon();
+  setSidebarCollapsedState(isSidebarCollapsed);
 
   const loadedFromUrl = loadFromUrlParams();
   if (!loadedFromUrl) {
@@ -343,6 +343,7 @@ function setFileName(name) {
   if (fileNameDisplay) {
     fileNameDisplay.textContent = normalized;
   }
+  scheduleShareUrlSync();
 }
 
 function beginFileNameEdit() {
@@ -1853,6 +1854,7 @@ function updateHighlights() {
   applyColorCoding();
   drawConnections();
   applyConnectionFilterClasses(shouldApplyState);
+  scheduleShareUrlSync();
 }
 
 function hasActiveFilters() {
@@ -1870,9 +1872,9 @@ function hasActiveFilters() {
 function getImmediateConnectedSystemIds(startId) {
   const visited = new Set([startId]);
   connections.forEach((conn) => {
-    if (conn.from === startId) {
+    if (conn.from === startId || (conn.bidirectional && conn.to === startId)) {
       visited.add(conn.to);
-    } else if (conn.to === startId) {
+    } else if (conn.to === startId || (conn.bidirectional && conn.from === startId)) {
       visited.add(conn.from);
     }
   });
@@ -1881,14 +1883,29 @@ function getImmediateConnectedSystemIds(startId) {
 
 function getRelationFocusIds(sourceId, mode) {
   const related = new Set([sourceId]);
-  connections.forEach((conn) => {
-    if (mode === "children" && conn.from === sourceId) {
-      related.add(conn.to);
+  const queue = [sourceId];
+  const followChildren = mode === "children";
+
+  const enqueue = (id) => {
+    if (!related.has(id)) {
+      related.add(id);
+      queue.push(id);
     }
-    if (mode === "parents" && conn.to === sourceId) {
-      related.add(conn.from);
-    }
-  });
+  };
+
+  while (queue.length) {
+    const current = queue.shift();
+    connections.forEach((conn) => {
+      if (followChildren) {
+        if (conn.from === current) enqueue(conn.to);
+        if (conn.bidirectional && conn.to === current) enqueue(conn.from);
+      } else {
+        if (conn.to === current) enqueue(conn.from);
+        if (conn.bidirectional && conn.from === current) enqueue(conn.to);
+      }
+    });
+  }
+
   return related;
 }
 
@@ -2046,7 +2063,12 @@ function refreshOwnerSuggestionLists() {
 }
 
 function toggleFilterPanel() {
-  isSidebarCollapsed = !isSidebarCollapsed;
+  setSidebarCollapsedState(!isSidebarCollapsed);
+  scheduleShareUrlSync();
+}
+
+function setSidebarCollapsedState(collapsed) {
+  isSidebarCollapsed = !!collapsed;
   filterPanel.classList.toggle("collapsed", isSidebarCollapsed);
   filterPanelToggle.setAttribute("aria-expanded", String(!isSidebarCollapsed));
   updateSidebarToggleIcon();
@@ -2501,8 +2523,7 @@ function handleSaveDiagram() {
 
 function handleShareDiagram() {
   try {
-    const payload = encodeStatePayload(serializeState());
-    const url = `${window.location.origin}${window.location.pathname}?data=${encodeURIComponent(payload)}`;
+    const url = buildShareUrlFromState(serializeState());
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(url).catch(() => openSharePrompt(url));
     } else {
@@ -2523,6 +2544,29 @@ function showSaveStatus(message = "Saved") {
   saveStatusTimer = window.setTimeout(() => {
     saveStatusLabel.classList.remove("visible");
   }, 1500);
+}
+
+function buildShareUrlFromState(state) {
+  const payload = encodeStatePayload(state);
+  return `${window.location.origin}${window.location.pathname}?data=${encodeURIComponent(payload)}`;
+}
+
+function syncUrlWithState() {
+  try {
+    const url = buildShareUrlFromState(serializeState());
+    if (window.history?.replaceState) {
+      window.history.replaceState({}, document.title, url);
+    }
+  } catch (error) {
+    console.warn("Unable to update URL", error);
+  }
+}
+
+function scheduleShareUrlSync() {
+  if (urlSyncTimer) {
+    window.clearTimeout(urlSyncTimer);
+  }
+  urlSyncTimer = window.setTimeout(syncUrlWithState, 250);
 }
 
 function openSharePrompt(url) {
@@ -2827,6 +2871,17 @@ function serializeState() {
       label: domain.label,
       color: domain.color,
     })),
+    filterState: {
+      domains: Array.from(activeDomainFilters),
+      platformOwner: platformOwnerFilterInput?.value || "",
+      businessOwner: businessOwnerFilterInput?.value || "",
+      functionOwner: functionOwnerFilterInput?.value || "",
+      search: searchInput?.value || "",
+      searchType,
+      filterMode,
+      sor: sorFilterValue,
+      sidebarCollapsed: isSidebarCollapsed,
+    },
   };
 }
 
@@ -2855,6 +2910,7 @@ function loadSerializedState(snapshot) {
   refreshDomainOptionsUi();
   populateFunctionOwnerOptions();
   setFileName(snapshot.fileName || "Untitled");
+  applyFilterState(snapshot.filterState);
   (snapshot.systems || []).forEach((systemData) => {
     addSystem({
       id: systemData.id,
@@ -2897,6 +2953,37 @@ function loadSerializedState(snapshot) {
   centerCanvasView();
   lastDeletedSnapshot = null;
   undoDeleteBtn?.classList.add("hidden");
+}
+
+function applyFilterState(filterState = {}) {
+  const domainList = Array.isArray(filterState.domains) ? filterState.domains : [];
+  activeDomainFilters.clear();
+  domainList.forEach((domain) => activeDomainFilters.add(domain));
+
+  const platformOwnerValue = filterState.platformOwner || "";
+  const businessOwnerValue = filterState.businessOwner || "";
+  const functionOwnerValue = filterState.functionOwner || "";
+  const searchValue = filterState.search || "";
+
+  platformOwnerFilterText = platformOwnerValue.trim().toLowerCase();
+  businessOwnerFilterText = businessOwnerValue.trim().toLowerCase();
+  functionOwnerFilterText = functionOwnerValue.trim().toLowerCase();
+  searchQuery = searchValue.trim().toLowerCase();
+  searchType = filterState.searchType || searchType;
+  filterMode = filterState.filterMode || filterMode;
+  sorFilterValue = filterState.sor || sorFilterValue;
+
+  if (platformOwnerFilterInput) platformOwnerFilterInput.value = platformOwnerValue;
+  if (businessOwnerFilterInput) businessOwnerFilterInput.value = businessOwnerValue;
+  if (functionOwnerFilterInput) functionOwnerFilterInput.value = functionOwnerValue;
+  if (searchInput) searchInput.value = searchValue;
+  if (searchTypeSelect) searchTypeSelect.value = searchType;
+  if (filterModeSelect) filterModeSelect.value = filterMode;
+  if (sorFilterSelect) sorFilterSelect.value = sorFilterValue;
+  if (typeof filterState.sidebarCollapsed === "boolean") {
+    setSidebarCollapsedState(filterState.sidebarCollapsed);
+  }
+  updateGlobalDomainChips();
 }
 
 function formatSaveEntryName(fileName, date) {
@@ -2942,9 +3029,6 @@ function loadFromUrlParams() {
     if (!encoded) return false;
     const snapshot = decodeStatePayload(encoded);
     loadSerializedState(snapshot);
-    if (window.history?.replaceState) {
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
     return true;
   } catch (error) {
     console.warn("Unable to parse shared diagram", error);
