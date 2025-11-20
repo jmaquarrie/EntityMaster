@@ -554,6 +554,7 @@ const entityList = document.getElementById("entityList");
 const attributesModalTrigger = document.getElementById("openAttributesModal");
 const attributesModal = document.getElementById("attributesModal");
 const closeAttributesModalBtn = document.getElementById("closeAttributesModal");
+const attributesModalTitle = document.getElementById("attributesModalTitle");
 const attributesTableBody = document.getElementById("attributesTableBody");
 const addAttributeRowBtn = document.getElementById("addAttributeRowBtn");
 const attributesCsvInput = document.getElementById("attributesCsvInput");
@@ -651,6 +652,7 @@ const accessBadge = document.getElementById("accessBadge");
 let activePanelSystem = null;
 let activeObjectNode = null;
 let visualNodeZIndex = 10;
+let attributesModalEntityFilter = "";
 
 function applyAccessMode(mode = "full") {
   currentAccessMode = mode || "full";
@@ -758,7 +760,7 @@ function init() {
   fileNameDisplay?.addEventListener("blur", commitFileNameEdit);
   closePanelBtn.addEventListener("click", closePanel);
   entityForm.addEventListener("submit", handleAddEntity);
-  attributesModalTrigger?.addEventListener("click", openAttributesSideModal);
+  attributesModalTrigger?.addEventListener("click", () => openAttributesSideModal(""));
   closeAttributesModalBtn?.addEventListener("click", closeAttributesSideModal);
   addAttributeRowBtn?.addEventListener("click", handleAddAttributeRow);
   attributesTableBody?.addEventListener("input", handleAttributeTableInput);
@@ -2619,6 +2621,8 @@ function selectSystem(system) {
 }
 
 function openPanel(system) {
+  attributesModalEntityFilter = "";
+  updateAttributesModalTitle();
   panel.classList.remove("hidden");
   panelTitle.textContent = system.name;
   systemNameInput.value = system.name;
@@ -2747,6 +2751,19 @@ function renderEntityList(system) {
 
     const nameSpan = document.createElement("span");
     nameSpan.textContent = entity.name;
+    nameSpan.className = "entity-name";
+    nameSpan.tabIndex = 0;
+    const openAttributesForEntity = () => {
+      if (!activePanelSystem) return;
+      openAttributesSideModal(entity.name);
+    };
+    nameSpan.addEventListener("click", openAttributesForEntity);
+    nameSpan.addEventListener("keydown", (evt) => {
+      if (evt.key === "Enter" || evt.key === " ") {
+        evt.preventDefault();
+        openAttributesForEntity();
+      }
+    });
 
     const actions = document.createElement("div");
     actions.className = "entity-actions";
@@ -2795,6 +2812,13 @@ function ensureAttributesArray(system) {
   return system.attributes;
 }
 
+function updateAttributesModalTitle() {
+  if (!attributesModalTitle) return;
+  attributesModalTitle.textContent = attributesModalEntityFilter
+    ? `Attributes — ${attributesModalEntityFilter}`
+    : "Attributes";
+}
+
 function buildAttributeEntitySelect(system, currentValue = "") {
   const select = document.createElement("select");
   select.className = "attribute-entity-select";
@@ -2821,6 +2845,8 @@ function renderAttributesModal(system) {
   const fragment = document.createDocumentFragment();
 
   system.attributes.forEach((entry, index) => {
+    if (attributesModalEntityFilter && (entry.entity || "") !== attributesModalEntityFilter) return;
+
     const row = document.createElement("tr");
 
     const attributeCell = document.createElement("td");
@@ -2830,11 +2856,13 @@ function renderAttributesModal(system) {
     attributeInput.dataset.index = String(index);
     attributeInput.dataset.field = "attribute";
     attributeInput.placeholder = "Attribute";
+    attributeInput.className = "cell-input";
     attributeCell.appendChild(attributeInput);
 
     const entityCell = document.createElement("td");
     const entitySelect = buildAttributeEntitySelect(system, entry.entity);
     entitySelect.dataset.index = String(index);
+    entitySelect.classList.add("cell-input");
     entityCell.appendChild(entitySelect);
 
     row.append(attributeCell, entityCell);
@@ -2842,6 +2870,7 @@ function renderAttributesModal(system) {
   });
 
   attributesTableBody.appendChild(fragment);
+  updateAttributesModalTitle();
   positionAttributesModal();
 }
 
@@ -2861,8 +2890,9 @@ function positionAttributesModal() {
   attributesModal.style.left = `${left}px`;
 }
 
-function openAttributesSideModal() {
+function openAttributesSideModal(entityFilter = "") {
   if (!attributesModal || !activePanelSystem) return;
+  attributesModalEntityFilter = entityFilter || "";
   renderAttributesModal(activePanelSystem);
   attributesModal.classList.remove("hidden");
   positionAttributesModal();
@@ -2895,7 +2925,7 @@ function handleAddAttributeRow() {
   if (isEditingLocked()) return;
   if (!activePanelSystem) return;
   const attributes = ensureAttributesArray(activePanelSystem);
-  attributes.push({ attribute: "", entity: "" });
+  attributes.push({ attribute: "", entity: attributesModalEntityFilter || "" });
   renderAttributesModal(activePanelSystem);
 }
 
@@ -2913,7 +2943,7 @@ function handleProcessAttributesCsv() {
   if (!tokens.length) return;
   const attributes = ensureAttributesArray(activePanelSystem);
   tokens.forEach((attribute) => {
-    attributes.push({ attribute, entity: "" });
+    attributes.push({ attribute, entity: attributesModalEntityFilter || "" });
   });
   if (attributesCsvInput) {
     attributesCsvInput.value = "";

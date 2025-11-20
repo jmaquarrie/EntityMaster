@@ -1204,13 +1204,17 @@ button.ghost {
   position: absolute;
   top: 1.5rem;
   left: calc(1.5rem + var(--panel-width) + 1rem);
-  width: min(420px, calc(100vw - var(--panel-width) - 3rem));
+  width: min(560px, calc(100vw - var(--panel-width) - 3rem));
   max-height: calc(100vh - 3rem);
   overflow: hidden;
   background: rgba(255, 255, 255, 0.98);
   border-radius: 16px;
   box-shadow: 0 18px 35px rgba(10, 18, 54, 0.35);
   z-index: 5;
+}
+
+#attributesModal {
+  width: min(640px, calc(100vw - var(--panel-width) - 2.5rem));
 }
 
 .side-modal.hidden {
@@ -1221,8 +1225,8 @@ button.ghost {
   height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  padding: 1rem;
+  gap: 1rem;
+  padding: 1.1rem 1.25rem;
 }
 
 .table-scroll {
@@ -1230,18 +1234,21 @@ button.ghost {
   max-height: 320px;
   border: 1px solid #e5e8f2;
   border-radius: 10px;
+  min-width: 100%;
 }
 
 .attributes-table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 320px;
+  min-width: 540px;
+  table-layout: fixed;
 }
 
 .attributes-table th,
 .attributes-table td {
-  padding: 0.75rem;
+  padding: 0.7rem 0.75rem;
   border-bottom: 1px solid #e6e8f2;
+  text-align: left;
 }
 
 .attributes-table th {
@@ -1255,17 +1262,49 @@ button.ghost {
 .attributes-table input,
 .attribute-entity-select {
   width: 100%;
-  padding: 0.4rem 0.45rem;
-  border: 1px solid #d7d9e0;
-  border-radius: 8px;
+  padding: 0;
+  border: none;
+  border-radius: 0;
   font-size: 0.95rem;
+  background: transparent;
+}
+
+.cell-input {
+  width: 100%;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  min-height: 30px;
 }
 
 .attribute-entity-select:focus,
 .attributes-table input:focus {
   outline: none;
-  border-color: #7b8df3;
-  box-shadow: 0 0 0 3px rgba(123, 141, 243, 0.18);
+}
+
+.attributes-table td:focus-within {
+  box-shadow: inset 0 0 0 2px rgba(123, 141, 243, 0.5);
+  border-radius: 6px;
+}
+
+.attribute-entity-select {
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, #0f1424 50%),
+    linear-gradient(135deg, #0f1424 50%, transparent 50%);
+  background-position: calc(100% - 14px) 50%, calc(100% - 9px) 50%;
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+  padding-right: 24px;
+}
+
+.entity-name {
+  cursor: pointer;
+  color: #0f1424;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .attributes-actions {
@@ -1282,7 +1321,7 @@ button.ghost {
     position: fixed;
     left: 50%;
     transform: translateX(-50%);
-    width: min(96vw, 460px);
+    width: min(96vw, 620px);
     top: calc(1.5rem + 4px);
   }
 }
