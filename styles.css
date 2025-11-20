@@ -241,6 +241,36 @@ button.ghost {
   font-weight: 500;
 }
 
+.flyout-menu {
+  position: absolute;
+  background: #fff;
+  border: 1px solid rgba(18, 24, 57, 0.15);
+  border-radius: 10px;
+  box-shadow: 0 12px 30px rgba(18, 24, 57, 0.18);
+  padding: 0.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  z-index: 8;
+}
+
+.flyout-menu.hidden {
+  display: none;
+}
+
+.flyout-menu button {
+  background: none;
+  border: none;
+  padding: 0.45rem 0.75rem;
+  text-align: left;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.flyout-menu button:hover {
+  background: rgba(18, 24, 57, 0.06);
+}
+
 #canvas {
   position: absolute;
   inset: 0;
@@ -286,6 +316,53 @@ button.ghost {
   transition: box-shadow 0.2s ease, transform 0.2s ease, opacity 0.2s ease, border-color 0.2s ease;
   background: var(--node-bg-color, #fff);
   z-index: 3;
+}
+
+.system-node .direction-adders {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.direction-adder {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.05);
+  border: none;
+  pointer-events: auto;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  cursor: pointer;
+}
+
+.system-node:hover .direction-adder {
+  opacity: 1;
+}
+
+.direction-adder.top {
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.direction-adder.bottom {
+  bottom: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.direction-adder.left {
+  left: -12px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.direction-adder.right {
+  right: -12px;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 .system-node:active {
@@ -454,6 +531,51 @@ button.ghost {
   margin-top: 0.65rem;
 }
 
+.object-node {
+  width: 180px;
+  min-height: 120px;
+  padding: 12px;
+}
+
+.object-shape {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 10px auto;
+  width: 120px;
+  height: 80px;
+  color: #222;
+  font-weight: 600;
+  background: #f5f7fb;
+}
+
+.shape-gateway {
+  clip-path: polygon(10% 50%, 50% 10%, 90% 50%, 50% 90%);
+}
+
+.shape-event,
+.shape-start,
+.shape-end {
+  border-radius: 999px;
+}
+
+.shape-event {
+  background: #e6f4ff;
+}
+
+.shape-start {
+  background: #e5f8ef;
+}
+
+.shape-end {
+  background: #ffecec;
+}
+
+.object-text {
+  padding: 0 8px;
+  text-align: center;
+}
+
 .field-inline-toggle .field-top-row {
   display: flex;
   align-items: center;
@@ -527,6 +649,7 @@ button.ghost {
 
 .connection-path {
   stroke: #c0c6e5;
+  color: #c0c6e5;
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -537,6 +660,7 @@ button.ghost {
 
 .connection-path.automated {
   stroke: #2fbf7c;
+  color: #2fbf7c;
 }
 
 .entity-link-path {

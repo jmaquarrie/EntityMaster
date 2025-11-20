@@ -38,6 +38,12 @@ const DEFAULT_DOMAINS = [
 let domainDefinitions = DEFAULT_DOMAINS.map((domain) => ({ ...domain, isCustom: false }));
 
 const systems = [];
+const OBJECT_TYPES = {
+  gateway: { label: "Gateway", className: "shape-gateway" },
+  event: { label: "Event", className: "shape-event" },
+  start: { label: "Start", className: "shape-start" },
+  end: { label: "End", className: "shape-end" },
+};
 const connections = [];
 let canvasWidth = CANVAS_WIDTH;
 let canvasHeight = CANVAS_HEIGHT;
@@ -94,6 +100,8 @@ const connectionLayer = document.getElementById("connectionLayer");
 const entityLinkLayer = document.getElementById("entityLinkLayer");
 const connectionHandleLayer = document.getElementById("connectionHandleLayer");
 const addSystemBtn = document.getElementById("addSystemBtn");
+const addObjectBtn = document.getElementById("addObjectBtn");
+const objectMenu = document.getElementById("objectMenu");
 const fileNameDisplay = document.getElementById("fileNameDisplay");
 const panel = document.getElementById("systemPanel");
 const panelTitle = document.getElementById("panelTitle");
@@ -158,6 +166,11 @@ const customDomainInput = document.getElementById("customDomainInput");
 const customDomainList = document.getElementById("customDomainList");
 const visualizeBtn = document.getElementById("visualizeBtn");
 const newDiagramModal = document.getElementById("newDiagramModal");
+const objectModal = document.getElementById("objectModal");
+const objectLabelInput = document.getElementById("objectLabelInput");
+const objectTypeSelect = document.getElementById("objectTypeSelect");
+const saveObjectBtn = document.getElementById("saveObjectBtn");
+const closeObjectModalBtn = document.getElementById("closeObjectModal");
 const closeNewDiagramModalBtn = document.getElementById("closeNewDiagramModal");
 const newDiagramConfirmBtn = document.getElementById("newDiagramConfirmBtn");
 const newDiagramCancelBtn = document.getElementById("newDiagramCancelBtn");
@@ -168,6 +181,7 @@ const visualNodesContainer = document.getElementById("visualNodes");
 const visualConnectionsSvg = document.getElementById("visualConnections");
 
 let activePanelSystem = null;
+let activeObjectNode = null;
 
 function init() {
   setCanvasDimensions(CANVAS_WIDTH, CANVAS_HEIGHT);
@@ -185,6 +199,7 @@ function init() {
   canvas.addEventListener("pointerdown", handleCanvasPointerDown);
   createSelectionBox();
   addSystemBtn.addEventListener("click", () => addSystem());
+  addObjectBtn?.addEventListener("click", toggleObjectMenu);
   fileNameDisplay?.addEventListener("click", beginFileNameEdit);
   fileNameDisplay?.addEventListener("keydown", handleFileNameKeyDown);
   fileNameDisplay?.addEventListener("blur", commitFileNameEdit);
@@ -192,6 +207,10 @@ function init() {
   entityForm.addEventListener("submit", handleAddEntity);
   canvas.addEventListener("click", handleCanvasClick);
   connectionLayer.addEventListener("click", handleConnectionLayerClick);
+  objectMenu?.addEventListener("click", handleObjectMenuClick);
+  document.addEventListener("click", handleDocumentClickForObjectMenu);
+  saveObjectBtn?.addEventListener("click", commitObjectChanges);
+  closeObjectModalBtn?.addEventListener("click", closeObjectModal);
   customDomainForm?.addEventListener("submit", handleCustomDomainSubmit);
   customDomainList?.addEventListener("click", handleCustomDomainListClick);
   platformOwnerInput.addEventListener("input", handleOwnerFieldChange);
@@ -540,6 +559,9 @@ function addSystem({
   description = "",
   fileUrl = "",
   isSpreadsheet = false,
+  isObject = false,
+  shapeType = "gateway",
+  shapeLabel = "",
 } = {}) {
   const resolvedId = id || `sys-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
   const defaultPosition = getNewSystemPosition();
@@ -547,6 +569,7 @@ function addSystem({
   const resolvedY = typeof y === "number" ? y : defaultPosition.y;
   const snappedX = snapCoordinate(resolvedX);
   const snappedY = snapCoordinate(resolvedY);
+  const resolvedShape = OBJECT_TYPES[shapeType] ? shapeType : "gateway";
   const system = {
     id: resolvedId,
     name: name || `System ${systemCounter++}`,
@@ -564,31 +587,59 @@ function addSystem({
     description: description || "",
     fileUrl: fileUrl || "",
     isSpreadsheet: !!isSpreadsheet,
+    isObject: !!isObject,
+    shapeType: resolvedShape,
+    shapeLabel: shapeLabel || name || OBJECT_TYPES[resolvedShape].label,
     element: document.createElement("div"),
     isEntityExpanded: false,
     forceEntityExpand: false,
   };
 
-  system.element.className = "system-node";
+  system.element.className = `system-node${system.isObject ? " object-node" : ""}`;
   system.element.dataset.id = resolvedId;
-  system.element.innerHTML = `
-    <button class="delete-node" aria-label="Delete system">
-      🗑️
-    </button>
-    <div class="title-row">
-      <div class="icon-title">
-        <div class="system-icon" aria-hidden="true"><span></span></div>
-        <div class="title">${system.name}</div>
+  if (system.isObject) {
+    system.element.innerHTML = `
+      <button class="delete-node" aria-label="Delete object">🗑️</button>
+      <div class="object-shape ${OBJECT_TYPES[resolvedShape].className}" data-shape="${resolvedShape}">
+        <span class="object-text">${system.shapeLabel}</span>
       </div>
       <div class="connector" title="Drag to connect"></div>
-    </div>
-    <div class="meta">
-      <div class="owner-info"></div>
-      <div class="entity-count hidden"></div>
-    </div>
-    <div class="domain-bubbles"></div>
-    <div class="entity-inline hidden"></div>
-  `;
+    `;
+  } else {
+    system.element.innerHTML = `
+      <button class="delete-node" aria-label="Delete system">
+        🗑️
+      </button>
+      <div class="title-row">
+        <div class="icon-title">
+          <div class="system-icon" aria-hidden="true"><span></span></div>
+          <div class="title">${system.name}</div>
+        </div>
+        <div class="connector" title="Drag to connect"></div>
+      </div>
+      <div class="meta">
+        <div class="owner-info"></div>
+        <div class="entity-count hidden"></div>
+      </div>
+      <div class="domain-bubbles"></div>
+      <div class="entity-inline hidden"></div>
+    `;
+
+    const adderContainer = document.createElement("div");
+    adderContainer.className = "direction-adders";
+    ["top", "right", "bottom", "left"].forEach((direction) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `direction-adder ${direction}`;
+      btn.textContent = "+";
+      btn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        createAdjacentSystem(system, direction);
+      });
+      adderContainer.appendChild(btn);
+    });
+    system.element.appendChild(adderContainer);
+  }
 
   canvas.appendChild(system.element);
   systems.push(system);
@@ -596,16 +647,37 @@ function addSystem({
   positionSystemElement(system);
   ensureCanvasBoundsForSystem(system);
   attachNodeEvents(system);
-  renderDomainBubbles(system);
-  updateSystemMeta(system);
-  updateSystemIcon(system);
-  ensureFunctionOwnerOption(system.functionOwner);
-  refreshOwnerSuggestionLists();
+  if (!system.isObject) {
+    renderDomainBubbles(system);
+    updateSystemMeta(system);
+    updateSystemIcon(system);
+    ensureFunctionOwnerOption(system.functionOwner);
+    refreshOwnerSuggestionLists();
+  } else {
+    renderObjectLabel(system);
+  }
   updateHighlights();
+  return system;
 }
 
 function positionSystemElement(system) {
   system.element.style.transform = `translate(${system.x}px, ${system.y}px)`;
+}
+
+function createAdjacentSystem(system, direction) {
+  const rect = getSystemRect(system);
+  const gap = Math.max(rect.width, rect.height) + GRID_SIZE * 2;
+  let targetX = system.x;
+  let targetY = system.y;
+  if (direction === "top") targetY -= gap;
+  if (direction === "bottom") targetY += gap;
+  if (direction === "left") targetX -= gap;
+  if (direction === "right") targetX += gap;
+  const newSystem = addSystem({ x: targetX, y: targetY });
+  if (newSystem) {
+    addConnection(system, newSystem);
+    selectSystem(newSystem);
+  }
 }
 
 function attachNodeEvents(system) {
@@ -646,7 +718,8 @@ function attachNodeEvents(system) {
 
   system.element.addEventListener("contextmenu", (event) => event.preventDefault());
 
-  system.element.querySelector(".domain-bubbles").addEventListener("click", (event) => {
+  const domainBubbleContainer = system.element.querySelector(".domain-bubbles");
+  domainBubbleContainer?.addEventListener("click", (event) => {
     if (!(event.target instanceof HTMLElement)) return;
     const domain = event.target.dataset.domain;
     if (!domain) return;
@@ -679,6 +752,7 @@ function handleCanvasClick(event) {
   selectedSystemId = null;
   clearMultiSelect();
   closePanel();
+  closeObjectModal();
   clearEntityLinkHighlight();
 }
 
@@ -796,6 +870,7 @@ function drawConnections() {
   if (connectionHandleLayer) {
     connectionHandleLayer.innerHTML = "";
   }
+  ensureArrowMarker();
   const applyState = hasActiveFilters() || hasEntitySelection();
   connections.forEach((connection) => {
     const fromSystem = systems.find((s) => s.id === connection.from);
@@ -812,6 +887,7 @@ function drawConnections() {
       path.classList.add("automated");
     }
     path.setAttribute("d", getAngledPath(fromPos, toPos));
+    path.setAttribute("marker-end", "url(#connection-arrow)");
     group.appendChild(path);
 
     const label = document.createElementNS(SVG_NS, "text");
@@ -964,6 +1040,31 @@ function getEdgeAttachmentPoint(system, targetPoint) {
   };
 }
 
+function ensureArrowMarker() {
+  if (!connectionLayer) return;
+  let defs = connectionLayer.querySelector("defs");
+  if (!defs) {
+    defs = document.createElementNS(SVG_NS, "defs");
+    connectionLayer.prepend(defs);
+  }
+  let marker = connectionLayer.querySelector("#connection-arrow");
+  if (!marker) {
+    marker = document.createElementNS(SVG_NS, "marker");
+    marker.id = "connection-arrow";
+    marker.setAttribute("markerWidth", "10");
+    marker.setAttribute("markerHeight", "10");
+    marker.setAttribute("refX", "6");
+    marker.setAttribute("refY", "3");
+    marker.setAttribute("orient", "auto");
+    marker.setAttribute("markerUnits", "strokeWidth");
+    const arrowPath = document.createElementNS(SVG_NS, "path");
+    arrowPath.setAttribute("d", "M0 0 L6 3 L0 6 z");
+    arrowPath.setAttribute("fill", "currentColor");
+    marker.appendChild(arrowPath);
+    defs.appendChild(marker);
+  }
+}
+
 function getConnectionPoints(fromSystem, toSystem) {
   return {
     from: getEdgeAttachmentPoint(fromSystem, getSystemCenter(toSystem)),
@@ -1029,6 +1130,32 @@ function openConnectionLabelEditor(connection, event) {
   });
 }
 
+function toggleObjectMenu(event) {
+  event?.stopPropagation();
+  if (!objectMenu || !addObjectBtn) return;
+  const rect = addObjectBtn.getBoundingClientRect();
+  objectMenu.style.left = `${rect.left}px`;
+  objectMenu.style.top = `${rect.bottom + 6}px`;
+  objectMenu.classList.toggle("hidden");
+}
+
+function handleObjectMenuClick(event) {
+  const target = event.target.closest("button[data-shape]");
+  if (!target) return;
+  const shape = target.dataset.shape;
+  const node = addSystem({ isObject: true, shapeType: shape, name: OBJECT_TYPES[shape]?.label || "Object" });
+  if (node) {
+    selectSystem(node);
+  }
+  objectMenu?.classList.add("hidden");
+}
+
+function handleDocumentClickForObjectMenu(event) {
+  if (!objectMenu || objectMenu.classList.contains("hidden")) return;
+  if (objectMenu.contains(event.target) || addObjectBtn.contains(event.target)) return;
+  objectMenu.classList.add("hidden");
+}
+
 function closeConnectionLabelEditor() {
   if (!connectionLabelEditor) return;
   connectionLabelEditor.classList.add("hidden");
@@ -1078,9 +1205,14 @@ function handleConnectionLabelKeyDown(event) {
 }
 
 function selectSystem(system) {
-  activePanelSystem = system;
   selectedSystemId = system.id;
-  openPanel(system);
+  if (system.isObject) {
+    activePanelSystem = null;
+    openObjectModal(system);
+  } else {
+    activePanelSystem = system;
+    openPanel(system);
+  }
   updateHighlights();
 }
 
@@ -1106,6 +1238,31 @@ function openPanel(system) {
   }
   renderEntityList(system);
   syncPanelDomainSelection(system);
+}
+
+function openObjectModal(system) {
+  if (!objectModal) return;
+  activeObjectNode = system;
+  objectLabelInput.value = system.shapeLabel || "";
+  objectTypeSelect.value = system.shapeType || "gateway";
+  objectModal.classList.remove("hidden");
+}
+
+function closeObjectModal() {
+  if (objectModal) {
+    objectModal.classList.add("hidden");
+  }
+  activeObjectNode = null;
+}
+
+function commitObjectChanges() {
+  if (!activeObjectNode) return;
+  const typeKey = objectTypeSelect.value;
+  const def = OBJECT_TYPES[typeKey] || OBJECT_TYPES.gateway;
+  activeObjectNode.shapeType = typeKey;
+  activeObjectNode.shapeLabel = objectLabelInput.value.trim() || def.label;
+  renderObjectLabel(activeObjectNode);
+  closeObjectModal();
 }
 
 function closePanel() {
@@ -1237,6 +1394,10 @@ function renderDomainBubbles(system) {
 }
 
 function updateSystemMeta(system) {
+  if (system.isObject) {
+    renderObjectLabel(system);
+    return;
+  }
   const ownerContainer = system.element.querySelector(".owner-info");
   if (ownerContainer) {
     ownerContainer.innerHTML = "";
@@ -1274,9 +1435,25 @@ function updateSystemIcon(system) {
   iconElement.textContent = getSystemIconSymbol(system);
 }
 
+function renderObjectLabel(system) {
+  const def = OBJECT_TYPES[system.shapeType] || OBJECT_TYPES.gateway;
+  const shape = system.element.querySelector(".object-shape");
+  if (shape) {
+    shape.className = `object-shape ${def.className}`;
+  }
+  const textNode = system.element.querySelector(".object-text");
+  if (textNode) {
+    textNode.textContent = system.shapeLabel || def.label;
+  }
+}
+
 function renderInlineEntities(system) {
   const container = system.element.querySelector(".entity-inline");
   if (!container) return;
+  if (system.isObject) {
+    container.classList.add("hidden");
+    return;
+  }
   container.innerHTML = "";
   if (!system.entities.length) {
     container.classList.add("hidden");
@@ -1426,6 +1603,9 @@ function handleDeleteSystem(system) {
     selectedSystemId = null;
     closePanel();
   }
+  if (activeObjectNode && activeObjectNode.id === system.id) {
+    closeObjectModal();
+  }
   refreshOwnerSuggestionLists();
   drawConnections();
   updateHighlights();
@@ -1556,6 +1736,9 @@ function cloneSystemData(system) {
     description: system.description,
     fileUrl: system.fileUrl,
     isSpreadsheet: system.isSpreadsheet,
+    isObject: system.isObject,
+    shapeType: system.shapeType,
+    shapeLabel: system.shapeLabel,
     entities: system.entities.map((entity) => ({ name: entity.name, isSor: !!entity.isSor })),
   };
 }
@@ -2588,6 +2771,9 @@ function serializeState() {
       description: system.description,
       fileUrl: system.fileUrl,
       isSpreadsheet: system.isSpreadsheet,
+      isObject: system.isObject,
+      shapeType: system.shapeType,
+      shapeLabel: system.shapeLabel,
       entities: system.entities.map((entity) => ({ name: entity.name, isSor: !!entity.isSor })),
     })),
     connections: connections.map((connection) => ({ ...connection })),
@@ -2642,6 +2828,9 @@ function loadSerializedState(snapshot) {
       comments: systemData.comments,
       description: systemData.description,
       isSpreadsheet: !!systemData.isSpreadsheet,
+      isObject: !!systemData.isObject,
+      shapeType: systemData.shapeType,
+      shapeLabel: systemData.shapeLabel,
     });
   });
   connections.push(

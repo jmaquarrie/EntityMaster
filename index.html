@@ -22,9 +22,16 @@
           <div class="brand-name">EntityMaster</div>
           <div class="brand-version">Version 0.1</div>
         </div>
+        <div id="objectMenu" class="flyout-menu hidden" role="menu" aria-label="Add object">
+          <button data-shape="gateway" role="menuitem">Gateway shape</button>
+          <button data-shape="event" role="menuitem">Event shape</button>
+          <button data-shape="start" role="menuitem">Start shape</button>
+          <button data-shape="end" role="menuitem">End shape</button>
+        </div>
         <div class="canvas-toolbar" aria-label="Canvas controls">
           <div class="toolbar-actions">
             <button id="addSystemBtn">Add System</button>
+            <button id="addObjectBtn" class="secondary">Add Object</button>
             <span id="fileNameDisplay" class="file-name" title="Click to rename">Untitled</span>
           </div>
           <div class="zoom-controls" aria-label="Zoom">
@@ -220,6 +227,30 @@
           <textarea id="systemCommentsInput" rows="3" placeholder="Add notes or context"></textarea>
         </label>
       </aside>
+      <div id="objectModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="objectModalTitle">
+        <div class="modal-card">
+          <div class="modal-header">
+            <h3 id="objectModalTitle">Edit Object</h3>
+            <button id="closeObjectModal" aria-label="Close modal">×</button>
+          </div>
+          <label class="field">
+            <span>Label</span>
+            <input type="text" id="objectLabelInput" />
+          </label>
+          <label class="field">
+            <span>Type</span>
+            <select id="objectTypeSelect">
+              <option value="gateway">Gateway</option>
+              <option value="event">Event</option>
+              <option value="start">Start</option>
+              <option value="end">End</option>
+            </select>
+          </label>
+          <div class="modal-actions">
+            <button id="saveObjectBtn" type="button">Save</button>
+          </div>
+        </div>
+      </div>
       <div id="bulkModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="bulkModalTitle">
         <div class="modal-card">
           <div class="modal-header">
