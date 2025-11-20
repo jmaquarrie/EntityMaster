@@ -1254,6 +1254,10 @@ button.ghost {
   display: flex;
 }
 
+.visual-secondary-controls .domain-controls.hidden {
+  display: none;
+}
+
 .visual-control-group {
   display: flex;
   align-items: center;

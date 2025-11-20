@@ -3296,34 +3296,46 @@ function getImmediateConnectedSystemIds(startId) {
 
 function getRelationFocusIds(sourceId, mode) {
   const related = new Set([sourceId]);
-  if (mode === "lineage") {
-    connections.forEach((conn) => {
-      getOutgoingTargetsFrom(conn, sourceId).forEach((id) => related.add(id));
-      getIncomingSourcesTo(conn, sourceId).forEach((id) => related.add(id));
-    });
-    return related;
-  }
-  const queue = [sourceId];
-  const followChildren = mode === "children" || mode === "lineage";
-  const followParents = mode === "parents" || mode === "lineage";
 
-  const enqueue = (id) => {
-    if (!related.has(id)) {
-      related.add(id);
-      queue.push(id);
+  const collectDirectionalIds = (startId, extractor) => {
+    const visited = new Set();
+    const queue = [startId];
+
+    while (queue.length) {
+      const current = queue.shift();
+      connections.forEach((conn) => {
+        extractor(conn, current).forEach((id) => {
+          if (!visited.has(id)) {
+            visited.add(id);
+            queue.push(id);
+          }
+        });
+      });
     }
+
+    return visited;
   };
 
-  while (queue.length) {
-    const current = queue.shift();
-    connections.forEach((conn) => {
-      if (followChildren) {
-        getOutgoingTargetsFrom(conn, current).forEach(enqueue);
-      }
-      if (followParents) {
-        getIncomingSourcesTo(conn, current).forEach(enqueue);
-      }
-    });
+  if (mode === "lineage") {
+    const ancestors = collectDirectionalIds(sourceId, (conn, current) => getIncomingSourcesTo(conn, current));
+    const descendants = collectDirectionalIds(sourceId, (conn, current) => getOutgoingTargetsFrom(conn, current));
+    ancestors.forEach((id) => related.add(id));
+    descendants.forEach((id) => related.add(id));
+    return related;
+  }
+
+  if (mode === "children") {
+    collectDirectionalIds(sourceId, (conn, current) => getOutgoingTargetsFrom(conn, current)).forEach((id) =>
+      related.add(id)
+    );
+    return related;
+  }
+
+  if (mode === "parents") {
+    collectDirectionalIds(sourceId, (conn, current) => getIncomingSourcesTo(conn, current)).forEach((id) =>
+      related.add(id)
+    );
+    return related;
   }
 
   return related;
