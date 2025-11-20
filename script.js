@@ -1366,57 +1366,38 @@ function getConnectionPoints(fromSystem, toSystem) {
     y: toRect.y + toRect.height / 2,
   };
 
-  const horizontalOverlap =
-    !(fromRect.x + fromRect.width < toRect.x) && !(toRect.x + toRect.width < fromRect.x);
-  const verticalOverlap =
-    !(fromRect.y + fromRect.height < toRect.y) && !(toRect.y + toRect.height < fromRect.y);
+  const getEdgeIntersection = (rect, targetCenter) => {
+    const cx = rect.x + rect.width / 2;
+    const cy = rect.y + rect.height / 2;
+    const dx = targetCenter.x - cx;
+    const dy = targetCenter.y - cy;
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
+    const halfW = rect.width / 2;
+    const halfH = rect.height / 2;
 
-  if (!horizontalOverlap) {
-    const toIsRight = toRect.x > fromRect.x;
-    const fromX = toIsRight ? fromRect.x + fromRect.width : fromRect.x;
-    const toX = toIsRight ? toRect.x : toRect.x + toRect.width;
-    const yAnchorFrom = fromRect.y + fromRect.height / 2;
-    const yAnchorTo = toRect.y + toRect.height / 2;
+    if (absDx === 0 && absDy === 0) {
+      return { x: cx, y: cy };
+    }
+
+    if (absDx * halfH > absDy * halfW) {
+      const scale = halfW / (absDx || 1);
+      return {
+        x: cx + Math.sign(dx) * halfW,
+        y: cy + dy * scale,
+      };
+    }
+
+    const scale = halfH / (absDy || 1);
     return {
-      from: { x: fromX, y: yAnchorFrom },
-      to: { x: toX, y: yAnchorTo },
+      x: cx + dx * scale,
+      y: cy + Math.sign(dy) * halfH,
     };
-  }
+  };
 
-  if (!verticalOverlap) {
-    const toIsBelow = toRect.y > fromRect.y;
-    const fromY = toIsBelow ? fromRect.y + fromRect.height : fromRect.y;
-    const toY = toIsBelow ? toRect.y : toRect.y + toRect.height;
-    const xAnchorFrom = fromRect.x + fromRect.width / 2;
-    const xAnchorTo = toRect.x + toRect.width / 2;
-    return {
-      from: { x: xAnchorFrom, y: fromY },
-      to: { x: xAnchorTo, y: toY },
-    };
-  }
-
-  const dx = toCenter.x - fromCenter.x;
-  const dy = toCenter.y - fromCenter.y;
-  const preferHorizontal = Math.abs(dx) >= Math.abs(dy);
-
-  if (preferHorizontal) {
-    const fromX = dx >= 0 ? fromRect.x + fromRect.width : fromRect.x;
-    const toX = dx >= 0 ? toRect.x : toRect.x + toRect.width;
-    const yAnchorFrom = fromRect.y + fromRect.height / 2;
-    const yAnchorTo = toRect.y + toRect.height / 2;
-    return {
-      from: { x: fromX, y: yAnchorFrom },
-      to: { x: toX, y: yAnchorTo },
-    };
-  }
-
-  const fromY = dy >= 0 ? fromRect.y + fromRect.height : fromRect.y;
-  const toY = dy >= 0 ? toRect.y : toRect.y + toRect.height;
-  const xAnchorFrom = fromRect.x + fromRect.width / 2;
-  const xAnchorTo = toRect.x + toRect.width / 2;
   return {
-    from: { x: xAnchorFrom, y: fromY },
-    to: { x: xAnchorTo, y: toY },
+    from: getEdgeIntersection(fromRect, toCenter),
+    to: getEdgeIntersection(toRect, fromCenter),
   };
 }
 
@@ -1593,6 +1574,23 @@ function computeConvexHull(points) {
   upper.pop();
   lower.pop();
   return lower.concat(upper);
+}
+
+function isPointInPolygon(point, polygon) {
+  if (!polygon?.length) return false;
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i += 1) {
+    const xi = polygon[i].x;
+    const yi = polygon[i].y;
+    const xj = polygon[j].x;
+    const yj = polygon[j].y;
+
+    const intersects =
+      yi > point.y !== yj > point.y &&
+      point.x < ((xj - xi) * (point.y - yi)) / (yj - yi + 0.00001) + xi;
+    if (intersects) inside = !inside;
+  }
+  return inside;
 }
 
 function renderGroups() {
@@ -2706,9 +2704,33 @@ function setupPanning() {
 function setupContextMenuBlock() {
   document.addEventListener("contextmenu", (event) => {
     if (event.target.closest && event.target.closest("#canvasViewport")) {
+      const group = findGroupAtPoint(event.pageX, event.pageY);
+      if (group) {
+        event.preventDefault();
+        openGroupContextMenu(group, event.pageX, event.pageY);
+        return;
+      }
       event.preventDefault();
     }
   });
+}
+
+function findGroupAtPoint(pageX, pageY) {
+  if (!canvasContent || !groups.length) return null;
+  const canvasRect = canvasContent.getBoundingClientRect();
+  const point = {
+    x: (pageX - canvasRect.left) / currentZoom,
+    y: (pageY - canvasRect.top) / currentZoom,
+  };
+
+  for (let i = groups.length - 1; i >= 0; i -= 1) {
+    const shape = getGroupHull(groups[i]);
+    if (!shape?.hull?.length) continue;
+    if (isPointInPolygon(point, shape.hull)) {
+      return groups[i];
+    }
+  }
+  return null;
 }
 
 function openContextMenu(options, x, y) {
