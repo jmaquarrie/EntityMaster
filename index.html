@@ -136,6 +136,15 @@
                 </select>
               </label>
             </div>
+            <div class="sidebar-section">
+              <label class="field">
+                <span>Include spreadsheets?</span>
+                <select id="spreadsheetFilter">
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              </label>
+            </div>
             <div class="sidebar-actions">
               <button id="resetFiltersBtn" type="button">Reset</button>
               <button id="visualizeBtn" type="button" class="ghost">Visual</button>
@@ -399,6 +408,16 @@
             <button id="closeVisualModal" class="icon-btn" type="button" aria-label="Close condensed visual">×</button>
           </div>
           <p class="modal-description">Systems that match your current filters, pulled closer together for a single-screen view.</p>
+          <div class="visual-controls">
+            <label class="inline-toggle">
+              <input type="checkbox" id="visualGroupByDomain" />
+              <span>Group by Domain</span>
+            </label>
+            <label class="field compact">
+              <span>Domain</span>
+              <select id="visualDomainSelect" aria-label="Visual domain choice"></select>
+            </label>
+          </div>
           <div id="visualContainer" class="visual-container">
             <svg id="visualConnections" class="visual-connections" aria-hidden="true"></svg>
             <div id="visualNodes" class="visual-nodes"></div>

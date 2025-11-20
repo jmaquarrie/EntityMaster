@@ -1226,6 +1226,31 @@ button.ghost {
   max-height: 90vh;
 }
 
+.visual-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin: 0.25rem 0 0.75rem;
+}
+
+.visual-controls .inline-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 700;
+  color: #0f1424;
+}
+
+.visual-controls .field.compact {
+  margin: 0;
+  min-width: 180px;
+}
+
+.visual-controls .field.compact select {
+  width: 100%;
+}
+
 .visual-container {
   position: relative;
   width: 100%;
@@ -1261,6 +1286,19 @@ button.ghost {
   padding: 0.4rem 0.6rem;
   min-width: 120px;
   box-shadow: 0 12px 25px rgba(17, 22, 58, 0.12);
+}
+
+.visual-domain {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  background: rgba(15, 20, 36, 0.08);
+  border: 1px solid var(--domain-color, #0f1424);
+  color: #0f1424;
+  padding: 0.45rem 0.75rem;
+  border-radius: 999px;
+  font-weight: 700;
+  box-shadow: 0 10px 20px rgba(17, 22, 58, 0.12);
+  white-space: nowrap;
 }
 
 .visual-node .visual-name {

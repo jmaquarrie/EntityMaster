@@ -83,6 +83,7 @@ let shouldSkipCanvasClear = false;
 let bulkSelection = [];
 let filterMode = "fade";
 let sorFilterValue = "any";
+let spreadsheetFilterValue = "yes";
 let lastDeletedSnapshot = null;
 let saveStatusTimer = null;
 let editingConnectionId = null;
@@ -179,6 +180,7 @@ const closeSaveModalBtn = document.getElementById("closeSaveModal");
 const saveListContainer = document.getElementById("saveList");
 const filterModeSelect = document.getElementById("filterModeSelect");
 const sorFilterSelect = document.getElementById("sorFilter");
+const spreadsheetFilterSelect = document.getElementById("spreadsheetFilter");
 const systemIconSelect = document.getElementById("systemIconSelect");
 const systemCommentsInput = document.getElementById("systemCommentsInput");
 const systemDescriptionInput = document.getElementById("systemDescriptionInput");
@@ -217,6 +219,8 @@ const closeVisualModalBtn = document.getElementById("closeVisualModal");
 const visualContainer = document.getElementById("visualContainer");
 const visualNodesContainer = document.getElementById("visualNodes");
 const visualConnectionsSvg = document.getElementById("visualConnections");
+const visualGroupByDomainCheckbox = document.getElementById("visualGroupByDomain");
+const visualDomainSelect = document.getElementById("visualDomainSelect");
 const accessBadge = document.getElementById("accessBadge");
 
 let activePanelSystem = null;
@@ -268,6 +272,7 @@ function applyAccessMode(mode = "full") {
       searchTypeSelect,
       filterModeSelect,
       sorFilterSelect,
+      spreadsheetFilterSelect,
       resetFiltersBtn,
       colorBySelect,
     ],
@@ -298,6 +303,7 @@ function init() {
   currentColorBy = colorBySelect.value || "none";
   filterMode = filterModeSelect?.value || "fade";
   sorFilterValue = sorFilterSelect?.value || "any";
+  spreadsheetFilterValue = spreadsheetFilterSelect?.value || "yes";
   setFileName(currentFileName);
   populateFunctionOwnerOptions();
 
@@ -369,6 +375,12 @@ function init() {
   sorFilterSelect?.addEventListener("change", (event) => {
     if (isFiltersLocked()) return;
     sorFilterValue = event.target.value;
+    selectedSystemId = null;
+    updateHighlights();
+  });
+  spreadsheetFilterSelect?.addEventListener("change", (event) => {
+    if (isFiltersLocked()) return;
+    spreadsheetFilterValue = event.target.value;
     selectedSystemId = null;
     updateHighlights();
   });
@@ -449,6 +461,14 @@ function init() {
       closeVisualModal();
     }
   });
+  visualGroupByDomainCheckbox?.addEventListener("change", () => {
+    if (!visualModal || visualModal.classList.contains("hidden")) return;
+    renderVisualSnapshot();
+  });
+  visualDomainSelect?.addEventListener("change", () => {
+    if (!visualModal || visualModal.classList.contains("hidden")) return;
+    renderVisualSnapshot();
+  });
   undoDeleteBtn?.addEventListener("click", handleUndoDelete);
   document.addEventListener("click", handleDocumentClickForContextMenu);
   document.addEventListener("click", handleDocumentClickForShareMenu);
@@ -456,6 +476,8 @@ function init() {
   window.addEventListener("resize", closeContextMenu);
   applyAccessMode(currentAccessMode);
   setSidebarCollapsedState(isSidebarCollapsed);
+
+  renderVisualDomainOptions();
 
   const loadedFromUrl = loadFromUrlParams();
   if (!loadedFromUrl) {
@@ -512,6 +534,7 @@ function refreshDomainOptionsUi() {
   renderCustomDomainList();
   updateGlobalDomainChips();
   systems.forEach((system) => renderDomainBubbles(system));
+  renderVisualDomainOptions();
 }
 
 function renderPanelDomainChoices() {
@@ -539,6 +562,22 @@ function renderGlobalDomainChips() {
         `<button class="domain-chip" data-domain="${domain.key}" style="color:${domain.color};">${domain.label}</button>`
     )
     .join("");
+}
+
+function renderVisualDomainOptions() {
+  if (!visualDomainSelect) return;
+  const previous = visualDomainSelect.value;
+  visualDomainSelect.innerHTML = domainDefinitions
+    .map((domain) => `<option value="${domain.key}">${domain.label}</option>`)
+    .join("");
+  const foundExisting = domainDefinitions.some((domain) => domain.key === previous);
+  if (foundExisting) {
+    visualDomainSelect.value = previous;
+  } else if (domainDefinitions.length) {
+    visualDomainSelect.value = domainDefinitions[0].key;
+  } else {
+    visualDomainSelect.value = "people";
+  }
 }
 
 function handleDomainChipClick(event) {
@@ -2616,6 +2655,7 @@ function resetFilters({ alsoClearSelection = false } = {}) {
   functionOwnerFilterText = "";
   searchQuery = "";
   sorFilterValue = "any";
+  spreadsheetFilterValue = "yes";
   relationFocus = null;
   clearEntityLinkHighlight(false);
   if (alsoClearSelection) {
@@ -2629,6 +2669,9 @@ function resetFilters({ alsoClearSelection = false } = {}) {
   if (searchInput) searchInput.value = "";
   if (sorFilterSelect) {
     sorFilterSelect.value = "any";
+  }
+  if (spreadsheetFilterSelect) {
+    spreadsheetFilterSelect.value = "yes";
   }
   updateGlobalDomainChips();
   updateHighlights();
@@ -2650,7 +2693,8 @@ function updateHighlights() {
     !!businessOwnerFilterText ||
     !!functionOwnerFilterText ||
     !!searchQuery ||
-    sorFilterValue !== "any";
+    sorFilterValue !== "any" ||
+    spreadsheetFilterValue !== "yes";
 
   const hasEntitySelection = !!activeEntityLinkName;
   const normalizedEntity = hasEntitySelection ? activeEntityLinkName.toLowerCase() : "";
@@ -2702,7 +2746,8 @@ function hasActiveFilters() {
     !!businessOwnerFilterText ||
     !!functionOwnerFilterText ||
     !!searchQuery ||
-    sorFilterValue !== "any"
+    sorFilterValue !== "any" ||
+    spreadsheetFilterValue !== "yes"
   );
 }
 
@@ -2717,6 +2762,13 @@ function getImmediateConnectedSystemIds(startId) {
 
 function getRelationFocusIds(sourceId, mode) {
   const related = new Set([sourceId]);
+  if (mode === "lineage") {
+    connections.forEach((conn) => {
+      getOutgoingTargetsFrom(conn, sourceId).forEach((id) => related.add(id));
+      getIncomingSourcesTo(conn, sourceId).forEach((id) => related.add(id));
+    });
+    return related;
+  }
   const queue = [sourceId];
   const followChildren = mode === "children" || mode === "lineage";
   const followParents = mode === "parents" || mode === "lineage";
@@ -2778,6 +2830,9 @@ function systemMatchesFilters(system) {
   if (sorFilterValue === "no" && systemHasSor(system)) {
     return false;
   }
+  if (spreadsheetFilterValue === "no" && system.isSpreadsheet) {
+    return false;
+  }
   if (searchQuery) {
     return doesSystemMatchSearch(system);
   }
@@ -2786,13 +2841,15 @@ function systemMatchesFilters(system) {
 
 function hasActiveFilters() {
   return (
+    !!relationFocus ||
     !!selectedSystemId ||
     activeDomainFilters.size > 0 ||
     !!platformOwnerFilterText ||
     !!businessOwnerFilterText ||
     !!functionOwnerFilterText ||
     !!searchQuery ||
-    sorFilterValue !== "any"
+    sorFilterValue !== "any" ||
+    spreadsheetFilterValue !== "yes"
   );
 }
 
@@ -3568,6 +3625,122 @@ function renderVisualSnapshot() {
   const width = rect.width || 900;
   const height = rect.height || 640;
   const padding = 50;
+  const groupByDomain = !!visualGroupByDomainCheckbox?.checked;
+  const fallbackDomainKey = visualDomainSelect?.value || domainDefinitions[0]?.key || "people";
+
+  const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
+  if (groupByDomain) {
+    const domainGroups = new Map();
+    systemsToShow.forEach((system) => {
+      const [primaryDomain] = Array.from(system.domains);
+      const domainKey = primaryDomain || fallbackDomainKey;
+      const bucket = domainGroups.get(domainKey) || [];
+      bucket.push(system);
+      domainGroups.set(domainKey, bucket);
+    });
+
+    const domainKeys = Array.from(domainGroups.keys());
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const ringRadius = Math.min(width, height) / 3;
+    const anchors = new Map();
+    const positionMap = new Map();
+    const nodesFragment = document.createDocumentFragment();
+
+    domainKeys.forEach((domainKey, index) => {
+      const angle = domainKeys.length === 1 ? -Math.PI / 2 : (index / domainKeys.length) * Math.PI * 2;
+      const anchorX =
+        domainKeys.length === 1 ? centerX : centerX + Math.cos(angle) * ringRadius * 0.55;
+      const anchorY =
+        domainKeys.length === 1 ? centerY : centerY + Math.sin(angle) * ringRadius * 0.55;
+      anchors.set(domainKey, { left: anchorX, top: anchorY });
+
+      const domainNode = document.createElement("div");
+      domainNode.className = "visual-domain";
+      domainNode.dataset.domainKey = domainKey;
+      domainNode.style.left = `${anchorX}px`;
+      domainNode.style.top = `${anchorY}px`;
+      const definition = findDomainDefinition(domainKey);
+      domainNode.textContent = definition?.label || domainKey;
+      domainNode.style.setProperty("--domain-color", definition?.color || "#0f1424");
+      nodesFragment.appendChild(domainNode);
+
+      const cluster = domainGroups.get(domainKey) || [];
+      const clusterRadius = 120 + Math.min(cluster.length, 8) * 10;
+      cluster.forEach((system, systemIndex) => {
+        const clusterAngle = cluster.length === 1 ? -Math.PI / 2 : (systemIndex / cluster.length) * Math.PI * 2;
+        const left = anchorX + Math.cos(clusterAngle) * clusterRadius;
+        const top = anchorY + Math.sin(clusterAngle) * clusterRadius;
+        positionMap.set(system.id, { left, top });
+
+        const node = document.createElement("div");
+        node.className = "visual-node";
+        node.dataset.systemId = system.id;
+        node.style.left = `${left}px`;
+        node.style.top = `${top}px`;
+
+        const meta = document.createElement("div");
+        meta.className = "visual-meta";
+        const iconSpan = document.createElement("span");
+        iconSpan.className = "visual-icon";
+        iconSpan.textContent = getSystemIconSymbol(system);
+        const nameSpan = document.createElement("div");
+        nameSpan.className = "visual-name";
+        nameSpan.textContent = system.name || "Untitled";
+        meta.append(iconSpan, nameSpan);
+
+        node.appendChild(meta);
+        nodesFragment.appendChild(node);
+      });
+    });
+
+    visualNodesContainer.appendChild(nodesFragment);
+
+    visualNodesContainer.querySelectorAll(".visual-domain").forEach((node) => {
+      const domainKey = node.dataset.domainKey;
+      const anchor = anchors.get(domainKey);
+      if (!anchor) return;
+      const halfWidth = (node.offsetWidth || 0) / 2;
+      const halfHeight = (node.offsetHeight || 0) / 2;
+      const left = clamp(anchor.left, padding + halfWidth, width - padding - halfWidth);
+      const top = clamp(anchor.top, padding + halfHeight, height - padding - halfHeight);
+      node.style.left = `${left}px`;
+      node.style.top = `${top}px`;
+      anchors.set(domainKey, { left, top });
+    });
+
+    visualNodesContainer.querySelectorAll(".visual-node").forEach((node) => {
+      const systemId = node.dataset.systemId;
+      const target = positionMap.get(systemId);
+      if (!systemId || !target) return;
+      const halfWidth = (node.offsetWidth || 0) / 2;
+      const halfHeight = (node.offsetHeight || 0) / 2;
+      const left = clamp(target.left, padding + halfWidth, width - padding - halfWidth);
+      const top = clamp(target.top, padding + halfHeight, height - padding - halfHeight);
+      node.style.left = `${left}px`;
+      node.style.top = `${top}px`;
+      positionMap.set(systemId, { left, top });
+    });
+
+    visualConnectionsSvg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    visualConnectionsSvg.setAttribute("width", width);
+    visualConnectionsSvg.setAttribute("height", height);
+
+    domainGroups.forEach((cluster, domainKey) => {
+      const anchor = anchors.get(domainKey);
+      if (!anchor) return;
+      cluster.forEach((system) => {
+        const pos = positionMap.get(system.id);
+        if (!pos) return;
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", `M ${anchor.left} ${anchor.top} L ${pos.left} ${pos.top}`);
+        path.setAttribute("class", "visual-connection-path");
+        visualConnectionsSvg.appendChild(path);
+      });
+    });
+    return;
+  }
 
   const minX = Math.min(...systemsToShow.map((s) => s.x));
   const minY = Math.min(...systemsToShow.map((s) => s.y));
@@ -3840,6 +4013,7 @@ function serializeState(accessModeOverride) {
       searchType,
       filterMode,
       sor: sorFilterValue,
+      spreadsheets: spreadsheetFilterValue,
       sidebarCollapsed: isSidebarCollapsed,
     },
     accessMode,
@@ -3945,6 +4119,7 @@ function applyFilterState(filterState = {}) {
   const businessOwnerValue = filterState.businessOwner || "";
   const functionOwnerValue = filterState.functionOwner || "";
   const searchValue = filterState.search || "";
+  const spreadsheetFilter = filterState.spreadsheets || "yes";
 
   platformOwnerFilterText = platformOwnerValue.trim().toLowerCase();
   businessOwnerFilterText = businessOwnerValue.trim().toLowerCase();
@@ -3953,6 +4128,7 @@ function applyFilterState(filterState = {}) {
   searchType = filterState.searchType || searchType;
   filterMode = filterState.filterMode || filterMode;
   sorFilterValue = filterState.sor || sorFilterValue;
+  spreadsheetFilterValue = spreadsheetFilter;
 
   if (platformOwnerFilterInput) platformOwnerFilterInput.value = platformOwnerValue;
   if (businessOwnerFilterInput) businessOwnerFilterInput.value = businessOwnerValue;
@@ -3961,6 +4137,7 @@ function applyFilterState(filterState = {}) {
   if (searchTypeSelect) searchTypeSelect.value = searchType;
   if (filterModeSelect) filterModeSelect.value = filterMode;
   if (sorFilterSelect) sorFilterSelect.value = sorFilterValue;
+  if (spreadsheetFilterSelect) spreadsheetFilterSelect.value = spreadsheetFilterValue;
   if (typeof filterState.sidebarCollapsed === "boolean") {
     setSidebarCollapsedState(filterState.sidebarCollapsed);
   }
