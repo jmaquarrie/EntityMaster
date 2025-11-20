@@ -1326,9 +1326,39 @@ function ensureArrowMarker() {
 }
 
 function getConnectionPoints(fromSystem, toSystem) {
+  const fromRect = getSystemRect(fromSystem);
+  const toRect = getSystemRect(toSystem);
+  const fromCenter = {
+    x: fromRect.x + fromRect.width / 2,
+    y: fromRect.y + fromRect.height / 2,
+  };
+  const toCenter = {
+    x: toRect.x + toRect.width / 2,
+    y: toRect.y + toRect.height / 2,
+  };
+
+  const dx = toCenter.x - fromCenter.x;
+  const dy = toCenter.y - fromCenter.y;
+  const preferHorizontal = Math.abs(dx) >= Math.abs(dy);
+
+  if (preferHorizontal) {
+    const fromX = dx >= 0 ? fromRect.x + fromRect.width : fromRect.x;
+    const toX = dx >= 0 ? toRect.x : toRect.x + toRect.width;
+    const yAnchorFrom = fromRect.y + fromRect.height / 2;
+    const yAnchorTo = toRect.y + toRect.height / 2;
+    return {
+      from: { x: fromX, y: yAnchorFrom },
+      to: { x: toX, y: yAnchorTo },
+    };
+  }
+
+  const fromY = dy >= 0 ? fromRect.y + fromRect.height : fromRect.y;
+  const toY = dy >= 0 ? toRect.y : toRect.y + toRect.height;
+  const xAnchorFrom = fromRect.x + fromRect.width / 2;
+  const xAnchorTo = toRect.x + toRect.width / 2;
   return {
-    from: getEdgeAttachmentPoint(fromSystem, getSystemCenter(toSystem)),
-    to: getEdgeAttachmentPoint(toSystem, getSystemCenter(fromSystem)),
+    from: { x: xAnchorFrom, y: fromY },
+    to: { x: xAnchorTo, y: toY },
   };
 }
 

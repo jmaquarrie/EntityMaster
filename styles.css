@@ -275,6 +275,7 @@ button.ghost {
   text-align: left;
   border-radius: 8px;
   cursor: pointer;
+  color: #0f1424;
 }
 
 .flyout-menu button:hover {
@@ -577,11 +578,12 @@ button.ghost {
   align-items: center;
   justify-content: center;
   margin: 8px auto;
-  width: 148px;
-  height: 108px;
+  width: 74px;
+  height: 74px;
   color: #222;
   font-weight: 600;
   background: var(--shape-color, #d1d5db);
+  position: relative;
 }
 
 .shape-gateway {
@@ -591,12 +593,25 @@ button.ghost {
 .shape-event,
 .shape-start,
 .shape-end {
-  border-radius: 999px;
+  border-radius: 50%;
+}
+
+.shape-end {
+  border: 4px solid #0f1424;
+}
+
+.shape-event {
+  border: 2px dashed #0f1424;
 }
 
 .object-text {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
   padding: 0 8px;
   text-align: center;
+  color: #0f1424;
 }
 
 .field-inline-toggle .field-top-row {
@@ -736,7 +751,7 @@ button.ghost {
   height: 20px;
   border-radius: 50%;
   border: none;
-  background: #f1f2f6;
+  background: transparent;
   color: #0f1424;
   font-size: 0.75rem;
   line-height: 1;
@@ -745,8 +760,7 @@ button.ghost {
   justify-content: center;
   cursor: pointer;
   pointer-events: auto;
-  box-shadow: 0 6px 16px rgba(15, 20, 36, 0.16);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition: transform 0.15s ease;
 }
 
 .connection-handle-group .connection-handle-btn {
@@ -754,13 +768,11 @@ button.ghost {
 }
 
 .connection-handle-btn.arrow-toggle[aria-pressed="true"] {
-  background: #0f1424;
-  color: #fff;
+  background: rgba(15, 20, 36, 0.2);
 }
 
 .connection-handle-btn:hover {
   transform: scale(1.05);
-  box-shadow: 0 8px 24px rgba(15, 20, 36, 0.22);
 }
 
 .connection-label-editor {
