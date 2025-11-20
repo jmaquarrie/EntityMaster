@@ -343,10 +343,18 @@ button.ghost {
 }
 
 .system-group polygon {
-  fill: rgba(255, 255, 255, 0.1);
+  fill: rgba(255, 255, 255, 0.2);
   stroke-width: 2px;
   pointer-events: auto;
   filter: drop-shadow(0 10px 30px rgba(15, 20, 36, 0.08));
+}
+
+.system-group text {
+  fill: #0f1424;
+  font-weight: 600;
+  font-size: 14px;
+  pointer-events: none;
+  text-shadow: none;
 }
 
 #connectionHandleLayer {

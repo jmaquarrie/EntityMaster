@@ -187,6 +187,7 @@ const settingsBtn = document.getElementById("settingsBtn");
 const settingsModal = document.getElementById("settingsModal");
 const closeSettingsModalBtn = document.getElementById("closeSettingsModal");
 const groupColorModal = document.getElementById("groupColorModal");
+const groupNameInput = document.getElementById("groupNameInput");
 const groupColorInput = document.getElementById("groupColorInput");
 const closeGroupColorModalBtn = document.getElementById("closeGroupColorModal");
 const saveGroupColorBtn = document.getElementById("saveGroupColorBtn");
@@ -1615,13 +1616,21 @@ function renderGroups() {
       .join(" ");
     polygon.setAttribute("points", points);
     polygon.setAttribute("stroke", group.color || "#0f1424");
-    polygon.setAttribute("fill", hexToRgba(group.color || "#ffffff", 0.1));
+    polygon.setAttribute("fill", hexToRgba(group.color || "#ffffff", 0.2));
     polygon.addEventListener("contextmenu", (event) => {
       event.preventDefault();
       event.stopPropagation();
       openGroupContextMenu(group, event.pageX, event.pageY);
     });
     svg.appendChild(polygon);
+
+    if (group.name) {
+      const label = document.createElementNS(SVG_NS, "text");
+      label.textContent = group.name;
+      label.setAttribute("x", 8);
+      label.setAttribute("y", 14);
+      svg.appendChild(label);
+    }
     groupLayer.appendChild(svg);
   });
 }
@@ -1630,8 +1639,8 @@ function openGroupContextMenu(group, x, y) {
   if (isEditingLocked()) return;
   openContextMenu(
     [
-      { label: "Ungroup", onClick: () => removeGroup(group.id) },
-      { label: "Change colour", onClick: () => openGroupColorPicker(group) },
+      { label: "Edit Group", onClick: () => openGroupEditor(group) },
+      { label: "Remove Group", onClick: () => removeGroup(group.id) },
     ],
     x,
     y
@@ -1661,9 +1670,11 @@ function createGroupFromSelection(selectedSystems = []) {
       }
     });
     primary.systemIds = Array.from(mergedIds);
+    primary.name = primary.name || getDefaultGroupName();
   } else {
     const group = {
       id: `group-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      name: getDefaultGroupName(),
       color: "#ffffff",
       systemIds: selectedSystems.map((item) => item.id),
     };
@@ -1673,12 +1684,27 @@ function createGroupFromSelection(selectedSystems = []) {
   scheduleShareUrlSync();
 }
 
-function openGroupColorPicker(group) {
+function getDefaultGroupName() {
+  const base = "Group";
+  const existingNames = new Set(groups.map((group) => group.name).filter(Boolean));
+  let counter = groups.length + 1;
+  let candidate = `${base} ${counter}`;
+  while (existingNames.has(candidate)) {
+    counter += 1;
+    candidate = `${base} ${counter}`;
+  }
+  return candidate;
+}
+
+function openGroupEditor(group) {
   if (!groupColorModal || !groupColorInput) return;
   editingGroupId = group.id;
   groupColorInput.value = group.color || "#ffffff";
+  if (groupNameInput) {
+    groupNameInput.value = group.name || "";
+  }
   groupColorModal.classList.remove("hidden");
-  requestAnimationFrame(() => groupColorInput.focus());
+  requestAnimationFrame(() => groupNameInput?.focus());
 }
 
 function closeGroupColorPicker() {
@@ -1697,6 +1723,12 @@ function applyGroupColor() {
     return;
   }
   group.color = groupColorInput?.value || group.color || "#ffffff";
+  const nameValue = groupNameInput?.value?.trim();
+  if (nameValue) {
+    group.name = nameValue;
+  } else if (!group.name) {
+    group.name = getDefaultGroupName();
+  }
   renderGroups();
   scheduleShareUrlSync();
   closeGroupColorPicker();
@@ -2804,6 +2836,7 @@ function handleSystemClick(event, system) {
 function handleSystemContextMenu(event, system) {
   const multiActive = multiSelectedIds.size > 0;
   const readOnly = isEditingLocked();
+  const owningGroup = groups.find((group) => group.systemIds?.includes(system.id));
   if (multiActive && !multiSelectedIds.has(system.id)) {
     addSystemToMultiSelect(system);
   }
@@ -2830,6 +2863,12 @@ function handleSystemContextMenu(event, system) {
               }
             },
           },
+          ...(owningGroup
+            ? [
+                { label: "Edit Group", onClick: () => openGroupEditor(owningGroup) },
+                { label: "Remove Group", onClick: () => removeGroup(owningGroup.id) },
+              ]
+            : []),
           {
             label: "Bulk edit",
             onClick: () => {
@@ -2854,6 +2893,12 @@ function handleSystemContextMenu(event, system) {
         { label: "Edit", onClick: () => selectSystem(system) },
         { label: "Show children", onClick: () => focusOnSystemRelations(system, "children") },
         { label: "Show parents", onClick: () => focusOnSystemRelations(system, "parents") },
+        ...(owningGroup && !readOnly
+          ? [
+              { label: "Edit Group", onClick: () => openGroupEditor(owningGroup) },
+              { label: "Remove Group", onClick: () => removeGroup(owningGroup.id) },
+            ]
+          : []),
         { label: "Delete", onClick: () => handleDeleteSystem(system) },
       ];
   openContextMenu(menuOptions, event.pageX, event.pageY);
@@ -3565,6 +3610,7 @@ function serializeState(accessModeOverride) {
     connections: connections.map((connection) => ({ ...connection })),
     groups: groups.map((group) => ({
       id: group.id,
+      name: group.name,
       color: group.color,
       systemIds: Array.isArray(group.systemIds) ? group.systemIds : Array.from(group.systemIds || []),
     })),
@@ -3657,6 +3703,7 @@ function loadSerializedState(snapshot) {
     if (!group || !Array.isArray(group.systemIds)) return;
     groups.push({
       id: group.id || `group-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      name: group.name || getDefaultGroupName(),
       color: group.color || "#ffffff",
       systemIds: [...group.systemIds],
     });
