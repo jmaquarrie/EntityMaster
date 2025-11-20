@@ -1523,45 +1523,108 @@ function handleConnectionLayerDoubleClick(event) {
   scheduleShareUrlSync();
 }
 
-function getGroupBounds(group) {
+function getGroupHull(group) {
   if (!group) return null;
   const members = systems.filter((system) => group.systemIds?.includes(system.id));
   if (!members.length) return null;
   const padding = 16;
-  const rects = members.map((system) => getSystemRect(system));
-  const minX = Math.min(...rects.map((rect) => rect.x));
-  const minY = Math.min(...rects.map((rect) => rect.y));
-  const maxX = Math.max(...rects.map((rect) => rect.x + rect.width));
-  const maxY = Math.max(...rects.map((rect) => rect.y + rect.height));
+  const points = [];
+  members.forEach((system) => {
+    const rect = getSystemRect(system);
+    const cx = rect.x + rect.width / 2;
+    const cy = rect.y + rect.height / 2;
+    const corners = [
+      { x: rect.x, y: rect.y },
+      { x: rect.x + rect.width, y: rect.y },
+      { x: rect.x + rect.width, y: rect.y + rect.height },
+      { x: rect.x, y: rect.y + rect.height },
+    ];
+    corners.forEach((corner) => {
+      const dx = corner.x - cx;
+      const dy = corner.y - cy;
+      const length = Math.hypot(dx, dy) || 1;
+      points.push({
+        x: corner.x + (dx / length) * padding,
+        y: corner.y + (dy / length) * padding,
+      });
+    });
+  });
+  if (points.length < 3) return null;
+  const hull = computeConvexHull(points);
+  if (!hull?.length) return null;
+  const minX = Math.min(...hull.map((p) => p.x));
+  const minY = Math.min(...hull.map((p) => p.y));
+  const maxX = Math.max(...hull.map((p) => p.x));
+  const maxY = Math.max(...hull.map((p) => p.y));
   return {
-    x: minX - padding,
-    y: minY - padding,
-    width: maxX - minX + padding * 2,
-    height: maxY - minY + padding * 2,
+    hull,
+    bounds: {
+      x: minX,
+      y: minY,
+      width: Math.max(maxX - minX, 1),
+      height: Math.max(maxY - minY, 1),
+    },
   };
+}
+
+function computeConvexHull(points) {
+  const sorted = [...points].sort((a, b) => (a.x === b.x ? a.y - b.y : a.x - b.x));
+  if (sorted.length <= 1) return sorted;
+
+  const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+
+  const lower = [];
+  sorted.forEach((point) => {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], point) <= 0) {
+      lower.pop();
+    }
+    lower.push(point);
+  });
+
+  const upper = [];
+  for (let i = sorted.length - 1; i >= 0; i -= 1) {
+    const point = sorted[i];
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], point) <= 0) {
+      upper.pop();
+    }
+    upper.push(point);
+  }
+
+  upper.pop();
+  lower.pop();
+  return lower.concat(upper);
 }
 
 function renderGroups() {
   if (!groupLayer) return;
   groupLayer.innerHTML = "";
   groups.forEach((group) => {
-    const bounds = getGroupBounds(group);
-    if (!bounds) return;
-    const box = document.createElement("div");
-    box.className = "system-group";
-    box.dataset.id = group.id;
-    box.style.left = `${bounds.x}px`;
-    box.style.top = `${bounds.y}px`;
-    box.style.width = `${bounds.width}px`;
-    box.style.height = `${bounds.height}px`;
-    box.style.background = hexToRgba(group.color || "#ffffff", 0.1);
-    box.style.borderColor = group.color || "#0f1424";
-    box.addEventListener("contextmenu", (event) => {
+    const shape = getGroupHull(group);
+    if (!shape) return;
+    const { bounds, hull } = shape;
+    const svg = document.createElementNS(SVG_NS, "svg");
+    svg.classList.add("system-group");
+    svg.dataset.id = group.id;
+    svg.setAttribute("width", bounds.width + 4);
+    svg.setAttribute("height", bounds.height + 4);
+    svg.style.left = `${bounds.x - 2}px`;
+    svg.style.top = `${bounds.y - 2}px`;
+    svg.style.position = "absolute";
+
+    const polygon = document.createElementNS(SVG_NS, "polygon");
+    const points = hull
+      .map((point) => `${point.x - bounds.x + 2},${point.y - bounds.y + 2}`)
+      .join(" ");
+    polygon.setAttribute("points", points);
+    polygon.setAttribute("stroke", group.color || "#0f1424");
+    polygon.setAttribute("fill", hexToRgba(group.color || "#ffffff", 0.1));
+    polygon.addEventListener("contextmenu", (event) => {
       event.preventDefault();
       event.stopPropagation();
       openGroupContextMenu(group, event.pageX, event.pageY);
     });
-    groupLayer.appendChild(box);
+    svg.appendChild(polygon);
+    groupLayer.appendChild(svg);
   });
 }
 
@@ -1587,12 +1650,27 @@ function removeGroup(groupId) {
 
 function createGroupFromSelection(selectedSystems = []) {
   if (!selectedSystems.length) return;
-  const group = {
-    id: `group-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-    color: "#ffffff",
-    systemIds: selectedSystems.map((item) => item.id),
-  };
-  groups.push(group);
+  const existing = groups.filter((entry) => selectedSystems.some((sys) => entry.systemIds?.includes(sys.id)));
+  if (existing.length) {
+    const primary = existing[0];
+    const mergedIds = new Set(primary.systemIds || []);
+    selectedSystems.forEach((item) => mergedIds.add(item.id));
+    existing.slice(1).forEach((extra) => {
+      (extra.systemIds || []).forEach((id) => mergedIds.add(id));
+      const idx = groups.findIndex((g) => g.id === extra.id);
+      if (idx !== -1) {
+        groups.splice(idx, 1);
+      }
+    });
+    primary.systemIds = Array.from(mergedIds);
+  } else {
+    const group = {
+      id: `group-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      color: "#ffffff",
+      systemIds: selectedSystems.map((item) => item.id),
+    };
+    groups.push(group);
+  }
   renderGroups();
   scheduleShareUrlSync();
 }
@@ -3660,6 +3738,14 @@ function loadFromUrlParams() {
 }
 
 function getAngledPath(from, to) {
+  const isVertical = Math.abs(from.x - to.x) < 0.5;
+  const isHorizontal = Math.abs(from.y - to.y) < 0.5;
+  if (isVertical) {
+    return `M ${from.x} ${from.y} L ${to.x} ${to.y}`;
+  }
+  if (isHorizontal) {
+    return `M ${from.x} ${from.y} L ${to.x} ${to.y}`;
+  }
   const midX = from.x + (to.x - from.x) / 2;
   return `M ${from.x} ${from.y} L ${midX} ${from.y} L ${midX} ${to.y} L ${to.x} ${to.y}`;
 }
