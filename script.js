@@ -540,6 +540,7 @@ const addSystemBtn = document.getElementById("addSystemBtn");
 const addObjectBtn = document.getElementById("addObjectBtn");
 const objectMenu = document.getElementById("objectMenu");
 const shareMenu = document.getElementById("shareMenu");
+const dataTableToggle = document.getElementById("dataTableToggle");
 const fileNameDisplay = document.getElementById("fileNameDisplay");
 const panel = document.getElementById("systemPanel");
 const panelTitle = document.getElementById("panelTitle");
@@ -609,6 +610,9 @@ const contextMenu = document.getElementById("contextMenu");
 const customDomainForm = document.getElementById("customDomainForm");
 const customDomainInput = document.getElementById("customDomainInput");
 const customDomainList = document.getElementById("customDomainList");
+const dataTableModal = document.getElementById("dataTableModal");
+const closeDataTableBtn = document.getElementById("closeDataTableBtn");
+const systemDataTableBody = document.getElementById("systemDataTableBody");
 const visualizeBtn = document.getElementById("visualizeBtn");
 const newDiagramModal = document.getElementById("newDiagramModal");
 const objectModal = document.getElementById("objectModal");
@@ -830,6 +834,13 @@ function init() {
   loadDiagramBtn.addEventListener("click", openSaveManager);
   shareDiagramBtn?.addEventListener("click", toggleShareMenu);
   shareMenu?.addEventListener("click", handleShareMenuClick);
+  dataTableToggle?.addEventListener("click", openDataTableModal);
+  closeDataTableBtn?.addEventListener("click", closeDataTableModal);
+  dataTableModal?.addEventListener("click", (event) => {
+    if (event.target === dataTableModal) {
+      closeDataTableModal();
+    }
+  });
   closeBulkModalBtn.addEventListener("click", closeBulkModal);
   cancelBulkBtn.addEventListener("click", closeBulkModal);
   bulkForm.addEventListener("submit", handleBulkSubmit);
@@ -1777,10 +1788,13 @@ function applyConnectionFilterClasses(shouldApplyState) {
     const endpointsHighlighted = !!(fromState?.highlight && toState?.highlight);
     const hide = applyState && filterMode === "hide" && !endpointsHighlighted;
     const dim = applyState && filterMode === "fade" && !endpointsHighlighted;
+    const selectedConnection =
+      selectedSystemId && (connection.from === selectedSystemId || connection.to === selectedSystemId);
 
     group.classList.toggle("hidden-filter", hide);
-    group.classList.toggle("dimmed", dim);
+    group.classList.toggle("dimmed", dim && !selectedConnection);
     group.classList.toggle("entity-muted", applyEntityDim);
+    group.classList.toggle("selected-connection", !!selectedConnection);
   });
 }
 
@@ -3269,6 +3283,9 @@ function updateHighlights() {
   applyColorCoding();
   drawConnections();
   applyConnectionFilterClasses(shouldApplyState);
+  if (dataTableModal && !dataTableModal.classList.contains("hidden")) {
+    renderSystemDataTable();
+  }
   scheduleShareUrlSync();
 }
 
@@ -4152,6 +4169,15 @@ function openVisualModal() {
 
 function closeVisualModal() {
   visualModal?.classList.add("hidden");
+}
+
+function openDataTableModal() {
+  renderSystemDataTable();
+  dataTableModal?.classList.remove("hidden");
+}
+
+function closeDataTableModal() {
+  dataTableModal?.classList.add("hidden");
 }
 
 function renderVisualSnapshot() {
@@ -5176,6 +5202,58 @@ function snapCoordinate(value) {
   }
   const snapped = Math.round(value / GRID_SIZE) * GRID_SIZE;
   return Math.max(0, snapped);
+}
+
+function getSystemsForCurrentFilters() {
+  const filteredContextActive = hasActiveFilters() || !!selectedSystemId || !!activeEntityLinkName;
+  if (!filteredContextActive) {
+    return [...systems];
+  }
+  return systems.filter((system) => systemHighlightState.get(system.id)?.highlight);
+}
+
+function renderSystemDataTable() {
+  if (!systemDataTableBody) return;
+  const systemsToShow = getSystemsForCurrentFilters();
+  systemDataTableBody.innerHTML = "";
+
+  if (!systemsToShow.length) {
+    const emptyRow = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 6;
+    cell.textContent = "No systems match the current filters.";
+    emptyRow.appendChild(cell);
+    systemDataTableBody.appendChild(emptyRow);
+    return;
+  }
+
+  systemsToShow.forEach((system) => {
+    const domainLabel = Array.from(system.domains)
+      .map((key) => findDomainDefinition(key)?.label || key)
+      .join(", ");
+    const functionOwner = system.functionOwner || "";
+    const businessOwner = system.businessOwner || "";
+    const platformOwner = system.platformOwner || "";
+    const systemName = system.name || "Untitled";
+    const entities = system.entities?.length ? system.entities : [{ name: "" }];
+
+    entities.forEach((entity) => {
+      const row = document.createElement("tr");
+      [
+        domainLabel || "—",
+        entity.name || "—",
+        systemName,
+        functionOwner || "—",
+        businessOwner || "—",
+        platformOwner || "—",
+      ].forEach((value) => {
+        const cell = document.createElement("td");
+        cell.textContent = value;
+        row.appendChild(cell);
+      });
+      systemDataTableBody.appendChild(row);
+    });
+  });
 }
 
 function setCanvasDimensions(width, height) {

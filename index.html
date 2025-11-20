@@ -34,6 +34,7 @@
           <button data-share-mode="view" role="menuitem">Share view-only</button>
           <button data-share-mode="locked" role="menuitem">Share locked</button>
         </div>
+        <button id="dataTableToggle" class="floating-table-btn" aria-label="Open system data table">📊</button>
         <div class="canvas-toolbar" aria-label="Canvas controls">
           <div class="toolbar-actions">
             <button id="addSystemBtn">Add System</button>
@@ -277,6 +278,29 @@
           </label>
           <div class="modal-actions">
             <button id="saveObjectBtn" type="button">Save</button>
+          </div>
+        </div>
+      </div>
+      <div id="dataTableModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="dataTableTitle">
+        <div class="modal-card table-modal-card">
+          <div class="modal-header">
+            <h3 id="dataTableTitle">System Data</h3>
+            <button id="closeDataTableBtn" aria-label="Close system data table">Close</button>
+          </div>
+          <div class="table-body-wrapper">
+            <table class="system-data-table">
+              <thead>
+                <tr>
+                  <th>Domain</th>
+                  <th>Entity</th>
+                  <th>System</th>
+                  <th>Function Owner</th>
+                  <th>Business Owner</th>
+                  <th>Platform Owner</th>
+                </tr>
+              </thead>
+              <tbody id="systemDataTableBody"></tbody>
+            </table>
           </div>
         </div>
       </div>
