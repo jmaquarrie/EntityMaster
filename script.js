@@ -4,7 +4,7 @@ const DEFAULT_NODE_WIDTH = 220;
 const DEFAULT_NODE_HEIGHT = 160;
 const SVG_NS = "http://www.w3.org/2000/svg";
 const HANDLE_OFFSET = 24;
-const MIN_ZOOM = 0.1;
+const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 1.5;
 const ZOOM_STEP = 0.1;
 const STORAGE_KEY = "entityMasterSaves";
@@ -95,6 +95,28 @@ let fileNameBeforeEdit = "Untitled";
 let marqueePreviewIds = new Set();
 let relationFocus = null;
 let urlSyncTimer = null;
+let currentAccessMode = "full";
+
+function isEditingLocked() {
+  return currentAccessMode !== "full";
+}
+
+function isFiltersLocked() {
+  return currentAccessMode === "locked";
+}
+
+function toggleElementsDisabled(elements, disabled) {
+  elements
+    .filter(Boolean)
+    .forEach((element) => {
+      element.disabled = !!disabled;
+      if (disabled) {
+        element.setAttribute("aria-disabled", "true");
+      } else {
+        element.removeAttribute("aria-disabled");
+      }
+    });
+}
 
 const canvasContent = document.getElementById("canvasContent");
 const canvasViewport = document.getElementById("canvasViewport");
@@ -105,6 +127,7 @@ const connectionHandleLayer = document.getElementById("connectionHandleLayer");
 const addSystemBtn = document.getElementById("addSystemBtn");
 const addObjectBtn = document.getElementById("addObjectBtn");
 const objectMenu = document.getElementById("objectMenu");
+const shareMenu = document.getElementById("shareMenu");
 const fileNameDisplay = document.getElementById("fileNameDisplay");
 const panel = document.getElementById("systemPanel");
 const panelTitle = document.getElementById("panelTitle");
@@ -184,9 +207,79 @@ const closeVisualModalBtn = document.getElementById("closeVisualModal");
 const visualContainer = document.getElementById("visualContainer");
 const visualNodesContainer = document.getElementById("visualNodes");
 const visualConnectionsSvg = document.getElementById("visualConnections");
+const accessBadge = document.getElementById("accessBadge");
 
 let activePanelSystem = null;
 let activeObjectNode = null;
+
+function applyAccessMode(mode = "full") {
+  currentAccessMode = mode || "full";
+  const readOnly = isEditingLocked();
+  const filtersBlocked = isFiltersLocked();
+
+  toggleElementsDisabled(
+    [addSystemBtn, addObjectBtn, newDiagramBtn, saveDiagramBtn, loadDiagramBtn, settingsBtn],
+    readOnly
+  );
+
+  if (fileNameDisplay) {
+    fileNameDisplay.tabIndex = readOnly ? -1 : 0;
+    fileNameDisplay.classList.toggle("disabled", readOnly);
+  }
+
+  toggleElementsDisabled(
+    [
+      systemNameInput,
+      platformOwnerInput,
+      businessOwnerInput,
+      functionOwnerInput,
+      entityInput,
+      fileUrlInput,
+      spreadsheetSelect,
+      systemIconSelect,
+      systemCommentsInput,
+      systemDescriptionInput,
+      customDomainInput,
+      objectLabelInput,
+      objectTypeSelect,
+      objectColorInput,
+      objectCommentsInput,
+      saveObjectBtn,
+    ],
+    readOnly
+  );
+
+  toggleElementsDisabled(
+    [
+      platformOwnerFilterInput,
+      businessOwnerFilterInput,
+      functionOwnerFilterInput,
+      searchInput,
+      searchTypeSelect,
+      filterModeSelect,
+      sorFilterSelect,
+      resetFiltersBtn,
+      colorBySelect,
+    ],
+    filtersBlocked
+  );
+
+  if (filterPanel) {
+    filterPanel.classList.toggle("locked", filtersBlocked);
+  }
+
+  if (accessBadge) {
+    if (currentAccessMode === "view") {
+      accessBadge.textContent = "View Only";
+      accessBadge.classList.remove("hidden");
+    } else if (currentAccessMode === "locked") {
+      accessBadge.textContent = "Locked";
+      accessBadge.classList.remove("hidden");
+    } else {
+      accessBadge.classList.add("hidden");
+    }
+  }
+}
 
 function init() {
   setCanvasDimensions(CANVAS_WIDTH, CANVAS_HEIGHT);
@@ -203,7 +296,10 @@ function init() {
   globalDomainChips?.addEventListener("click", handleDomainChipClick);
   canvas.addEventListener("pointerdown", handleCanvasPointerDown);
   createSelectionBox();
-  addSystemBtn.addEventListener("click", () => addSystem());
+  addSystemBtn.addEventListener("click", () => {
+    if (isEditingLocked()) return;
+    addSystem();
+  });
   addObjectBtn?.addEventListener("click", handleAddObjectClick);
   fileNameDisplay?.addEventListener("click", beginFileNameEdit);
   fileNameDisplay?.addEventListener("keydown", handleFileNameKeyDown);
@@ -212,6 +308,7 @@ function init() {
   entityForm.addEventListener("submit", handleAddEntity);
   canvas.addEventListener("click", handleCanvasClick);
   connectionLayer.addEventListener("click", handleConnectionLayerClick);
+  connectionLayer.addEventListener("dblclick", handleConnectionLayerDoubleClick);
   saveObjectBtn?.addEventListener("click", commitObjectChanges);
   closeObjectModalBtn?.addEventListener("click", closeObjectModal);
   customDomainForm?.addEventListener("submit", handleCustomDomainSubmit);
@@ -220,44 +317,53 @@ function init() {
   businessOwnerInput.addEventListener("input", handleOwnerFieldChange);
   functionOwnerInput.addEventListener("input", handleFunctionOwnerChange);
   functionOwnerInput.addEventListener("change", () => {
+    if (isEditingLocked()) return;
     ensureFunctionOwnerOption(functionOwnerInput.value.trim());
   });
   fileUrlInput?.addEventListener("input", handleFileUrlChange);
   platformOwnerFilterInput.addEventListener("input", (event) => {
+    if (isFiltersLocked()) return;
     platformOwnerFilterText = event.target.value.trim().toLowerCase();
     selectedSystemId = null;
     updateHighlights();
   });
   businessOwnerFilterInput.addEventListener("input", (event) => {
+    if (isFiltersLocked()) return;
     businessOwnerFilterText = event.target.value.trim().toLowerCase();
     selectedSystemId = null;
     updateHighlights();
   });
   functionOwnerFilterInput.addEventListener("input", (event) => {
+    if (isFiltersLocked()) return;
     functionOwnerFilterText = event.target.value.trim().toLowerCase();
     selectedSystemId = null;
     updateHighlights();
   });
   searchInput.addEventListener("input", (event) => {
+    if (isFiltersLocked()) return;
     searchQuery = event.target.value.trim().toLowerCase();
     selectedSystemId = null;
     updateHighlights();
   });
   searchTypeSelect.addEventListener("change", (event) => {
+    if (isFiltersLocked()) return;
     searchType = event.target.value;
     selectedSystemId = null;
     updateHighlights();
   });
   filterModeSelect?.addEventListener("change", (event) => {
+    if (isFiltersLocked()) return;
     filterMode = event.target.value;
     updateHighlights();
   });
   sorFilterSelect?.addEventListener("change", (event) => {
+    if (isFiltersLocked()) return;
     sorFilterValue = event.target.value;
     selectedSystemId = null;
     updateHighlights();
   });
   colorBySelect.addEventListener("change", (event) => {
+    if (isFiltersLocked()) return;
     currentColorBy = event.target.value;
     applyColorCoding();
     scheduleShareUrlSync();
@@ -267,7 +373,8 @@ function init() {
   newDiagramBtn?.addEventListener("click", handleNewDiagramClick);
   saveDiagramBtn.addEventListener("click", handleSaveDiagram);
   loadDiagramBtn.addEventListener("click", openSaveManager);
-  shareDiagramBtn?.addEventListener("click", handleShareDiagram);
+  shareDiagramBtn?.addEventListener("click", toggleShareMenu);
+  shareMenu?.addEventListener("click", handleShareMenuClick);
   closeBulkModalBtn.addEventListener("click", closeBulkModal);
   cancelBulkBtn.addEventListener("click", closeBulkModal);
   bulkForm.addEventListener("submit", handleBulkSubmit);
@@ -327,8 +434,10 @@ function init() {
   });
   undoDeleteBtn?.addEventListener("click", handleUndoDelete);
   document.addEventListener("click", handleDocumentClickForContextMenu);
+  document.addEventListener("click", handleDocumentClickForShareMenu);
   canvasViewport?.addEventListener("scroll", closeContextMenu);
   window.addEventListener("resize", closeContextMenu);
+  applyAccessMode(currentAccessMode);
   setSidebarCollapsedState(isSidebarCollapsed);
 
   const loadedFromUrl = loadFromUrlParams();
@@ -416,6 +525,7 @@ function renderGlobalDomainChips() {
 }
 
 function handleDomainChipClick(event) {
+  if (isFiltersLocked()) return;
   if (!(event.target instanceof HTMLElement)) return;
   const chip = event.target.closest(".domain-chip");
   const domain = chip?.dataset.domain;
@@ -425,6 +535,7 @@ function handleDomainChipClick(event) {
 }
 
 function toggleDomainFilter(domain) {
+  if (isFiltersLocked()) return;
   if (activeDomainFilters.has(domain)) {
     activeDomainFilters.delete(domain);
   } else {
@@ -465,6 +576,7 @@ function renderCustomDomainList() {
 
 function handleCustomDomainSubmit(event) {
   event.preventDefault();
+  if (isEditingLocked()) return;
   if (!customDomainInput) return;
   const value = customDomainInput.value.trim();
   if (!value) return;
@@ -473,6 +585,7 @@ function handleCustomDomainSubmit(event) {
 }
 
 function handleCustomDomainListClick(event) {
+  if (isEditingLocked()) return;
   const button = event.target.closest?.("button[data-domain]");
   if (!button) return;
   const { domain } = button.dataset;
@@ -756,15 +869,21 @@ function handleCanvasClick(event) {
     return;
   }
   closeConnectionLabelEditor();
+  const hadRelationFocus = !!relationFocus;
+  relationFocus = null;
   selectedSystemId = null;
   clearMultiSelect();
   closePanel();
   closeObjectModal();
   clearEntityLinkHighlight();
+  if (hadRelationFocus) {
+    updateHighlights();
+  }
 }
 
 function startDragging(event, system) {
   if (event.button !== 0) return;
+  if (isEditingLocked()) return;
   event.preventDefault();
   const startX = event.clientX;
   const startY = event.clientY;
@@ -803,8 +922,47 @@ function startDragging(event, system) {
   window.addEventListener("pointerup", onUp);
 }
 
+function getConnectionArrowMode(connection) {
+  if (!connection) return "single";
+  if (connection.arrowMode) return connection.arrowMode;
+  return connection.bidirectional ? "double" : "single";
+}
+
+function setConnectionArrowMode(connection, mode) {
+  if (!connection) return;
+  connection.arrowMode = mode;
+  connection.bidirectional = mode === "double";
+}
+
+function getOutgoingTargetsFrom(connection, sourceId) {
+  const mode = getConnectionArrowMode(connection);
+  const targets = [];
+  if (mode === "none") return targets;
+  if (connection.from === sourceId) {
+    targets.push(connection.to);
+  }
+  if (mode === "double" && connection.to === sourceId) {
+    targets.push(connection.from);
+  }
+  return targets;
+}
+
+function getIncomingSourcesTo(connection, targetId) {
+  const mode = getConnectionArrowMode(connection);
+  const sources = [];
+  if (mode === "none") return sources;
+  if (connection.to === targetId) {
+    sources.push(connection.from);
+  }
+  if (mode === "double" && connection.from === targetId) {
+    sources.push(connection.to);
+  }
+  return sources;
+}
+
 function startLinking(event, system) {
   if (event.button !== 0) return;
+  if (isEditingLocked()) return;
   event.stopPropagation();
   event.preventDefault();
   const line = document.createElementNS(SVG_NS, "path");
@@ -855,18 +1013,26 @@ function addConnection(source, target) {
       (conn.from === target.id && conn.to === source.id)
   );
   if (existing) {
-    existing.bidirectional = true;
+    setConnectionArrowMode(existing, "double");
     drawConnections();
     updateHighlights();
     return;
   }
 
-  connections.push({ id: `conn-${source.id}-${target.id}`, from: source.id, to: target.id, label: "", bidirectional: false });
+  connections.push({
+    id: `conn-${source.id}-${target.id}`,
+    from: source.id,
+    to: target.id,
+    label: "",
+    bidirectional: false,
+    arrowMode: "single",
+  });
   drawConnections();
   updateHighlights();
 }
 
 function removeConnection(connectionId) {
+  if (isEditingLocked()) return;
   const index = connections.findIndex((connection) => connection.id === connectionId);
   if (index === -1) return;
   connections.splice(index, 1);
@@ -899,9 +1065,16 @@ function drawConnections() {
       path.classList.add("automated");
     }
     path.setAttribute("d", getAngledPath(fromPos, toPos));
-    path.setAttribute("marker-end", "url(#connection-arrow)");
-    if (connection.bidirectional) {
+    const arrowMode = getConnectionArrowMode(connection);
+    if (arrowMode === "none") {
+      path.removeAttribute("marker-end");
+      path.removeAttribute("marker-start");
+    } else if (arrowMode === "double") {
+      path.setAttribute("marker-end", "url(#connection-arrow)");
       path.setAttribute("marker-start", "url(#connection-arrow)");
+    } else {
+      path.setAttribute("marker-end", "url(#connection-arrow)");
+      path.removeAttribute("marker-start");
     }
     group.appendChild(path);
 
@@ -1123,12 +1296,31 @@ function renderConnectionHandle(connection, position) {
 }
 
 function handleConnectionLayerClick(event) {
+  if (event.detail > 1) return;
+  if (isEditingLocked()) return;
   const group = event.target.closest?.(".connection-group");
   if (!group) return;
   const connection = connections.find((conn) => conn.id === group.dataset.id);
   if (!connection) return;
   event.stopPropagation();
   openConnectionLabelEditor(connection, event);
+}
+
+function handleConnectionLayerDoubleClick(event) {
+  if (isEditingLocked()) return;
+  const group = event.target.closest?.(".connection-group");
+  if (!group) return;
+  const connection = connections.find((conn) => conn.id === group.dataset.id);
+  if (!connection) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const order = ["single", "double", "none"];
+  const currentMode = getConnectionArrowMode(connection);
+  const nextMode = order[(order.indexOf(currentMode) + 1) % order.length];
+  setConnectionArrowMode(connection, nextMode);
+  drawConnections();
+  updateHighlights();
+  scheduleShareUrlSync();
 }
 
 function openConnectionLabelEditor(connection, event) {
@@ -1146,6 +1338,7 @@ function openConnectionLabelEditor(connection, event) {
 }
 
 function handleAddObjectClick() {
+  if (isEditingLocked()) return;
   const node = addSystem({
     isObject: true,
     shapeType: "gateway",
@@ -1264,6 +1457,7 @@ function closeObjectModal() {
 }
 
 function commitObjectChanges() {
+  if (isEditingLocked()) return;
   if (!activeObjectNode) return;
   const typeKey = objectTypeSelect.value;
   const def = OBJECT_TYPES[typeKey] || OBJECT_TYPES.gateway;
@@ -1281,6 +1475,7 @@ function closePanel() {
 }
 
 systemNameInput.addEventListener("input", () => {
+  if (isEditingLocked()) return;
   if (!activePanelSystem) return;
   activePanelSystem.name = systemNameInput.value.trim() || "Untitled";
   activePanelSystem.element.querySelector(".title").textContent = activePanelSystem.name;
@@ -1288,6 +1483,7 @@ systemNameInput.addEventListener("input", () => {
 });
 
 function handleOwnerFieldChange() {
+  if (isEditingLocked()) return;
   if (!activePanelSystem) return;
   activePanelSystem.platformOwner = platformOwnerInput.value.trim();
   activePanelSystem.businessOwner = businessOwnerInput.value.trim();
@@ -1297,6 +1493,7 @@ function handleOwnerFieldChange() {
 }
 
 function handleFunctionOwnerChange() {
+  if (isEditingLocked()) return;
   if (!activePanelSystem) return;
   activePanelSystem.functionOwner = functionOwnerInput.value.trim();
   updateSystemMeta(activePanelSystem);
@@ -1304,11 +1501,13 @@ function handleFunctionOwnerChange() {
 }
 
 function handleFileUrlChange() {
+  if (isEditingLocked()) return;
   if (!activePanelSystem) return;
   activePanelSystem.fileUrl = fileUrlInput.value.trim();
 }
 
 function handleSpreadsheetChange() {
+  if (isEditingLocked()) return;
   if (!activePanelSystem) return;
   activePanelSystem.isSpreadsheet = spreadsheetSelect.value === "yes";
   updateSystemIcon(activePanelSystem);
@@ -1316,6 +1515,7 @@ function handleSpreadsheetChange() {
 
 function handleAddEntity(event) {
   event.preventDefault();
+  if (isEditingLocked()) return;
   if (!activePanelSystem) return;
   const value = entityInput.value.trim();
   if (!value) return;
@@ -1345,6 +1545,7 @@ function renderEntityList(system) {
     sorInput.type = "checkbox";
     sorInput.checked = entity.isSor;
     sorInput.addEventListener("change", () => {
+      if (isEditingLocked()) return;
       entity.isSor = sorInput.checked;
       renderEntityList(system);
       updateHighlights();
@@ -1355,6 +1556,7 @@ function renderEntityList(system) {
     removeBtn.setAttribute("aria-label", "Remove entity");
     removeBtn.textContent = "×";
     removeBtn.addEventListener("click", () => {
+      if (isEditingLocked()) return;
       system.entities.splice(index, 1);
       renderEntityList(system);
       updateSystemMeta(system);
@@ -1371,6 +1573,7 @@ function renderEntityList(system) {
 }
 
 function handleDomainSelection(event) {
+  if (isEditingLocked()) return;
   if (!activePanelSystem || event.target.type !== "checkbox") return;
   const domain = event.target.value;
   if (event.target.checked) {
@@ -1590,6 +1793,7 @@ function clearEntityLinkHighlight(shouldUpdate = true) {
 }
 
 function handleDeleteSystem(system) {
+  if (isEditingLocked()) return;
   if (!system) return;
   closeContextMenu();
   const index = systems.findIndex((entry) => entry.id === system.id);
@@ -1662,6 +1866,7 @@ function handleUndoDelete() {
 }
 
 function handleNewDiagramClick() {
+  if (isEditingLocked()) return;
   if (systems.length === 0 && connections.length === 0) {
     resetDiagramToBlank();
     return;
@@ -1757,6 +1962,7 @@ function cloneSystemData(system) {
 }
 
 function cloneSystem(system) {
+  if (isEditingLocked()) return;
   if (!system) return;
   const clone = { ...cloneSystemData(system) };
   clone.id = undefined;
@@ -1773,6 +1979,7 @@ function deleteMultiSelection() {
 }
 
 function resetFilters({ alsoClearSelection = false } = {}) {
+  if (isFiltersLocked()) return;
   activeDomainFilters.clear();
   platformOwnerFilterText = "";
   businessOwnerFilterText = "";
@@ -1872,11 +2079,8 @@ function hasActiveFilters() {
 function getImmediateConnectedSystemIds(startId) {
   const visited = new Set([startId]);
   connections.forEach((conn) => {
-    if (conn.from === startId || (conn.bidirectional && conn.to === startId)) {
-      visited.add(conn.to);
-    } else if (conn.to === startId || (conn.bidirectional && conn.from === startId)) {
-      visited.add(conn.from);
-    }
+    getOutgoingTargetsFrom(conn, startId).forEach((id) => visited.add(id));
+    getIncomingSourcesTo(conn, startId).forEach((id) => visited.add(id));
   });
   return visited;
 }
@@ -1897,11 +2101,9 @@ function getRelationFocusIds(sourceId, mode) {
     const current = queue.shift();
     connections.forEach((conn) => {
       if (followChildren) {
-        if (conn.from === current) enqueue(conn.to);
-        if (conn.bidirectional && conn.to === current) enqueue(conn.from);
+        getOutgoingTargetsFrom(conn, current).forEach(enqueue);
       } else {
-        if (conn.to === current) enqueue(conn.from);
-        if (conn.bidirectional && conn.from === current) enqueue(conn.to);
+        getIncomingSourcesTo(conn, current).forEach(enqueue);
       }
     });
   }
@@ -2183,6 +2385,7 @@ function handleSystemClick(event, system) {
 
 function handleSystemContextMenu(event, system) {
   const multiActive = multiSelectedIds.size > 0;
+  const readOnly = isEditingLocked();
   if (multiActive && !multiSelectedIds.has(system.id)) {
     addSystemToMultiSelect(system);
   }
@@ -2195,19 +2398,30 @@ function handleSystemContextMenu(event, system) {
     ? systems.filter((item) => multiSelectedIds.has(item.id))
     : [system];
   const menuOptions = multiSelectedIds.size
-    ? [
-        {
-          label: "Bulk edit",
-          onClick: () => {
-            if (selectedSystems.length) {
-              openBulkModal(selectedSystems);
-            }
+    ? readOnly
+      ? [
+          { label: "Show children", onClick: () => focusOnSystemRelations(system, "children") },
+          { label: "Show parents", onClick: () => focusOnSystemRelations(system, "parents") },
+        ]
+      : [
+          {
+            label: "Bulk edit",
+            onClick: () => {
+              if (selectedSystems.length) {
+                openBulkModal(selectedSystems);
+              }
+            },
           },
-        },
-        {
-          label: "Delete",
-          onClick: () => deleteMultiSelection(),
-        },
+          {
+            label: "Delete",
+            onClick: () => deleteMultiSelection(),
+          },
+        ]
+    : readOnly
+    ? [
+        { label: "Edit", onClick: () => selectSystem(system) },
+        { label: "Show children", onClick: () => focusOnSystemRelations(system, "children") },
+        { label: "Show parents", onClick: () => focusOnSystemRelations(system, "parents") },
       ]
     : [
         { label: "Clone", onClick: () => cloneSystem(system) },
@@ -2430,6 +2644,7 @@ function resetBulkForm() {
 
 function handleBulkSubmit(event) {
   event.preventDefault();
+  if (isEditingLocked()) return;
   if (!bulkSelection.length) return;
   const platformValue = bulkPlatformOwnerInput.value.trim();
   const businessValue = bulkBusinessOwnerInput.value.trim();
@@ -2464,6 +2679,7 @@ function renderBulkDomainControls() {
 }
 
 function handleBulkDomainControlClick(event) {
+  if (isEditingLocked()) return;
   if (!bulkDomainControls) return;
   const button = event.target.closest("button[data-domain]");
   if (!button) return;
@@ -2522,8 +2738,12 @@ function handleSaveDiagram() {
 }
 
 function handleShareDiagram() {
+  handleShareDiagramWithMode(currentAccessMode);
+}
+
+function handleShareDiagramWithMode(mode) {
   try {
-    const url = buildShareUrlFromState(serializeState());
+    const url = buildShareUrlFromState(serializeState(mode));
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(url).catch(() => openSharePrompt(url));
     } else {
@@ -2532,6 +2752,42 @@ function handleShareDiagram() {
   } catch (error) {
     console.warn("Unable to build shareable URL", error);
   }
+}
+
+function toggleShareMenu(event) {
+  if (!shareMenu || !shareDiagramBtn) {
+    handleShareDiagramWithMode(currentAccessMode);
+    return;
+  }
+  event.stopPropagation();
+  if (shareMenu.classList.contains("hidden")) {
+    const rect = shareDiagramBtn.getBoundingClientRect();
+    shareMenu.style.left = `${rect.left + window.scrollX + rect.width / 2}px`;
+    shareMenu.style.top = `${rect.bottom + window.scrollY + 6}px`;
+    shareMenu.classList.remove("hidden");
+  } else {
+    closeShareMenu();
+  }
+}
+
+function handleShareMenuClick(event) {
+  if (!(event.target instanceof HTMLElement)) return;
+  const button = event.target.closest("button[data-share-mode]");
+  if (!button) return;
+  const mode = button.dataset.shareMode || currentAccessMode;
+  closeShareMenu();
+  handleShareDiagramWithMode(mode);
+}
+
+function closeShareMenu() {
+  if (!shareMenu) return;
+  shareMenu.classList.add("hidden");
+}
+
+function handleDocumentClickForShareMenu(event) {
+  if (!shareMenu || shareMenu.classList.contains("hidden")) return;
+  if (shareMenu.contains(event.target) || (shareDiagramBtn && shareDiagramBtn.contains(event.target))) return;
+  closeShareMenu();
 }
 
 function showSaveStatus(message = "Saved") {
@@ -2689,6 +2945,7 @@ function renderVisualSnapshot() {
 
     const node = document.createElement("div");
     node.className = "visual-node";
+    node.dataset.systemId = system.id;
     node.style.left = `${left}px`;
     node.style.top = `${top}px`;
 
@@ -2707,6 +2964,19 @@ function renderVisualSnapshot() {
   });
 
   visualNodesContainer.appendChild(nodesFragment);
+
+  visualNodesContainer.querySelectorAll(".visual-node").forEach((node) => {
+    const id = node.dataset.systemId;
+    const pos = positionMap.get(id);
+    if (!id || !pos) return;
+    const halfWidth = (node.offsetWidth || 0) / 2;
+    const halfHeight = (node.offsetHeight || 0) / 2;
+    const clampedLeft = Math.min(width - padding - halfWidth, Math.max(padding + halfWidth, pos.left));
+    const clampedTop = Math.min(height - padding - halfHeight, Math.max(padding + halfHeight, pos.top));
+    node.style.left = `${clampedLeft}px`;
+    node.style.top = `${clampedTop}px`;
+    positionMap.set(id, { left: clampedLeft, top: clampedTop });
+  });
 
   visualConnectionsSvg.setAttribute("viewBox", `0 0 ${width} ${height}`);
   visualConnectionsSvg.setAttribute("width", width);
@@ -2838,7 +3108,8 @@ function deleteSavedDiagram(id) {
   renderSaveList();
 }
 
-function serializeState() {
+function serializeState(accessModeOverride) {
+  const accessMode = accessModeOverride || currentAccessMode || "full";
   return {
     fileName: currentFileName,
     systems: systems.map((system) => ({
@@ -2882,6 +3153,7 @@ function serializeState() {
       sor: sorFilterValue,
       sidebarCollapsed: isSidebarCollapsed,
     },
+    accessMode,
   };
 }
 
@@ -2937,7 +3209,10 @@ function loadSerializedState(snapshot) {
     ...(snapshot.connections || []).map((connection) => ({
       ...connection,
       label: connection.label || "",
-      bidirectional: !!connection.bidirectional,
+      arrowMode: connection.arrowMode || (connection.bidirectional ? "double" : "single"),
+      bidirectional: connection.arrowMode
+        ? connection.arrowMode === "double"
+        : !!connection.bidirectional,
     }))
   );
   drawConnections();
@@ -2953,6 +3228,7 @@ function loadSerializedState(snapshot) {
   centerCanvasView();
   lastDeletedSnapshot = null;
   undoDeleteBtn?.classList.add("hidden");
+  applyAccessMode(snapshot.accessMode || "full");
 }
 
 function applyFilterState(filterState = {}) {

@@ -28,6 +28,11 @@
           <button data-shape="start" role="menuitem">Start shape</button>
           <button data-shape="end" role="menuitem">End shape</button>
         </div>
+        <div id="shareMenu" class="flyout-menu hidden" role="menu" aria-label="Share options">
+          <button data-share-mode="full" role="menuitem">Share full</button>
+          <button data-share-mode="view" role="menuitem">Share view-only</button>
+          <button data-share-mode="locked" role="menuitem">Share locked</button>
+        </div>
         <div class="canvas-toolbar" aria-label="Canvas controls">
           <div class="toolbar-actions">
             <button id="addSystemBtn">Add System</button>
@@ -404,6 +409,7 @@
       </datalist>
       <button id="undoDeleteBtn" class="undo-button hidden" type="button">Undo delete</button>
       <div id="contextMenu" class="context-menu hidden" role="menu"></div>
+      <div id="accessBadge" class="access-badge hidden" aria-live="polite"></div>
     </div>
     <script src="script.js"></script>
   </body>
