@@ -609,17 +609,17 @@ button.ghost {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  opacity: 0;
-  pointer-events: none;
+  opacity: 1;
+  pointer-events: auto;
   text-decoration: none;
   box-shadow: 0 4px 12px rgba(114, 188, 154, 0.35);
   transition: opacity 0.2s ease;
 }
 
-.system-node:hover .file-link,
-.system-node:focus-within .file-link {
-  opacity: 1;
-  pointer-events: auto;
+.system-node.dimmed .file-link,
+.system-node.hidden-filter .file-link {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .system-node .domain-bubbles {
