@@ -1059,6 +1059,10 @@ function drawConnections() {
     group.classList.add("connection-group");
     group.dataset.id = connection.id;
 
+    const hitPath = document.createElementNS(SVG_NS, "path");
+    hitPath.classList.add("connection-hit");
+    hitPath.setAttribute("d", getAngledPath(fromPos, toPos));
+
     const path = document.createElementNS(SVG_NS, "path");
     path.classList.add("connection-path");
     if ((connection.label || "").toLowerCase() === "automated") {
@@ -1076,6 +1080,7 @@ function drawConnections() {
       path.setAttribute("marker-end", "url(#connection-arrow)");
       path.removeAttribute("marker-start");
     }
+    group.appendChild(hitPath);
     group.appendChild(path);
 
     const label = document.createElementNS(SVG_NS, "text");
@@ -2762,9 +2767,12 @@ function toggleShareMenu(event) {
   event.stopPropagation();
   if (shareMenu.classList.contains("hidden")) {
     const rect = shareDiagramBtn.getBoundingClientRect();
-    shareMenu.style.left = `${rect.left + window.scrollX + rect.width / 2}px`;
-    shareMenu.style.top = `${rect.bottom + window.scrollY + 6}px`;
     shareMenu.classList.remove("hidden");
+    const menuHeight = shareMenu.offsetHeight;
+    const desiredTop = rect.top + window.scrollY - menuHeight - 8;
+    shareMenu.style.left = `${rect.left + window.scrollX + rect.width / 2}px`;
+    shareMenu.style.top = `${Math.max(8, desiredTop)}px`;
+    shareMenu.style.transform = "translate(-50%, 0)";
   } else {
     closeShareMenu();
   }
