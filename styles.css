@@ -1185,6 +1185,108 @@ button.ghost {
   vertical-align: top;
 }
 
+.inline-link {
+  margin-top: 0.35rem;
+  padding: 0;
+  background: none;
+  border: none;
+  color: #0f1424;
+  text-decoration: underline;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.inline-link:hover {
+  color: #1c2550;
+}
+
+.side-modal {
+  position: absolute;
+  top: 1.5rem;
+  left: calc(1.5rem + var(--panel-width) + 1rem);
+  width: min(420px, calc(100vw - var(--panel-width) - 3rem));
+  max-height: calc(100vh - 3rem);
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.98);
+  border-radius: 16px;
+  box-shadow: 0 18px 35px rgba(10, 18, 54, 0.35);
+  z-index: 5;
+}
+
+.side-modal.hidden {
+  display: none;
+}
+
+.side-modal .modal-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+}
+
+.table-scroll {
+  overflow: auto;
+  max-height: 320px;
+  border: 1px solid #e5e8f2;
+  border-radius: 10px;
+}
+
+.attributes-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 320px;
+}
+
+.attributes-table th,
+.attributes-table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid #e6e8f2;
+}
+
+.attributes-table th {
+  background: #eef1fb;
+  color: #0f1424;
+  text-align: left;
+  position: sticky;
+  top: 0;
+}
+
+.attributes-table input,
+.attribute-entity-select {
+  width: 100%;
+  padding: 0.4rem 0.45rem;
+  border: 1px solid #d7d9e0;
+  border-radius: 8px;
+  font-size: 0.95rem;
+}
+
+.attribute-entity-select:focus,
+.attributes-table input:focus {
+  outline: none;
+  border-color: #7b8df3;
+  box-shadow: 0 0 0 3px rgba(123, 141, 243, 0.18);
+}
+
+.attributes-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.side-modal textarea {
+  min-height: 90px;
+}
+
+@media (max-width: 1200px) {
+  .side-modal {
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(96vw, 460px);
+    top: calc(1.5rem + 4px);
+  }
+}
+
 .system-data-table th {
   color: #0f1424;
   font-weight: 700;
@@ -1200,7 +1302,7 @@ button.ghost {
 
 .floating-table-btn {
   position: fixed;
-  bottom: 18px;
+  bottom: 110px;
   right: 18px;
   width: 46px;
   height: 46px;

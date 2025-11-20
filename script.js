@@ -551,6 +551,13 @@ const functionOwnerInput = document.getElementById("functionOwnerInput");
 const entityForm = document.getElementById("entityForm");
 const entityInput = document.getElementById("entityInput");
 const entityList = document.getElementById("entityList");
+const attributesModalTrigger = document.getElementById("openAttributesModal");
+const attributesModal = document.getElementById("attributesModal");
+const closeAttributesModalBtn = document.getElementById("closeAttributesModal");
+const attributesTableBody = document.getElementById("attributesTableBody");
+const addAttributeRowBtn = document.getElementById("addAttributeRowBtn");
+const attributesCsvInput = document.getElementById("attributesCsvInput");
+const processAttributesCsvBtn = document.getElementById("processAttributesCsvBtn");
 const closePanelBtn = document.getElementById("closePanelBtn");
 const panelDomainChoices = document.getElementById("panelDomainChoices");
 const globalDomainChips = document.getElementById("globalDomainChips");
@@ -751,6 +758,12 @@ function init() {
   fileNameDisplay?.addEventListener("blur", commitFileNameEdit);
   closePanelBtn.addEventListener("click", closePanel);
   entityForm.addEventListener("submit", handleAddEntity);
+  attributesModalTrigger?.addEventListener("click", openAttributesSideModal);
+  closeAttributesModalBtn?.addEventListener("click", closeAttributesSideModal);
+  addAttributeRowBtn?.addEventListener("click", handleAddAttributeRow);
+  attributesTableBody?.addEventListener("input", handleAttributeTableInput);
+  attributesTableBody?.addEventListener("change", handleAttributeTableInput);
+  processAttributesCsvBtn?.addEventListener("click", handleProcessAttributesCsv);
   canvas.addEventListener("click", handleCanvasClick);
   connectionLayer.addEventListener("click", handleConnectionLayerClick);
   connectionLayer.addEventListener("dblclick", handleConnectionLayerDoubleClick);
@@ -930,7 +943,12 @@ function init() {
   document.addEventListener("click", handleDocumentClickForContextMenu);
   document.addEventListener("click", handleDocumentClickForShareMenu);
   canvasViewport?.addEventListener("scroll", closeContextMenu);
-  window.addEventListener("resize", closeContextMenu);
+  window.addEventListener("resize", () => {
+    closeContextMenu();
+    if (!attributesModal?.classList.contains("hidden")) {
+      positionAttributesModal();
+    }
+  });
   applyAccessMode(currentAccessMode);
   setSidebarCollapsedState(isSidebarCollapsed);
 
@@ -1263,6 +1281,7 @@ function addSystem({
   shapeLabel = "",
   shapeColor = DEFAULT_OBJECT_COLOR,
   shapeComments = "",
+  attributes = [],
 } = {}) {
   const resolvedId = id || `sys-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
   const defaultPosition = getNewSystemPosition();
@@ -1293,6 +1312,9 @@ function addSystem({
     shapeLabel: shapeLabel || name || OBJECT_TYPES[resolvedShape].label,
     shapeColor: shapeColor || DEFAULT_OBJECT_COLOR,
     shapeComments: shapeComments || "",
+    attributes: Array.isArray(attributes)
+      ? attributes.map((entry) => ({ attribute: entry.attribute || entry.name || "", entity: entry.entity || "" }))
+      : [],
     element: document.createElement("div"),
     isEntityExpanded: false,
     forceEntityExpand: false,
@@ -2584,6 +2606,9 @@ function selectSystem(system) {
   relationFocus = null;
   selectedSystemId = system.id;
   if (system.isObject) {
+    closeAttributesSideModal();
+  }
+  if (system.isObject) {
     activePanelSystem = null;
     openObjectModal(system);
   } else {
@@ -2615,6 +2640,9 @@ function openPanel(system) {
   }
   renderEntityList(system);
   syncPanelDomainSelection(system);
+  if (attributesModal && !attributesModal.classList.contains("hidden")) {
+    renderAttributesModal(system);
+  }
 }
 
 function openObjectModal(system) {
@@ -2653,6 +2681,7 @@ function commitObjectChanges() {
 
 function closePanel() {
   panel.classList.add("hidden");
+  closeAttributesSideModal();
   activePanelSystem = null;
 }
 
@@ -2754,6 +2783,142 @@ function renderEntityList(system) {
 
   updateSystemMeta(system);
   refreshEntityLinkIfActive();
+  if (attributesModal && !attributesModal.classList.contains("hidden")) {
+    renderAttributesModal(system);
+  }
+}
+
+function ensureAttributesArray(system) {
+  if (!system.attributes || !Array.isArray(system.attributes)) {
+    system.attributes = [];
+  }
+  return system.attributes;
+}
+
+function buildAttributeEntitySelect(system, currentValue = "") {
+  const select = document.createElement("select");
+  select.className = "attribute-entity-select";
+  select.dataset.field = "entity";
+  const blank = document.createElement("option");
+  blank.value = "";
+  blank.textContent = "Select entity";
+  select.appendChild(blank);
+  const options = (system.entities || []).map((entity) => entity.name).filter(Boolean);
+  options.forEach((name) => {
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = name;
+    select.appendChild(option);
+  });
+  select.value = currentValue || "";
+  return select;
+}
+
+function renderAttributesModal(system) {
+  if (!attributesTableBody || !attributesModal) return;
+  ensureAttributesArray(system);
+  attributesTableBody.innerHTML = "";
+  const fragment = document.createDocumentFragment();
+
+  system.attributes.forEach((entry, index) => {
+    const row = document.createElement("tr");
+
+    const attributeCell = document.createElement("td");
+    const attributeInput = document.createElement("input");
+    attributeInput.type = "text";
+    attributeInput.value = entry.attribute || "";
+    attributeInput.dataset.index = String(index);
+    attributeInput.dataset.field = "attribute";
+    attributeInput.placeholder = "Attribute";
+    attributeCell.appendChild(attributeInput);
+
+    const entityCell = document.createElement("td");
+    const entitySelect = buildAttributeEntitySelect(system, entry.entity);
+    entitySelect.dataset.index = String(index);
+    entityCell.appendChild(entitySelect);
+
+    row.append(attributeCell, entityCell);
+    fragment.appendChild(row);
+  });
+
+  attributesTableBody.appendChild(fragment);
+  positionAttributesModal();
+}
+
+function positionAttributesModal() {
+  if (!attributesModal || !panel) return;
+  const gap = 16;
+  const panelRect = panel.getBoundingClientRect();
+  const modalWidth = attributesModal.offsetWidth || 380;
+  let left = panelRect.right + gap;
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+
+  if (left + modalWidth + gap > viewportWidth) {
+    left = Math.max(gap, viewportWidth - modalWidth - gap);
+  }
+
+  attributesModal.style.top = `${panelRect.top}px`;
+  attributesModal.style.left = `${left}px`;
+}
+
+function openAttributesSideModal() {
+  if (!attributesModal || !activePanelSystem) return;
+  renderAttributesModal(activePanelSystem);
+  attributesModal.classList.remove("hidden");
+  positionAttributesModal();
+}
+
+function closeAttributesSideModal() {
+  if (!attributesModal) return;
+  attributesModal.classList.add("hidden");
+}
+
+function handleAttributeTableInput(event) {
+  if (!activePanelSystem) return;
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
+  const field = target.dataset.field;
+  const index = Number(target.dataset.index);
+  if (!field || Number.isNaN(index)) return;
+  if (isEditingLocked()) {
+    renderAttributesModal(activePanelSystem);
+    return;
+  }
+  const attributes = ensureAttributesArray(activePanelSystem);
+  if (!attributes[index]) {
+    attributes[index] = { attribute: "", entity: "" };
+  }
+  attributes[index][field] = target.value;
+}
+
+function handleAddAttributeRow() {
+  if (isEditingLocked()) return;
+  if (!activePanelSystem) return;
+  const attributes = ensureAttributesArray(activePanelSystem);
+  attributes.push({ attribute: "", entity: "" });
+  renderAttributesModal(activePanelSystem);
+}
+
+function handleProcessAttributesCsv() {
+  if (isEditingLocked()) return;
+  if (!activePanelSystem) return;
+  const raw = attributesCsvInput?.value || "";
+  if (!raw.trim()) return;
+  const tokens = raw
+    .split(/\r?\n/)
+    .map((line) => line.split(","))
+    .flat()
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (!tokens.length) return;
+  const attributes = ensureAttributesArray(activePanelSystem);
+  tokens.forEach((attribute) => {
+    attributes.push({ attribute, entity: "" });
+  });
+  if (attributesCsvInput) {
+    attributesCsvInput.value = "";
+  }
+  renderAttributesModal(activePanelSystem);
 }
 
 function handleDomainSelection(event) {
@@ -4930,6 +5095,9 @@ function serializeState(accessModeOverride) {
       shapeLabel: system.shapeLabel,
       shapeColor: system.shapeColor,
       shapeComments: system.shapeComments,
+      attributes: Array.isArray(system.attributes)
+        ? system.attributes.map((entry) => ({ attribute: entry.attribute || "", entity: entry.entity || "" }))
+        : [],
       entities: system.entities.map((entity) => ({ name: entity.name, isSor: !!entity.isSor })),
     })),
     connections: connections.map((connection) => ({ ...connection })),
@@ -5019,6 +5187,7 @@ function loadSerializedState(snapshot) {
       shapeLabel: systemData.shapeLabel,
       shapeColor: systemData.shapeColor,
       shapeComments: systemData.shapeComments,
+      attributes: systemData.attributes,
     });
   });
   connections.push(
