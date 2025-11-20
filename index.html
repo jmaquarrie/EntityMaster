@@ -402,6 +402,16 @@
             <button id="closeSaveModal" class="icon-btn" type="button" aria-label="Close saved diagrams">×</button>
           </div>
           <p class="modal-description">Load, rename, or delete any saved snapshot.</p>
+          <div class="save-import">
+            <div class="save-import-text">
+              <div class="section-title">Load from file</div>
+              <p class="modal-hint">Upload a previously downloaded save to restore it.</p>
+            </div>
+            <div class="save-import-actions">
+              <input type="file" id="loadSaveFileInput" accept="application/json" class="visually-hidden" />
+              <button id="loadSaveFileBtn" type="button">Upload Save File</button>
+            </div>
+          </div>
           <div id="saveList" class="save-list"></div>
         </div>
       </div>

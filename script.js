@@ -594,6 +594,8 @@ const cancelBulkBtn = document.getElementById("cancelBulkBtn");
 const saveManagerModal = document.getElementById("saveManagerModal");
 const closeSaveModalBtn = document.getElementById("closeSaveModal");
 const saveListContainer = document.getElementById("saveList");
+const loadSaveFileInput = document.getElementById("loadSaveFileInput");
+const loadSaveFileBtn = document.getElementById("loadSaveFileBtn");
 const filterModeSelect = document.getElementById("filterModeSelect");
 const sorFilterSelect = document.getElementById("sorFilter");
 const spreadsheetFilterSelect = document.getElementById("spreadsheetFilter");
@@ -868,6 +870,8 @@ function init() {
   saveManagerModal.addEventListener("click", (event) => {
     if (event.target === saveManagerModal) closeSaveManager();
   });
+  loadSaveFileBtn?.addEventListener("click", () => loadSaveFileInput?.click());
+  loadSaveFileInput?.addEventListener("change", handleLoadSaveFileInputChange);
   newDiagramModal?.addEventListener("click", (event) => {
     if (event.target === newDiagramModal) closeNewDiagramModal();
   });
@@ -5084,6 +5088,11 @@ function renderSaveList() {
     loadBtn.dataset.action = "load";
     loadBtn.textContent = "Load";
 
+    const downloadBtn = document.createElement("button");
+    downloadBtn.className = "download";
+    downloadBtn.dataset.action = "download";
+    downloadBtn.textContent = "Download";
+
     const renameBtn = document.createElement("button");
     renameBtn.className = "rename";
     renameBtn.dataset.action = "rename";
@@ -5095,7 +5104,7 @@ function renderSaveList() {
     deleteBtn.setAttribute("aria-label", "Delete save");
     deleteBtn.textContent = "✕";
 
-    actions.append(loadBtn, renameBtn, deleteBtn);
+    actions.append(loadBtn, downloadBtn, renameBtn, deleteBtn);
     row.append(nameSpan, actions);
     fragment.appendChild(row);
   });
@@ -5111,6 +5120,8 @@ function handleSaveListClick(event) {
   const action = button.dataset.action;
   if (action === "load") {
     loadSavedDiagram(id);
+  } else if (action === "download") {
+    downloadSavedDiagram(id);
   } else if (action === "rename") {
     renameSavedDiagram(id);
   } else if (action === "delete") {
@@ -5147,6 +5158,88 @@ function loadSavedDiagram(id) {
   }
   loadSerializedState(entry.data);
   closeSaveManager();
+}
+
+function downloadSavedDiagram(id) {
+  const saves = getStoredDiagrams();
+  const entry = saves.find((save) => save.id === id);
+  if (!entry || !entry.data) return;
+  const payload = {
+    name: entry.name,
+    createdAt: entry.createdAt,
+    fileName: entry.fileName,
+    data: entry.data,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  const safeName = slugify(entry.name || entry.fileName || "diagram") || "diagram";
+  anchor.href = url;
+  anchor.download = `${safeName}.json`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+function handleLoadSaveFileInputChange(event) {
+  const input = event.target;
+  const file = input?.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const text = typeof reader.result === "string" ? reader.result : "";
+      const parsed = JSON.parse(text);
+      importSaveFromPayload(parsed, file.name);
+    } catch (error) {
+      console.warn("Unable to load save file", error);
+      alert("Unable to load the selected save file. Please ensure it is a valid export.");
+    } finally {
+      input.value = "";
+    }
+  };
+  reader.readAsText(file);
+}
+
+function importSaveFromPayload(payload, sourceFileName = "") {
+  const state = extractStateFromPayload(payload);
+  if (!state) {
+    throw new Error("Invalid save payload");
+  }
+  const saves = getStoredDiagrams();
+  const now = Date.now();
+  const baseName = sourceFileName.replace(/\.json$/i, "");
+  const name =
+    (payload && payload.name) ||
+    state.fileName ||
+    baseName ||
+    (typeof currentFileName === "string" && currentFileName) ||
+    "Imported Diagram";
+  const entry = {
+    id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `import-${now}`,
+    name,
+    fileName: state.fileName || name,
+    createdAt: payload && payload.createdAt ? payload.createdAt : now,
+    data: state,
+  };
+  saves.push(entry);
+  persistStoredDiagrams(saves);
+  renderSaveList();
+  loadSerializedState(state);
+  closeSaveManager();
+}
+
+function extractStateFromPayload(payload) {
+  if (!payload || typeof payload !== "object") return null;
+  if (payload.data && typeof payload.data === "object") {
+    return payload.data;
+  }
+  if (payload.state && typeof payload.state === "object") {
+    return payload.state;
+  }
+  if (payload.systems || payload.connections || payload.groups) {
+    return payload;
+  }
+  return null;
 }
 
 function renameSavedDiagram(id) {
