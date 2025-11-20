@@ -84,6 +84,7 @@ let bulkSelection = [];
 let filterMode = "fade";
 let sorFilterValue = "any";
 let spreadsheetFilterValue = "yes";
+let expandEntitiesGlobally = false;
 let lastDeletedSnapshot = null;
 let saveStatusTimer = null;
 let editingConnectionId = null;
@@ -181,6 +182,7 @@ const saveListContainer = document.getElementById("saveList");
 const filterModeSelect = document.getElementById("filterModeSelect");
 const sorFilterSelect = document.getElementById("sorFilter");
 const spreadsheetFilterSelect = document.getElementById("spreadsheetFilter");
+const expandEntitiesToggle = document.getElementById("expandEntitiesToggle");
 const systemIconSelect = document.getElementById("systemIconSelect");
 const systemCommentsInput = document.getElementById("systemCommentsInput");
 const systemDescriptionInput = document.getElementById("systemDescriptionInput");
@@ -222,6 +224,9 @@ const visualConnectionsSvg = document.getElementById("visualConnections");
 const visualGroupByDomainCheckbox = document.getElementById("visualGroupByDomain");
 const visualDomainSelect = document.getElementById("visualDomainSelect");
 const visualDomainControls = document.getElementById("visualDomainControls");
+const visualGroupByFunctionCheckbox = document.getElementById("visualGroupByFunction");
+const visualFunctionSelect = document.getElementById("visualFunctionSelect");
+const visualFunctionControls = document.getElementById("visualFunctionControls");
 const accessBadge = document.getElementById("accessBadge");
 
 let activePanelSystem = null;
@@ -275,6 +280,7 @@ function applyAccessMode(mode = "full") {
       filterModeSelect,
       sorFilterSelect,
       spreadsheetFilterSelect,
+      expandEntitiesToggle,
       resetFiltersBtn,
       colorBySelect,
     ],
@@ -306,8 +312,10 @@ function init() {
   filterMode = filterModeSelect?.value || "fade";
   sorFilterValue = sorFilterSelect?.value || "any";
   spreadsheetFilterValue = spreadsheetFilterSelect?.value || "yes";
+  expandEntitiesGlobally = !!expandEntitiesToggle?.checked;
   setFileName(currentFileName);
   populateFunctionOwnerOptions();
+  renderVisualFunctionOptions();
 
   refreshDomainOptionsUi();
   panelDomainChoices.addEventListener("change", handleDomainSelection);
@@ -385,6 +393,14 @@ function init() {
     spreadsheetFilterValue = event.target.value;
     selectedSystemId = null;
     updateHighlights();
+  });
+  expandEntitiesToggle?.addEventListener("change", (event) => {
+    if (isFiltersLocked()) {
+      event.target.checked = expandEntitiesGlobally;
+      return;
+    }
+    expandEntitiesGlobally = event.target.checked;
+    applyGlobalEntityExpansion();
   });
   colorBySelect.addEventListener("change", (event) => {
     if (isFiltersLocked()) return;
@@ -465,10 +481,19 @@ function init() {
   });
   visualGroupByDomainCheckbox?.addEventListener("change", () => {
     if (!visualModal || visualModal.classList.contains("hidden")) return;
-    updateVisualDomainControlVisibility();
+    updateVisualGroupingControlVisibility();
     renderVisualSnapshot();
   });
   visualDomainSelect?.addEventListener("change", () => {
+    if (!visualModal || visualModal.classList.contains("hidden")) return;
+    renderVisualSnapshot();
+  });
+  visualGroupByFunctionCheckbox?.addEventListener("change", () => {
+    if (!visualModal || visualModal.classList.contains("hidden")) return;
+    updateVisualGroupingControlVisibility();
+    renderVisualSnapshot();
+  });
+  visualFunctionSelect?.addEventListener("change", () => {
     if (!visualModal || visualModal.classList.contains("hidden")) return;
     renderVisualSnapshot();
   });
@@ -481,7 +506,8 @@ function init() {
   setSidebarCollapsedState(isSidebarCollapsed);
 
   renderVisualDomainOptions();
-  updateVisualDomainControlVisibility();
+  renderVisualFunctionOptions();
+  updateVisualGroupingControlVisibility();
 
   const loadedFromUrl = loadFromUrlParams();
   if (!loadedFromUrl) {
@@ -584,10 +610,28 @@ function renderVisualDomainOptions() {
   }
 }
 
-function updateVisualDomainControlVisibility() {
-  if (!visualDomainControls) return;
-  const shouldShow = !!visualGroupByDomainCheckbox?.checked;
-  visualDomainControls.classList.toggle("hidden", !shouldShow);
+function renderVisualFunctionOptions() {
+  if (!visualFunctionSelect) return;
+  const previous = visualFunctionSelect.value;
+  const sorted = Array.from(functionOwnerOptions)
+    .filter((value) => !!value)
+    .sort((a, b) => a.localeCompare(b));
+  visualFunctionSelect.innerHTML = sorted.map((value) => `<option value="${value}">${value}</option>`).join("");
+  if (sorted.includes(previous)) {
+    visualFunctionSelect.value = previous;
+  } else if (sorted.length) {
+    visualFunctionSelect.value = sorted[0];
+  } else {
+    visualFunctionSelect.value = "";
+  }
+}
+
+function updateVisualGroupingControlVisibility() {
+  if (!visualDomainControls || !visualFunctionControls) return;
+  const groupByFunction = !!visualGroupByFunctionCheckbox?.checked;
+  const groupByDomain = !!visualGroupByDomainCheckbox?.checked && !groupByFunction;
+  visualDomainControls.classList.toggle("hidden", !groupByDomain);
+  visualFunctionControls.classList.toggle("hidden", !groupByFunction);
 }
 
 function handleDomainChipClick(event) {
@@ -2333,7 +2377,7 @@ function renderInlineEntities(system) {
     return;
   }
 
-  const shouldShow = system.isEntityExpanded || system.forceEntityExpand;
+  const shouldShow = expandEntitiesGlobally || system.isEntityExpanded || system.forceEntityExpand;
   container.classList.toggle("hidden", !shouldShow);
   if (!shouldShow) {
     return;
@@ -2371,6 +2415,12 @@ function renderInlineEntities(system) {
 
   table.appendChild(tbody);
   container.appendChild(table);
+}
+
+function applyGlobalEntityExpansion() {
+  systems.forEach((system) => renderInlineEntities(system));
+  updateConnectionPositions();
+  scheduleShareUrlSync();
 }
 
 function syncIconSelectValue(value) {
@@ -2666,6 +2716,7 @@ function resetFilters({ alsoClearSelection = false } = {}) {
   searchQuery = "";
   sorFilterValue = "any";
   spreadsheetFilterValue = "yes";
+  expandEntitiesGlobally = false;
   relationFocus = null;
   clearEntityLinkHighlight(false);
   if (alsoClearSelection) {
@@ -2683,7 +2734,11 @@ function resetFilters({ alsoClearSelection = false } = {}) {
   if (spreadsheetFilterSelect) {
     spreadsheetFilterSelect.value = "yes";
   }
+  if (expandEntitiesToggle) {
+    expandEntitiesToggle.checked = false;
+  }
   updateGlobalDomainChips();
+  applyGlobalEntityExpansion();
   updateHighlights();
 }
 
@@ -2943,6 +2998,7 @@ function ensureFunctionOwnerOption(value) {
   if (!functionOwnerOptions.has(value)) {
     functionOwnerOptions.add(value);
     populateFunctionOwnerOptions();
+    renderVisualFunctionOptions();
   }
 }
 
@@ -3604,7 +3660,7 @@ function openVisualModal() {
   updateHighlights();
   if (!visualModal) return;
   visualModal.classList.remove("hidden");
-  updateVisualDomainControlVisibility();
+  updateVisualGroupingControlVisibility();
   window.requestAnimationFrame(renderVisualSnapshot);
 }
 
@@ -3636,10 +3692,121 @@ function renderVisualSnapshot() {
   const width = rect.width || 900;
   const height = rect.height || 640;
   const padding = 50;
-  const groupByDomain = !!visualGroupByDomainCheckbox?.checked;
+  const groupByFunction = !!visualGroupByFunctionCheckbox?.checked;
+  const groupByDomain = !groupByFunction && !!visualGroupByDomainCheckbox?.checked;
   const fallbackDomainKey = visualDomainSelect?.value || domainDefinitions[0]?.key || "people";
+  const fallbackFunctionOwner =
+    visualFunctionSelect?.value || Array.from(functionOwnerOptions)[0] || "";
 
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
+  if (groupByFunction) {
+    const targetFunctionOwner = visualFunctionSelect?.value || fallbackFunctionOwner || "";
+    const functionGroups = new Map();
+    const anchorSystems = systemsToShow.filter(
+      (system) => (system.functionOwner || "").trim() === targetFunctionOwner.trim()
+    );
+    functionGroups.set(targetFunctionOwner, anchorSystems);
+
+    const functionKeys = Array.from(functionGroups.keys());
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const anchors = new Map();
+    const positionMap = new Map();
+    const nodesFragment = document.createDocumentFragment();
+
+    functionKeys.forEach((functionOwner) => {
+      const anchorX = centerX;
+      const anchorY = centerY;
+      anchors.set(functionOwner, { left: anchorX, top: anchorY });
+
+      const domainNode = document.createElement("div");
+      domainNode.className = "visual-domain";
+      domainNode.dataset.domainKey = functionOwner || "function";
+      domainNode.style.left = `${anchorX}px`;
+      domainNode.style.top = `${anchorY}px`;
+      const functionColor = getValueColor("functionOwner", functionOwner || "Function");
+      domainNode.textContent = functionOwner || "Function";
+      domainNode.style.setProperty("--domain-color", functionColor || "#0f1424");
+      nodesFragment.appendChild(domainNode);
+
+      const cluster = functionGroups.get(functionOwner) || [];
+      const clusterRadius = 140 + Math.min(cluster.length, 8) * 12;
+      cluster.forEach((system, systemIndex) => {
+        const clusterAngle = cluster.length === 1 ? -Math.PI / 2 : (systemIndex / cluster.length) * Math.PI * 2;
+        const left = anchorX + Math.cos(clusterAngle) * clusterRadius;
+        const top = anchorY + Math.sin(clusterAngle) * clusterRadius;
+        positionMap.set(system.id, { left, top });
+
+        const node = document.createElement("div");
+        node.className = "visual-node";
+        node.dataset.systemId = system.id;
+        node.style.left = `${left}px`;
+        node.style.top = `${top}px`;
+
+        const meta = document.createElement("div");
+        meta.className = "visual-meta";
+        const iconSpan = document.createElement("span");
+        iconSpan.className = "visual-icon";
+        iconSpan.textContent = getSystemIconSymbol(system);
+        const nameSpan = document.createElement("div");
+        nameSpan.className = "visual-name";
+        nameSpan.textContent = system.name || "Untitled";
+        meta.append(iconSpan, nameSpan);
+
+        node.appendChild(meta);
+        nodesFragment.appendChild(node);
+      });
+    });
+
+    visualNodesContainer.appendChild(nodesFragment);
+
+    visualNodesContainer.querySelectorAll(".visual-domain").forEach((node) => {
+      const domainKey = node.dataset.domainKey;
+      const anchor = anchors.get(domainKey);
+      if (!anchor) return;
+      const halfWidth = (node.offsetWidth || 0) / 2;
+      const halfHeight = (node.offsetHeight || 0) / 2;
+      const left = clamp(anchor.left, padding + halfWidth, width - padding - halfWidth);
+      const top = clamp(anchor.top, padding + halfHeight, height - padding - halfHeight);
+      node.style.left = `${left}px`;
+      node.style.top = `${top}px`;
+      anchors.set(domainKey, { left, top });
+    });
+
+    visualNodesContainer.querySelectorAll(".visual-node").forEach((node) => {
+      const systemId = node.dataset.systemId;
+      const target = positionMap.get(systemId);
+      if (!systemId || !target) return;
+      const halfWidth = (node.offsetWidth || 0) / 2;
+      const halfHeight = (node.offsetHeight || 0) / 2;
+      const left = clamp(target.left, padding + halfWidth, width - padding - halfWidth);
+      const top = clamp(target.top, padding + halfHeight, height - padding - halfHeight);
+      node.style.left = `${left}px`;
+      node.style.top = `${top}px`;
+      positionMap.set(systemId, { left, top });
+    });
+
+    attachVisualNodeBringToFront();
+
+    visualConnectionsSvg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    visualConnectionsSvg.setAttribute("width", width);
+    visualConnectionsSvg.setAttribute("height", height);
+
+    functionGroups.forEach((cluster, functionOwner) => {
+      const anchor = anchors.get(functionOwner);
+      if (!anchor) return;
+      cluster.forEach((system) => {
+        const pos = positionMap.get(system.id);
+        if (!pos) return;
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", `M ${anchor.left} ${anchor.top} L ${pos.left} ${pos.top}`);
+        path.setAttribute("class", "visual-connection-path");
+        visualConnectionsSvg.appendChild(path);
+      });
+    });
+    return;
+  }
 
   if (groupByDomain) {
     const domainGroups = new Map();
@@ -4041,6 +4208,7 @@ function serializeState(accessModeOverride) {
       filterMode,
       sor: sorFilterValue,
       spreadsheets: spreadsheetFilterValue,
+      expandEntities: expandEntitiesGlobally,
       sidebarCollapsed: isSidebarCollapsed,
     },
     accessMode,
@@ -4077,6 +4245,7 @@ function loadSerializedState(snapshot) {
   domainDefinitions = buildDomainDefinitions(snapshot.customDomains);
   refreshDomainOptionsUi();
   populateFunctionOwnerOptions();
+  renderVisualFunctionOptions();
   setFileName(snapshot.fileName || "Untitled");
   applyFilterState(snapshot.filterState);
   (snapshot.systems || []).forEach((systemData) => {
@@ -4147,6 +4316,7 @@ function applyFilterState(filterState = {}) {
   const functionOwnerValue = filterState.functionOwner || "";
   const searchValue = filterState.search || "";
   const spreadsheetFilter = filterState.spreadsheets || "yes";
+  const expandEntities = !!filterState.expandEntities;
 
   platformOwnerFilterText = platformOwnerValue.trim().toLowerCase();
   businessOwnerFilterText = businessOwnerValue.trim().toLowerCase();
@@ -4156,6 +4326,7 @@ function applyFilterState(filterState = {}) {
   filterMode = filterState.filterMode || filterMode;
   sorFilterValue = filterState.sor || sorFilterValue;
   spreadsheetFilterValue = spreadsheetFilter;
+  expandEntitiesGlobally = expandEntities;
 
   if (platformOwnerFilterInput) platformOwnerFilterInput.value = platformOwnerValue;
   if (businessOwnerFilterInput) businessOwnerFilterInput.value = businessOwnerValue;
@@ -4165,10 +4336,12 @@ function applyFilterState(filterState = {}) {
   if (filterModeSelect) filterModeSelect.value = filterMode;
   if (sorFilterSelect) sorFilterSelect.value = sorFilterValue;
   if (spreadsheetFilterSelect) spreadsheetFilterSelect.value = spreadsheetFilterValue;
+  if (expandEntitiesToggle) expandEntitiesToggle.checked = expandEntitiesGlobally;
   if (typeof filterState.sidebarCollapsed === "boolean") {
     setSidebarCollapsedState(filterState.sidebarCollapsed);
   }
   updateGlobalDomainChips();
+  applyGlobalEntityExpansion();
 }
 
 function formatSaveEntryName(fileName, date) {
