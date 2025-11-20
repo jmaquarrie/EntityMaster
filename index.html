@@ -416,26 +416,42 @@
           <p class="modal-description">Systems that match your current filters, pulled closer together for a single-screen view.</p>
           <div class="visual-controls">
             <div class="visual-control-group">
-              <label class="inline-toggle">
-                <input type="checkbox" id="visualGroupByDomain" />
-                <span>Group by Domain</span>
-              </label>
-              <label class="inline-toggle">
-                <input type="checkbox" id="visualGroupByFunction" />
-                <span>Group by Function</span>
+              <label class="field compact">
+                <span>Group by</span>
+                <select id="visualGroupBySelect" aria-label="Visual grouping choice">
+                  <option value="none">None</option>
+                  <option value="domain">Domain</option>
+                  <option value="function">Function</option>
+                  <option value="entity">Entity</option>
+                  <option value="businessOwner">Business Owner</option>
+                </select>
               </label>
             </div>
-            <div id="visualDomainControls" class="visual-control-group domain-controls hidden">
-              <label class="field compact">
-                <span>Domain</span>
-                <select id="visualDomainSelect" aria-label="Visual domain choice"></select>
-              </label>
-            </div>
-            <div id="visualFunctionControls" class="visual-control-group domain-controls hidden">
-              <label class="field compact">
-                <span>Function Owner</span>
-                <select id="visualFunctionSelect" aria-label="Visual function choice"></select>
-              </label>
+            <div class="visual-control-group visual-secondary-controls">
+              <div id="visualDomainControls" class="domain-controls hidden">
+                <label class="field compact">
+                  <span>Domain</span>
+                  <select id="visualDomainSelect" aria-label="Visual domain choice"></select>
+                </label>
+              </div>
+              <div id="visualFunctionControls" class="domain-controls hidden">
+                <label class="field compact">
+                  <span>Function Owner</span>
+                  <select id="visualFunctionSelect" aria-label="Visual function choice"></select>
+                </label>
+              </div>
+              <div id="visualEntityControls" class="domain-controls hidden">
+                <label class="field compact">
+                  <span>Entity</span>
+                  <select id="visualEntitySelect" aria-label="Visual entity choice"></select>
+                </label>
+              </div>
+              <div id="visualBusinessOwnerControls" class="domain-controls hidden">
+                <label class="field compact">
+                  <span>Business Owner</span>
+                  <select id="visualBusinessOwnerSelect" aria-label="Visual business owner choice"></select>
+                </label>
+              </div>
             </div>
           </div>
           <div id="visualContainer" class="visual-container">

@@ -626,12 +626,15 @@ const closeVisualModalBtn = document.getElementById("closeVisualModal");
 const visualContainer = document.getElementById("visualContainer");
 const visualNodesContainer = document.getElementById("visualNodes");
 const visualConnectionsSvg = document.getElementById("visualConnections");
-const visualGroupByDomainCheckbox = document.getElementById("visualGroupByDomain");
+const visualGroupBySelect = document.getElementById("visualGroupBySelect");
 const visualDomainSelect = document.getElementById("visualDomainSelect");
 const visualDomainControls = document.getElementById("visualDomainControls");
-const visualGroupByFunctionCheckbox = document.getElementById("visualGroupByFunction");
 const visualFunctionSelect = document.getElementById("visualFunctionSelect");
 const visualFunctionControls = document.getElementById("visualFunctionControls");
+const visualEntitySelect = document.getElementById("visualEntitySelect");
+const visualEntityControls = document.getElementById("visualEntityControls");
+const visualBusinessOwnerSelect = document.getElementById("visualBusinessOwnerSelect");
+const visualBusinessOwnerControls = document.getElementById("visualBusinessOwnerControls");
 const accessBadge = document.getElementById("accessBadge");
 
 let activePanelSystem = null;
@@ -696,6 +699,11 @@ function applyAccessMode(mode = "full") {
     filterPanel.classList.toggle("locked", filtersBlocked);
   }
 
+  document.querySelectorAll(".direction-adder").forEach((btn) => {
+    btn.disabled = readOnly;
+    btn.setAttribute("aria-disabled", readOnly ? "true" : "false");
+  });
+
   if (accessBadge) {
     if (currentAccessMode === "view") {
       accessBadge.textContent = "View Only";
@@ -721,6 +729,8 @@ function init() {
   setFileName(currentFileName);
   populateFunctionOwnerOptions();
   renderVisualFunctionOptions();
+  renderVisualEntityOptions();
+  renderVisualBusinessOwnerOptions();
 
   refreshDomainOptionsUi();
   panelDomainChoices.addEventListener("change", handleDomainSelection);
@@ -884,7 +894,7 @@ function init() {
       closeVisualModal();
     }
   });
-  visualGroupByDomainCheckbox?.addEventListener("change", () => {
+  visualGroupBySelect?.addEventListener("change", () => {
     if (!visualModal || visualModal.classList.contains("hidden")) return;
     updateVisualGroupingControlVisibility();
     renderVisualSnapshot();
@@ -893,12 +903,15 @@ function init() {
     if (!visualModal || visualModal.classList.contains("hidden")) return;
     renderVisualSnapshot();
   });
-  visualGroupByFunctionCheckbox?.addEventListener("change", () => {
+  visualFunctionSelect?.addEventListener("change", () => {
     if (!visualModal || visualModal.classList.contains("hidden")) return;
-    updateVisualGroupingControlVisibility();
     renderVisualSnapshot();
   });
-  visualFunctionSelect?.addEventListener("change", () => {
+  visualEntitySelect?.addEventListener("change", () => {
+    if (!visualModal || visualModal.classList.contains("hidden")) return;
+    renderVisualSnapshot();
+  });
+  visualBusinessOwnerSelect?.addEventListener("change", () => {
     if (!visualModal || visualModal.classList.contains("hidden")) return;
     renderVisualSnapshot();
   });
@@ -912,6 +925,8 @@ function init() {
 
   renderVisualDomainOptions();
   renderVisualFunctionOptions();
+  renderVisualEntityOptions();
+  renderVisualBusinessOwnerOptions();
   updateVisualGroupingControlVisibility();
 
   const loadedFromUrl = loadFromUrlParams();
@@ -1032,11 +1047,53 @@ function renderVisualFunctionOptions() {
 }
 
 function updateVisualGroupingControlVisibility() {
-  if (!visualDomainControls || !visualFunctionControls) return;
-  const groupByFunction = !!visualGroupByFunctionCheckbox?.checked;
-  const groupByDomain = !!visualGroupByDomainCheckbox?.checked && !groupByFunction;
-  visualDomainControls.classList.toggle("hidden", !groupByDomain);
-  visualFunctionControls.classList.toggle("hidden", !groupByFunction);
+  if (!visualGroupBySelect) return;
+  const mode = visualGroupBySelect.value || "none";
+  const isDomain = mode === "domain";
+  const isFunction = mode === "function";
+  const isEntity = mode === "entity";
+  const isBusinessOwner = mode === "businessOwner";
+
+  visualDomainControls?.classList.toggle("hidden", !isDomain);
+  visualFunctionControls?.classList.toggle("hidden", !isFunction);
+  visualEntityControls?.classList.toggle("hidden", !isEntity);
+  visualBusinessOwnerControls?.classList.toggle("hidden", !isBusinessOwner);
+}
+
+function renderVisualEntityOptions() {
+  if (!visualEntitySelect) return;
+  const previous = visualEntitySelect.value;
+  const names = new Set();
+  systems.forEach((system) => {
+    system.entities.forEach((entity) => {
+      if (entity.name) names.add(entity.name);
+    });
+  });
+  const sorted = Array.from(names).sort((a, b) => a.localeCompare(b));
+  visualEntitySelect.innerHTML = sorted.map((value) => `<option value="${value}">${value}</option>`).join("");
+  if (sorted.includes(previous)) {
+    visualEntitySelect.value = previous;
+  } else if (sorted.length) {
+    visualEntitySelect.value = sorted[0];
+  } else {
+    visualEntitySelect.value = "";
+  }
+}
+
+function renderVisualBusinessOwnerOptions() {
+  if (!visualBusinessOwnerSelect) return;
+  const previous = visualBusinessOwnerSelect.value;
+  const owners = Array.from(ownerSuggestionSets.business)
+    .filter((value) => !!value)
+    .sort((a, b) => a.localeCompare(b));
+  visualBusinessOwnerSelect.innerHTML = owners.map((value) => `<option value="${value}">${value}</option>`).join("");
+  if (owners.includes(previous)) {
+    visualBusinessOwnerSelect.value = previous;
+  } else if (owners.length) {
+    visualBusinessOwnerSelect.value = owners[0];
+  } else {
+    visualBusinessOwnerSelect.value = "";
+  }
 }
 
 function handleDomainChipClick(event) {
@@ -1269,8 +1326,11 @@ function addSystem({
       btn.textContent = "+";
       btn.addEventListener("click", (event) => {
         event.stopPropagation();
+        if (isEditingLocked()) return;
         createAdjacentSystem(system, direction);
       });
+      btn.disabled = isEditingLocked();
+      btn.setAttribute("aria-disabled", btn.disabled ? "true" : "false");
       adderContainer.appendChild(btn);
     });
     system.element.appendChild(adderContainer);
@@ -2633,6 +2693,7 @@ function handleAddEntity(event) {
   updateSystemMeta(activePanelSystem);
   refreshEntityLinkIfActive();
   updateHighlights();
+  renderVisualEntityOptions();
 }
 
 function renderEntityList(system) {
@@ -2669,6 +2730,7 @@ function renderEntityList(system) {
       renderEntityList(system);
       updateSystemMeta(system);
       updateHighlights();
+      renderVisualEntityOptions();
     });
 
     actions.append(sorLabel, removeBtn);
@@ -3051,6 +3113,8 @@ function resetDiagramToBlank() {
   ownerSuggestionSets.business.clear();
   Object.values(ownerColorMaps).forEach((map) => map.clear());
   refreshOwnerSuggestionLists();
+  renderVisualEntityOptions();
+  renderVisualBusinessOwnerOptions();
   domainDefinitions = buildDomainDefinitions([]);
   refreshDomainOptionsUi();
   activeDomainFilters.clear();
@@ -3422,6 +3486,7 @@ function refreshOwnerSuggestionLists() {
     .sort((a, b) => a.localeCompare(b))
     .map((value) => `<option value="${value}"></option>`)
     .join("");
+  renderVisualBusinessOwnerOptions();
 }
 
 function toggleFilterPanel() {
@@ -4065,6 +4130,10 @@ function openVisualModal() {
   updateHighlights();
   if (!visualModal) return;
   visualModal.classList.remove("hidden");
+  renderVisualDomainOptions();
+  renderVisualFunctionOptions();
+  renderVisualEntityOptions();
+  renderVisualBusinessOwnerOptions();
   updateVisualGroupingControlVisibility();
   window.requestAnimationFrame(renderVisualSnapshot);
 }
@@ -4075,6 +4144,11 @@ function closeVisualModal() {
 
 function renderVisualSnapshot() {
   if (!visualContainer || !visualNodesContainer || !visualConnectionsSvg) return;
+
+  renderVisualDomainOptions();
+  renderVisualFunctionOptions();
+  renderVisualEntityOptions();
+  renderVisualBusinessOwnerOptions();
 
   visualNodesContainer.innerHTML = "";
   visualConnectionsSvg.innerHTML = "";
@@ -4097,11 +4171,28 @@ function renderVisualSnapshot() {
   const width = rect.width || 900;
   const height = rect.height || 640;
   const padding = 50;
-  const groupByFunction = !!visualGroupByFunctionCheckbox?.checked;
-  const groupByDomain = !groupByFunction && !!visualGroupByDomainCheckbox?.checked;
+  const groupMode = visualGroupBySelect?.value || "none";
+  const groupByFunction = groupMode === "function";
+  const groupByDomain = groupMode === "domain";
+  const groupByEntity = groupMode === "entity";
+  const groupByBusinessOwner = groupMode === "businessOwner";
   const fallbackDomainKey = visualDomainSelect?.value || domainDefinitions[0]?.key || "people";
   const fallbackFunctionOwner =
     visualFunctionSelect?.value || Array.from(functionOwnerOptions)[0] || "";
+  const availableEntities = Array.from(
+    systems.reduce((set, system) => {
+      system.entities.forEach((entity) => {
+        if (entity.name) set.add(entity.name);
+      });
+      return set;
+    },
+    new Set()
+  )).sort((a, b) => a.localeCompare(b));
+  const availableBusinessOwners = Array.from(ownerSuggestionSets.business)
+    .filter((value) => !!value)
+    .sort((a, b) => a.localeCompare(b));
+  const fallbackEntity = visualEntitySelect?.value || availableEntities[0] || "";
+  const fallbackBusinessOwner = visualBusinessOwnerSelect?.value || availableBusinessOwners[0] || "";
 
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
@@ -4200,6 +4291,221 @@ function renderVisualSnapshot() {
 
     functionGroups.forEach((cluster, functionOwner) => {
       const anchor = anchors.get(functionOwner);
+      if (!anchor) return;
+      cluster.forEach((system) => {
+        const pos = positionMap.get(system.id);
+        if (!pos) return;
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", `M ${anchor.left} ${anchor.top} L ${pos.left} ${pos.top}`);
+        path.setAttribute("class", "visual-connection-path");
+        visualConnectionsSvg.appendChild(path);
+      });
+    });
+    return;
+  }
+
+  if (groupByBusinessOwner) {
+    const targetOwner = visualBusinessOwnerSelect?.value || fallbackBusinessOwner || "";
+    const ownerGroups = new Map();
+    const anchorSystems = systemsToShow.filter(
+      (system) => (system.businessOwner || "").trim().toLowerCase() === targetOwner.trim().toLowerCase()
+    );
+    ownerGroups.set(targetOwner, anchorSystems);
+
+    const ownerKeys = Array.from(ownerGroups.keys());
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const anchors = new Map();
+    const positionMap = new Map();
+    const nodesFragment = document.createDocumentFragment();
+
+    ownerKeys.forEach((ownerKey) => {
+      const anchorX = centerX;
+      const anchorY = centerY;
+      anchors.set(ownerKey, { left: anchorX, top: anchorY });
+
+      const ownerNode = document.createElement("div");
+      ownerNode.className = "visual-domain";
+      ownerNode.dataset.domainKey = ownerKey || "business-owner";
+      ownerNode.style.left = `${anchorX}px`;
+      ownerNode.style.top = `${anchorY}px`;
+      const ownerColor = getValueColor("businessOwner", ownerKey || "Business Owner");
+      ownerNode.textContent = ownerKey || "Business Owner";
+      ownerNode.style.setProperty("--domain-color", ownerColor || "#0f1424");
+      nodesFragment.appendChild(ownerNode);
+
+      const cluster = ownerGroups.get(ownerKey) || [];
+      const clusterRadius = 140 + Math.min(cluster.length, 8) * 12;
+      cluster.forEach((system, systemIndex) => {
+        const clusterAngle = cluster.length === 1 ? -Math.PI / 2 : (systemIndex / cluster.length) * Math.PI * 2;
+        const left = anchorX + Math.cos(clusterAngle) * clusterRadius;
+        const top = anchorY + Math.sin(clusterAngle) * clusterRadius;
+        positionMap.set(system.id, { left, top });
+
+        const node = document.createElement("div");
+        node.className = "visual-node";
+        node.dataset.systemId = system.id;
+        node.style.left = `${left}px`;
+        node.style.top = `${top}px`;
+
+        const meta = document.createElement("div");
+        meta.className = "visual-meta";
+        const iconSpan = document.createElement("span");
+        iconSpan.className = "visual-icon";
+        iconSpan.textContent = getSystemIconSymbol(system);
+        const nameSpan = document.createElement("div");
+        nameSpan.className = "visual-name";
+        nameSpan.textContent = system.name || "Untitled";
+        meta.append(iconSpan, nameSpan);
+
+        node.appendChild(meta);
+        nodesFragment.appendChild(node);
+      });
+    });
+
+    visualNodesContainer.appendChild(nodesFragment);
+
+    visualNodesContainer.querySelectorAll(".visual-domain").forEach((node) => {
+      const ownerKey = node.dataset.domainKey;
+      const anchor = anchors.get(ownerKey);
+      if (!anchor) return;
+      const halfWidth = (node.offsetWidth || 0) / 2;
+      const halfHeight = (node.offsetHeight || 0) / 2;
+      const left = clamp(anchor.left, padding + halfWidth, width - padding - halfWidth);
+      const top = clamp(anchor.top, padding + halfHeight, height - padding - halfHeight);
+      node.style.left = `${left}px`;
+      node.style.top = `${top}px`;
+      anchors.set(ownerKey, { left, top });
+    });
+
+    visualNodesContainer.querySelectorAll(".visual-node").forEach((node) => {
+      const systemId = node.dataset.systemId;
+      const target = positionMap.get(systemId);
+      if (!systemId || !target) return;
+      const halfWidth = (node.offsetWidth || 0) / 2;
+      const halfHeight = (node.offsetHeight || 0) / 2;
+      const left = clamp(target.left, padding + halfWidth, width - padding - halfWidth);
+      const top = clamp(target.top, padding + halfHeight, height - padding - halfHeight);
+      node.style.left = `${left}px`;
+      node.style.top = `${top}px`;
+      positionMap.set(systemId, { left, top });
+    });
+
+    attachVisualNodeBringToFront();
+
+    visualConnectionsSvg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    visualConnectionsSvg.setAttribute("width", width);
+    visualConnectionsSvg.setAttribute("height", height);
+
+    ownerGroups.forEach((cluster, ownerKey) => {
+      const anchor = anchors.get(ownerKey);
+      if (!anchor) return;
+      cluster.forEach((system) => {
+        const pos = positionMap.get(system.id);
+        if (!pos) return;
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", `M ${anchor.left} ${anchor.top} L ${pos.left} ${pos.top}`);
+        path.setAttribute("class", "visual-connection-path");
+        visualConnectionsSvg.appendChild(path);
+      });
+    });
+    return;
+  }
+
+  if (groupByEntity) {
+    const targetEntity = visualEntitySelect?.value || fallbackEntity || "";
+    const entityGroups = new Map();
+    const anchorSystems = systemsToShow.filter((system) =>
+      system.entities.some((entity) => (entity.name || "").trim().toLowerCase() === targetEntity.trim().toLowerCase())
+    );
+    entityGroups.set(targetEntity, anchorSystems);
+
+    const entityKeys = Array.from(entityGroups.keys());
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const anchors = new Map();
+    const positionMap = new Map();
+    const nodesFragment = document.createDocumentFragment();
+
+    entityKeys.forEach((entityName) => {
+      const anchorX = centerX;
+      const anchorY = centerY;
+      anchors.set(entityName, { left: anchorX, top: anchorY });
+
+      const entityNode = document.createElement("div");
+      entityNode.className = "visual-domain";
+      entityNode.dataset.domainKey = entityName || "entity";
+      entityNode.style.left = `${anchorX}px`;
+      entityNode.style.top = `${anchorY}px`;
+      entityNode.textContent = entityName || "Entity";
+      entityNode.style.setProperty("--domain-color", "#0f1424");
+      nodesFragment.appendChild(entityNode);
+
+      const cluster = entityGroups.get(entityName) || [];
+      const clusterRadius = 140 + Math.min(cluster.length, 8) * 12;
+      cluster.forEach((system, systemIndex) => {
+        const clusterAngle = cluster.length === 1 ? -Math.PI / 2 : (systemIndex / cluster.length) * Math.PI * 2;
+        const left = anchorX + Math.cos(clusterAngle) * clusterRadius;
+        const top = anchorY + Math.sin(clusterAngle) * clusterRadius;
+        positionMap.set(system.id, { left, top });
+
+        const node = document.createElement("div");
+        node.className = "visual-node";
+        node.dataset.systemId = system.id;
+        node.style.left = `${left}px`;
+        node.style.top = `${top}px`;
+
+        const meta = document.createElement("div");
+        meta.className = "visual-meta";
+        const iconSpan = document.createElement("span");
+        iconSpan.className = "visual-icon";
+        iconSpan.textContent = getSystemIconSymbol(system);
+        const nameSpan = document.createElement("div");
+        nameSpan.className = "visual-name";
+        nameSpan.textContent = system.name || "Untitled";
+        meta.append(iconSpan, nameSpan);
+
+        node.appendChild(meta);
+        nodesFragment.appendChild(node);
+      });
+    });
+
+    visualNodesContainer.appendChild(nodesFragment);
+
+    visualNodesContainer.querySelectorAll(".visual-domain").forEach((node) => {
+      const entityKey = node.dataset.domainKey;
+      const anchor = anchors.get(entityKey);
+      if (!anchor) return;
+      const halfWidth = (node.offsetWidth || 0) / 2;
+      const halfHeight = (node.offsetHeight || 0) / 2;
+      const left = clamp(anchor.left, padding + halfWidth, width - padding - halfWidth);
+      const top = clamp(anchor.top, padding + halfHeight, height - padding - halfHeight);
+      node.style.left = `${left}px`;
+      node.style.top = `${top}px`;
+      anchors.set(entityKey, { left, top });
+    });
+
+    visualNodesContainer.querySelectorAll(".visual-node").forEach((node) => {
+      const systemId = node.dataset.systemId;
+      const target = positionMap.get(systemId);
+      if (!systemId || !target) return;
+      const halfWidth = (node.offsetWidth || 0) / 2;
+      const halfHeight = (node.offsetHeight || 0) / 2;
+      const left = clamp(target.left, padding + halfWidth, width - padding - halfWidth);
+      const top = clamp(target.top, padding + halfHeight, height - padding - halfHeight);
+      node.style.left = `${left}px`;
+      node.style.top = `${top}px`;
+      positionMap.set(systemId, { left, top });
+    });
+
+    attachVisualNodeBringToFront();
+
+    visualConnectionsSvg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    visualConnectionsSvg.setAttribute("width", width);
+    visualConnectionsSvg.setAttribute("height", height);
+
+    entityGroups.forEach((cluster, entityName) => {
+      const anchor = anchors.get(entityName);
       if (!anchor) return;
       cluster.forEach((system) => {
         const pos = positionMap.get(system.id);
@@ -4651,6 +4957,8 @@ function loadSerializedState(snapshot) {
   refreshDomainOptionsUi();
   populateFunctionOwnerOptions();
   renderVisualFunctionOptions();
+  renderVisualEntityOptions();
+  renderVisualBusinessOwnerOptions();
   setFileName(snapshot.fileName || "Untitled");
   applyFilterState(snapshot.filterState);
   (snapshot.systems || []).forEach((systemData) => {

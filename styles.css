@@ -403,6 +403,12 @@ button.ghost {
   color: #0f1424;
 }
 
+.direction-adder:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .system-node:hover .direction-adder {
   opacity: 1;
 }
@@ -1234,6 +1240,18 @@ button.ghost {
   gap: 1rem;
   flex-wrap: wrap;
   margin: 0.25rem 0 0.75rem;
+}
+
+.visual-secondary-controls {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.visual-secondary-controls .domain-controls {
+  display: flex;
 }
 
 .visual-control-group {
