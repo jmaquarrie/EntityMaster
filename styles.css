@@ -722,6 +722,14 @@ button.ghost {
   fill: #6a6f85;
 }
 
+.connection-handle-group {
+  position: absolute;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  pointer-events: auto;
+}
+
 .connection-handle-btn {
   position: absolute;
   width: 20px;
@@ -739,6 +747,15 @@ button.ghost {
   pointer-events: auto;
   box-shadow: 0 6px 16px rgba(15, 20, 36, 0.16);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.connection-handle-group .connection-handle-btn {
+  position: relative;
+}
+
+.connection-handle-btn.arrow-toggle[aria-pressed="true"] {
+  background: #0f1424;
+  color: #fff;
 }
 
 .connection-handle-btn:hover {

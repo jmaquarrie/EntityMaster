@@ -924,24 +924,74 @@ function startDragging(event, system) {
 
 function getConnectionArrowMode(connection) {
   if (!connection) return "single";
+  if (typeof connection.arrowStart === "boolean" || typeof connection.arrowEnd === "boolean") {
+    const derived = deriveArrowMode(connection);
+    connection.arrowMode = derived;
+    connection.bidirectional = connection.arrowStart && connection.arrowEnd;
+    return derived;
+  }
   if (connection.arrowMode) return connection.arrowMode;
+  connection.arrowStart = connection.bidirectional;
+  connection.arrowEnd = true;
   return connection.bidirectional ? "double" : "single";
 }
 
 function setConnectionArrowMode(connection, mode) {
   if (!connection) return;
   connection.arrowMode = mode;
-  connection.bidirectional = mode === "double";
+  if (mode === "double") {
+    connection.arrowStart = true;
+    connection.arrowEnd = true;
+  } else if (mode === "none") {
+    connection.arrowStart = false;
+    connection.arrowEnd = false;
+  } else if (mode === "start") {
+    connection.arrowStart = true;
+    connection.arrowEnd = false;
+  } else {
+    connection.arrowStart = false;
+    connection.arrowEnd = true;
+  }
+  connection.bidirectional = connection.arrowStart && connection.arrowEnd;
+}
+
+function setConnectionArrowSide(connection, side, explicitState) {
+  if (!connection) return;
+  const currentMode = getConnectionArrowMode(connection);
+  if (typeof connection.arrowStart !== "boolean") {
+    connection.arrowStart = currentMode === "double" || currentMode === "start";
+  }
+  if (typeof connection.arrowEnd !== "boolean") {
+    connection.arrowEnd = currentMode !== "none";
+  }
+  if (side === "start") {
+    connection.arrowStart = typeof explicitState === "boolean" ? explicitState : !connection.arrowStart;
+  }
+  if (side === "end") {
+    connection.arrowEnd = typeof explicitState === "boolean" ? explicitState : !connection.arrowEnd;
+  }
+  const derived = deriveArrowMode(connection);
+  connection.arrowMode = derived;
+  connection.bidirectional = connection.arrowStart && connection.arrowEnd;
+}
+
+function deriveArrowMode(connection) {
+  if (connection.arrowStart && connection.arrowEnd) return "double";
+  if (connection.arrowStart) return "start";
+  if (connection.arrowEnd) return "single";
+  return "none";
 }
 
 function getOutgoingTargetsFrom(connection, sourceId) {
   const mode = getConnectionArrowMode(connection);
   const targets = [];
   if (mode === "none") return targets;
-  if (connection.from === sourceId) {
+  const hasStartArrow = connection.arrowStart;
+  const hasEndArrow = connection.arrowEnd;
+  if (connection.from === sourceId && hasEndArrow) {
     targets.push(connection.to);
   }
-  if (mode === "double" && connection.to === sourceId) {
+  if (connection.to === sourceId && (mode === "double" || hasStartArrow)) {
     targets.push(connection.from);
   }
   return targets;
@@ -951,10 +1001,12 @@ function getIncomingSourcesTo(connection, targetId) {
   const mode = getConnectionArrowMode(connection);
   const sources = [];
   if (mode === "none") return sources;
-  if (connection.to === targetId) {
+  const hasStartArrow = connection.arrowStart;
+  const hasEndArrow = connection.arrowEnd;
+  if (connection.to === targetId && hasEndArrow) {
     sources.push(connection.from);
   }
-  if (mode === "double" && connection.from === targetId) {
+  if (connection.from === targetId && (mode === "double" || hasStartArrow)) {
     sources.push(connection.to);
   }
   return sources;
@@ -1026,6 +1078,8 @@ function addConnection(source, target) {
     label: "",
     bidirectional: false,
     arrowMode: "single",
+    arrowStart: false,
+    arrowEnd: true,
   });
   drawConnections();
   updateHighlights();
@@ -1070,15 +1124,28 @@ function drawConnections() {
     }
     path.setAttribute("d", getAngledPath(fromPos, toPos));
     const arrowMode = getConnectionArrowMode(connection);
+    const hasStartArrow = !!connection.arrowStart;
+    const hasEndArrow = !!connection.arrowEnd;
     if (arrowMode === "none") {
       path.removeAttribute("marker-end");
       path.removeAttribute("marker-start");
     } else if (arrowMode === "double") {
       path.setAttribute("marker-end", "url(#connection-arrow)");
       path.setAttribute("marker-start", "url(#connection-arrow)");
+    } else if (arrowMode === "start") {
+      path.setAttribute("marker-start", "url(#connection-arrow)");
+      path.removeAttribute("marker-end");
     } else {
-      path.setAttribute("marker-end", "url(#connection-arrow)");
-      path.removeAttribute("marker-start");
+      if (hasEndArrow) {
+        path.setAttribute("marker-end", "url(#connection-arrow)");
+      } else {
+        path.removeAttribute("marker-end");
+      }
+      if (hasStartArrow) {
+        path.setAttribute("marker-start", "url(#connection-arrow)");
+      } else {
+        path.removeAttribute("marker-start");
+      }
     }
     group.appendChild(hitPath);
     group.appendChild(path);
@@ -1285,19 +1352,58 @@ function getHandleAnchorPosition(from, to) {
 
 function renderConnectionHandle(connection, position) {
   if (!connectionHandleLayer) return;
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "connection-handle-btn";
-  button.style.left = `${position.x - 10}px`;
-  button.style.top = `${position.y - 10}px`;
-  button.dataset.connectionId = connection.id;
-  button.setAttribute("aria-label", "Remove connection");
-  button.innerHTML = "×";
-  button.addEventListener("click", (event) => {
+  const group = document.createElement("div");
+  group.className = "connection-handle-group";
+  group.style.left = `${position.x - 36}px`;
+  group.style.top = `${position.y - 10}px`;
+
+  const leftArrowBtn = document.createElement("button");
+  leftArrowBtn.type = "button";
+  leftArrowBtn.className = "connection-handle-btn arrow-toggle";
+  leftArrowBtn.dataset.connectionId = connection.id;
+  leftArrowBtn.title = "Add arrow to left end";
+  leftArrowBtn.innerHTML = "&lt;";
+  leftArrowBtn.setAttribute("aria-label", "Add arrow to left end");
+  leftArrowBtn.setAttribute("aria-pressed", connection.arrowStart ? "true" : "false");
+  leftArrowBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    setConnectionArrowSide(connection, "start");
+    drawConnections();
+    updateHighlights();
+    scheduleShareUrlSync();
+  });
+
+  const deleteButton = document.createElement("button");
+  deleteButton.type = "button";
+  deleteButton.className = "connection-handle-btn";
+  deleteButton.dataset.connectionId = connection.id;
+  deleteButton.setAttribute("aria-label", "Remove connection");
+  deleteButton.innerHTML = "×";
+  deleteButton.addEventListener("click", (event) => {
     event.stopPropagation();
     removeConnection(connection.id);
   });
-  connectionHandleLayer.appendChild(button);
+
+  const rightArrowBtn = document.createElement("button");
+  rightArrowBtn.type = "button";
+  rightArrowBtn.className = "connection-handle-btn arrow-toggle";
+  rightArrowBtn.dataset.connectionId = connection.id;
+  rightArrowBtn.title = "Add arrow to right end";
+  rightArrowBtn.innerHTML = "&gt;";
+  rightArrowBtn.setAttribute("aria-label", "Add arrow to right end");
+  rightArrowBtn.setAttribute("aria-pressed", connection.arrowEnd ? "true" : "false");
+  rightArrowBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    setConnectionArrowSide(connection, "end");
+    drawConnections();
+    updateHighlights();
+    scheduleShareUrlSync();
+  });
+
+  group.appendChild(leftArrowBtn);
+  group.appendChild(deleteButton);
+  group.appendChild(rightArrowBtn);
+  connectionHandleLayer.appendChild(group);
 }
 
 function handleConnectionLayerClick(event) {
@@ -1319,9 +1425,10 @@ function handleConnectionLayerDoubleClick(event) {
   if (!connection) return;
   event.preventDefault();
   event.stopPropagation();
-  const order = ["single", "double", "none"];
+  const order = ["single", "double", "none", "start"];
   const currentMode = getConnectionArrowMode(connection);
-  const nextMode = order[(order.indexOf(currentMode) + 1) % order.length];
+  const currentIndex = Math.max(order.indexOf(currentMode), 0);
+  const nextMode = order[(currentIndex + 1) % order.length];
   setConnectionArrowMode(connection, nextMode);
   drawConnections();
   updateHighlights();
