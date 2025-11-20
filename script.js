@@ -1313,20 +1313,23 @@ function getEdgeAttachmentPoint(system, targetPoint) {
   const dy = target.y - center.y;
   const absDx = Math.abs(dx);
   const absDy = Math.abs(dy);
+
   if (absDx === 0 && absDy === 0) {
     return center;
   }
-  const halfWidth = rect.width / 2;
-  const halfHeight = rect.height / 2;
-  let scale;
-  if (absDx * halfHeight > absDy * halfWidth) {
-    scale = halfWidth / (absDx || 1);
-  } else {
-    scale = halfHeight / (absDy || 1);
+
+  const horizontalPriority = absDx >= absDy;
+
+  if (horizontalPriority) {
+    return {
+      x: dx >= 0 ? rect.x + rect.width : rect.x,
+      y: rect.y + rect.height / 2,
+    };
   }
+
   return {
-    x: center.x + dx * scale,
-    y: center.y + dy * scale,
+    x: rect.x + rect.width / 2,
+    y: dy >= 0 ? rect.y + rect.height : rect.y,
   };
 }
 
@@ -1367,38 +1370,9 @@ function getConnectionPoints(fromSystem, toSystem) {
     y: toRect.y + toRect.height / 2,
   };
 
-  const getEdgeIntersection = (rect, targetCenter) => {
-    const cx = rect.x + rect.width / 2;
-    const cy = rect.y + rect.height / 2;
-    const dx = targetCenter.x - cx;
-    const dy = targetCenter.y - cy;
-    const absDx = Math.abs(dx);
-    const absDy = Math.abs(dy);
-    const halfW = rect.width / 2;
-    const halfH = rect.height / 2;
-
-    if (absDx === 0 && absDy === 0) {
-      return { x: cx, y: cy };
-    }
-
-    if (absDx * halfH > absDy * halfW) {
-      const scale = halfW / (absDx || 1);
-      return {
-        x: cx + Math.sign(dx) * halfW,
-        y: cy + dy * scale,
-      };
-    }
-
-    const scale = halfH / (absDy || 1);
-    return {
-      x: cx + dx * scale,
-      y: cy + Math.sign(dy) * halfH,
-    };
-  };
-
   return {
-    from: getEdgeIntersection(fromRect, toCenter),
-    to: getEdgeIntersection(toRect, fromCenter),
+    from: getEdgeAttachmentPoint(fromSystem, toCenter),
+    to: getEdgeAttachmentPoint(toSystem, fromCenter),
   };
 }
 
