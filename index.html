@@ -36,7 +36,6 @@
         </div>
         <div class="floating-controls" aria-label="Floating mode controls">
           <div class="floating-control">
-            <div class="floating-label" aria-hidden="true">Highlight Mode</div>
             <button id="filterModeToggle" class="floating-btn" aria-label="Toggle filter mode">Fade</button>
           </div>
           <div class="floating-control">
@@ -49,16 +48,24 @@
           </div>
         </div>
         <div class="canvas-toolbar" aria-label="Canvas controls">
-          <div class="toolbar-actions">
-            <button id="addSystemBtn">Add System</button>
-            <button id="addObjectBtn" class="secondary">Add Object</button>
-            <span id="fileNameDisplay" class="file-name" title="Click to rename">Untitled</span>
-          </div>
-          <div class="zoom-controls" aria-label="Zoom">
-            <div class="storage-controls" aria-label="Diagram storage">
+            <div class="toolbar-actions">
+              <button id="addSystemBtn">Add System</button>
+              <button id="addObjectBtn" class="secondary">Add Object</button>
+              <span id="fileNameDisplay" class="file-name" title="Click to rename">Untitled</span>
+            </div>
+            <div class="zoom-controls" aria-label="Zoom">
+              <div class="storage-controls" aria-label="Diagram storage">
                 <div class="icon-block">
                   <button id="newDiagramBtn" class="icon-btn" title="Start new diagram" aria-label="Start new diagram">🆕</button>
                   <div class="icon-label">New</div>
+                </div>
+                <div class="icon-block">
+                  <button id="undoActionBtn" class="icon-btn" title="Undo" aria-label="Undo last action">↩️</button>
+                  <div class="icon-label">Undo</div>
+                </div>
+                <div class="icon-block">
+                  <button id="redoActionBtn" class="icon-btn" title="Redo" aria-label="Redo last action">↪️</button>
+                  <div class="icon-label">Redo</div>
                 </div>
                 <div class="icon-block">
                   <div class="save-control">

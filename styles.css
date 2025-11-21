@@ -1618,8 +1618,9 @@ button.small {
 
 .visual-modal-card {
   width: min(95vw, 1300px);
-  height: min(82vh, 860px);
-  max-height: 90vh;
+  height: min(88vh, 900px);
+  max-height: 92vh;
+  gap: 0.75rem;
 }
 
 
@@ -1629,7 +1630,7 @@ button.small {
   justify-content: space-between;
   gap: 1rem;
   flex-wrap: wrap;
-  margin: 0.25rem 0 0.75rem;
+  margin: 0 0 0.5rem;
 }
 
 .visual-secondary-controls {
@@ -1684,13 +1685,14 @@ button.small {
 .visual-container {
   position: relative;
   width: 100%;
-  height: calc(100% - 4rem);
+  flex: 1;
+  min-height: 520px;
   background: radial-gradient(circle at 25px 25px, #eef1fb 1px, transparent 0),
     radial-gradient(circle at 25px 25px, #eef1fb 1px, transparent 0);
   background-size: 50px 50px;
   border-radius: 18px;
   border: 1px solid #e1e5f5;
-  padding: 1rem;
+  padding: 0.75rem 1rem 1rem;
   overflow: hidden;
 }
 
@@ -1716,6 +1718,12 @@ button.small {
   padding: 0.4rem 0.6rem;
   min-width: 120px;
   box-shadow: 0 12px 25px rgba(17, 22, 58, 0.12);
+  cursor: grab;
+}
+
+.visual-node.dragging {
+  cursor: grabbing;
+  box-shadow: 0 16px 28px rgba(17, 22, 58, 0.18);
 }
 
 .visual-domain {

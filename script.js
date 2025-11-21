@@ -499,6 +499,11 @@ let saveStatusTimer = null;
 let editingConnectionId = null;
 let editingConnectionOriginalLabel = "";
 let editingGroupId = null;
+const historyStack = [];
+const redoStack = [];
+const MAX_HISTORY_ENTRIES = 50;
+let lastHistorySignature = "";
+let suppressHistoryCapture = false;
 const multiSelectedIds = new Set();
 const suppressClickForIds = new Set();
 let undoTimer = null;
@@ -511,6 +516,8 @@ let marqueePreviewIds = new Set();
 let relationFocus = null;
 let urlSyncTimer = null;
 let currentAccessMode = "full";
+const visualNodePositions = new Map();
+let visualLayoutContext = { width: 0, height: 0, padding: 50, groupMode: "none", clusters: new Map(), anchors: new Map(), positions: new Map(), includedIds: new Set() };
 const dataTableColumnFilters = {
   domain: "",
   entity: "",
@@ -622,6 +629,8 @@ const systemDescriptionInput = document.getElementById("systemDescriptionInput")
 const saveStatusLabel = document.getElementById("saveStatus");
 const spreadsheetSelect = document.getElementById("spreadsheetSelect");
 const newDiagramBtn = document.getElementById("newDiagramBtn");
+const undoActionBtn = document.getElementById("undoActionBtn");
+const redoActionBtn = document.getElementById("redoActionBtn");
 const settingsBtn = document.getElementById("settingsBtn");
 const settingsModal = document.getElementById("settingsModal");
 const closeSettingsModalBtn = document.getElementById("closeSettingsModal");
@@ -931,6 +940,8 @@ function init() {
   resetFiltersBtn?.addEventListener("click", () => resetFilters({ alsoClearSelection: true }));
   filterPanelToggle.addEventListener("click", toggleFilterPanel);
   newDiagramBtn?.addEventListener("click", handleNewDiagramClick);
+  undoActionBtn?.addEventListener("click", handleUndoAction);
+  redoActionBtn?.addEventListener("click", handleRedoAction);
   saveDiagramBtn.addEventListener("click", handleSaveDiagram);
   loadDiagramBtn.addEventListener("click", openSaveManager);
   shareDiagramBtn?.addEventListener("click", toggleShareMenu);
@@ -1079,6 +1090,8 @@ function init() {
   if (!loadedFromUrl) {
     centerCanvasView();
   }
+  captureHistorySnapshot(serializeState());
+  updateHistoryButtons();
 }
 
 function setFileName(name) {
@@ -4619,6 +4632,59 @@ function showSaveStatus(message = "Saved") {
   }, 1500);
 }
 
+function updateHistoryButtons() {
+  if (undoActionBtn) {
+    undoActionBtn.disabled = historyStack.length === 0;
+  }
+  if (redoActionBtn) {
+    redoActionBtn.disabled = redoStack.length === 0;
+  }
+}
+
+function captureHistorySnapshot(snapshotOverride) {
+  if (suppressHistoryCapture) return;
+  const snapshot = snapshotOverride || serializeState();
+  const signature = JSON.stringify(snapshot);
+  if (signature === lastHistorySignature) return;
+  historyStack.push(snapshot);
+  if (historyStack.length > MAX_HISTORY_ENTRIES) {
+    historyStack.shift();
+  }
+  lastHistorySignature = signature;
+  redoStack.length = 0;
+  updateHistoryButtons();
+}
+
+function handleUndoAction() {
+  if (!historyStack.length) return;
+  const snapshot = historyStack.pop();
+  const current = serializeState();
+  redoStack.push(current);
+  suppressHistoryCapture = true;
+  loadSerializedState(snapshot);
+  suppressHistoryCapture = false;
+  lastHistorySignature = JSON.stringify(snapshot);
+  updateHistoryButtons();
+  suppressHistoryCapture = true;
+  scheduleShareUrlSync();
+  suppressHistoryCapture = false;
+}
+
+function handleRedoAction() {
+  if (!redoStack.length) return;
+  const snapshot = redoStack.pop();
+  const current = serializeState();
+  historyStack.push(current);
+  suppressHistoryCapture = true;
+  loadSerializedState(snapshot);
+  suppressHistoryCapture = false;
+  lastHistorySignature = JSON.stringify(snapshot);
+  updateHistoryButtons();
+  suppressHistoryCapture = true;
+  scheduleShareUrlSync();
+  suppressHistoryCapture = false;
+}
+
 function buildShareUrlFromState(state) {
   const payload = encodeStatePayload(state);
   return `${window.location.origin}${window.location.pathname}?data=${encodeURIComponent(payload)}`;
@@ -4626,7 +4692,11 @@ function buildShareUrlFromState(state) {
 
 function syncUrlWithState() {
   try {
-    const url = buildShareUrlFromState(serializeState());
+    const snapshot = serializeState();
+    if (!suppressHistoryCapture) {
+      captureHistorySnapshot(snapshot);
+    }
+    const url = buildShareUrlFromState(snapshot);
     if (window.history?.replaceState) {
       window.history.replaceState({}, document.title, url);
     }
@@ -4713,6 +4783,11 @@ function renderVisualSnapshot() {
   visualNodesContainer.innerHTML = "";
   visualConnectionsSvg.innerHTML = "";
 
+  const rect = visualContainer.getBoundingClientRect();
+  const width = rect.width || 900;
+  const height = rect.height || 640;
+  const padding = 50;
+
   const filteredContextActive = hasActiveFilters() || !!selectedSystemId || !!activeEntityLinkName;
   const systemsToShow = systems.filter((system) => {
     if (!filteredContextActive) return true;
@@ -4724,13 +4799,10 @@ function renderVisualSnapshot() {
     empty.className = "visual-empty-state";
     empty.textContent = "No systems match the current filters.";
     visualNodesContainer.appendChild(empty);
+    setVisualLayoutContextFromRender({ width, height, padding, groupMode: "none", positionMap: new Map(), includedIds: new Set() });
     return;
   }
 
-  const rect = visualContainer.getBoundingClientRect();
-  const width = rect.width || 900;
-  const height = rect.height || 640;
-  const padding = 50;
   const groupMode = visualGroupBySelect?.value || "none";
   const groupByFunction = groupMode === "function";
   const groupByDomain = groupMode === "domain";
@@ -4791,8 +4863,11 @@ function renderVisualSnapshot() {
       const clusterRadius = 140 + Math.min(cluster.length, 8) * 12;
       cluster.forEach((system, systemIndex) => {
         const clusterAngle = cluster.length === 1 ? -Math.PI / 2 : (systemIndex / cluster.length) * Math.PI * 2;
-        const left = anchorX + Math.cos(clusterAngle) * clusterRadius;
-        const top = anchorY + Math.sin(clusterAngle) * clusterRadius;
+        const defaultLeft = anchorX + Math.cos(clusterAngle) * clusterRadius;
+        const defaultTop = anchorY + Math.sin(clusterAngle) * clusterRadius;
+        const stored = visualNodePositions.get(system.id);
+        const left = stored?.left ?? defaultLeft;
+        const top = stored?.top ?? defaultTop;
         positionMap.set(system.id, { left, top });
 
         const node = document.createElement("div");
@@ -4862,6 +4937,16 @@ function renderVisualSnapshot() {
         visualConnectionsSvg.appendChild(path);
       });
     });
+    setVisualLayoutContextFromRender({
+      width,
+      height,
+      padding,
+      groupMode: "function",
+      anchors,
+      clusters: new Map(Array.from(functionGroups, ([key, items]) => [key, items.map((s) => s.id)])),
+      positionMap,
+      includedIds: new Set(systemsToShow.map((s) => s.id)),
+    });
     return;
   }
 
@@ -4899,8 +4984,11 @@ function renderVisualSnapshot() {
       const clusterRadius = 140 + Math.min(cluster.length, 8) * 12;
       cluster.forEach((system, systemIndex) => {
         const clusterAngle = cluster.length === 1 ? -Math.PI / 2 : (systemIndex / cluster.length) * Math.PI * 2;
-        const left = anchorX + Math.cos(clusterAngle) * clusterRadius;
-        const top = anchorY + Math.sin(clusterAngle) * clusterRadius;
+        const defaultLeft = anchorX + Math.cos(clusterAngle) * clusterRadius;
+        const defaultTop = anchorY + Math.sin(clusterAngle) * clusterRadius;
+        const stored = visualNodePositions.get(system.id);
+        const left = stored?.left ?? defaultLeft;
+        const top = stored?.top ?? defaultTop;
         positionMap.set(system.id, { left, top });
 
         const node = document.createElement("div");
@@ -4970,6 +5058,16 @@ function renderVisualSnapshot() {
         visualConnectionsSvg.appendChild(path);
       });
     });
+    setVisualLayoutContextFromRender({
+      width,
+      height,
+      padding,
+      groupMode: "businessOwner",
+      anchors,
+      clusters: new Map(Array.from(ownerGroups, ([key, items]) => [key, items.map((s) => s.id)])),
+      positionMap,
+      includedIds: new Set(systemsToShow.map((s) => s.id)),
+    });
     return;
   }
 
@@ -5006,8 +5104,11 @@ function renderVisualSnapshot() {
       const clusterRadius = 140 + Math.min(cluster.length, 8) * 12;
       cluster.forEach((system, systemIndex) => {
         const clusterAngle = cluster.length === 1 ? -Math.PI / 2 : (systemIndex / cluster.length) * Math.PI * 2;
-        const left = anchorX + Math.cos(clusterAngle) * clusterRadius;
-        const top = anchorY + Math.sin(clusterAngle) * clusterRadius;
+        const defaultLeft = anchorX + Math.cos(clusterAngle) * clusterRadius;
+        const defaultTop = anchorY + Math.sin(clusterAngle) * clusterRadius;
+        const stored = visualNodePositions.get(system.id);
+        const left = stored?.left ?? defaultLeft;
+        const top = stored?.top ?? defaultTop;
         positionMap.set(system.id, { left, top });
 
         const node = document.createElement("div");
@@ -5077,6 +5178,16 @@ function renderVisualSnapshot() {
         visualConnectionsSvg.appendChild(path);
       });
     });
+    setVisualLayoutContextFromRender({
+      width,
+      height,
+      padding,
+      groupMode: "entity",
+      anchors,
+      clusters: new Map(Array.from(entityGroups, ([key, items]) => [key, items.map((s) => s.id)])),
+      positionMap,
+      includedIds: new Set(systemsToShow.map((s) => s.id)),
+    });
     return;
   }
 
@@ -5122,8 +5233,11 @@ function renderVisualSnapshot() {
       const clusterRadius = 140 + Math.min(cluster.length, 8) * 12;
       cluster.forEach((system, systemIndex) => {
         const clusterAngle = cluster.length === 1 ? -Math.PI / 2 : (systemIndex / cluster.length) * Math.PI * 2;
-        const left = anchorX + Math.cos(clusterAngle) * clusterRadius;
-        const top = anchorY + Math.sin(clusterAngle) * clusterRadius;
+        const defaultLeft = anchorX + Math.cos(clusterAngle) * clusterRadius;
+        const defaultTop = anchorY + Math.sin(clusterAngle) * clusterRadius;
+        const stored = visualNodePositions.get(system.id);
+        const left = stored?.left ?? defaultLeft;
+        const top = stored?.top ?? defaultTop;
         positionMap.set(system.id, { left, top });
 
         const node = document.createElement("div");
@@ -5192,6 +5306,16 @@ function renderVisualSnapshot() {
         path.setAttribute("class", "visual-connection-path");
         visualConnectionsSvg.appendChild(path);
       });
+    });
+    setVisualLayoutContextFromRender({
+      width,
+      height,
+      padding,
+      groupMode: "domain",
+      anchors,
+      clusters: new Map(Array.from(domainGroups, ([key, items]) => [key, items.map((s) => s.id)])),
+      positionMap,
+      includedIds: new Set(systemsToShow.map((s) => s.id)),
     });
     return;
   }
@@ -5265,13 +5389,16 @@ function renderVisualSnapshot() {
   }
 
   rawPositions.forEach(({ system, left, top }) => {
-    positionMap.set(system.id, { left, top });
+    const stored = visualNodePositions.get(system.id);
+    const targetLeft = stored?.left ?? left;
+    const targetTop = stored?.top ?? top;
+    positionMap.set(system.id, { left: targetLeft, top: targetTop });
 
     const node = document.createElement("div");
     node.className = "visual-node";
     node.dataset.systemId = system.id;
-    node.style.left = `${left}px`;
-    node.style.top = `${top}px`;
+    node.style.left = `${targetLeft}px`;
+    node.style.top = `${targetTop}px`;
 
     const meta = document.createElement("div");
     meta.className = "visual-meta";
@@ -5324,6 +5451,17 @@ function renderVisualSnapshot() {
       path.setAttribute("class", "visual-connection-path");
       visualConnectionsSvg.appendChild(path);
     });
+
+  setVisualLayoutContextFromRender({
+    width,
+    height,
+    padding,
+    groupMode: "none",
+    anchors: new Map(),
+    clusters: new Map(),
+    positionMap,
+    includedIds,
+  });
 }
 
 function attachVisualNodeBringToFront() {
@@ -5334,6 +5472,120 @@ function attachVisualNodeBringToFront() {
       node.parentElement?.appendChild(node);
     });
   });
+}
+
+function setVisualLayoutContextFromRender({ width, height, padding, groupMode, anchors, clusters, positionMap, includedIds }) {
+  visualLayoutContext = {
+    width: width || 0,
+    height: height || 0,
+    padding: typeof padding === "number" ? padding : 50,
+    groupMode: groupMode || "none",
+    anchors: anchors ? new Map(anchors) : new Map(),
+    clusters: clusters ? new Map(clusters) : new Map(),
+    positions: positionMap ? new Map(positionMap) : new Map(),
+    includedIds: includedIds ? new Set(includedIds) : new Set(),
+  };
+  if (positionMap) {
+    positionMap.forEach((pos, id) => {
+      visualNodePositions.set(id, { left: pos.left, top: pos.top });
+    });
+  }
+  enableVisualNodeDragging();
+}
+
+function enableVisualNodeDragging() {
+  if (!visualNodesContainer || !visualContainer) return;
+  const { width, height, padding } = visualLayoutContext;
+  if (!width || !height) return;
+
+  const clampValue = (value, min, max) => Math.min(max, Math.max(min, value));
+
+  visualNodesContainer.querySelectorAll(".visual-node").forEach((node) => {
+    node.onpointerdown = (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      const id = node.dataset.systemId;
+      if (!id) return;
+      const rect = node.getBoundingClientRect();
+      const offsetLeft = parseFloat(node.style.left) || 0;
+      const offsetTop = parseFloat(node.style.top) || 0;
+      const halfWidth = rect.width / 2;
+      const halfHeight = rect.height / 2;
+      const minLeft = padding + halfWidth;
+      const maxLeft = width - padding - halfWidth;
+      const minTop = padding + halfHeight;
+      const maxTop = height - padding - halfHeight;
+      const startX = event.clientX;
+      const startY = event.clientY;
+
+      node.classList.add("dragging");
+
+      function onMove(moveEvent) {
+        const deltaX = moveEvent.clientX - startX;
+        const deltaY = moveEvent.clientY - startY;
+        const nextLeft = clampValue(offsetLeft + deltaX, minLeft, maxLeft);
+        const nextTop = clampValue(offsetTop + deltaY, minTop, maxTop);
+        node.style.left = `${nextLeft}px`;
+        node.style.top = `${nextTop}px`;
+        visualLayoutContext.positions.set(id, { left: nextLeft, top: nextTop });
+        visualNodePositions.set(id, { left: nextLeft, top: nextTop });
+        refreshVisualConnectionsFromContext();
+      }
+
+      function onUp() {
+        node.classList.remove("dragging");
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+      }
+
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    };
+  });
+}
+
+function refreshVisualConnectionsFromContext() {
+  if (!visualConnectionsSvg) return;
+  const { width, height, groupMode, anchors, clusters, positions, includedIds } = visualLayoutContext;
+  visualConnectionsSvg.innerHTML = "";
+  if (!width || !height) return;
+  visualConnectionsSvg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  visualConnectionsSvg.setAttribute("width", width);
+  visualConnectionsSvg.setAttribute("height", height);
+
+  const drawAnchorConnections = () => {
+    clusters.forEach((ids, key) => {
+      const anchor = anchors.get(key);
+      if (!anchor) return;
+      ids.forEach((id) => {
+        const pos = positions.get(id);
+        if (!pos) return;
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", `M ${anchor.left} ${anchor.top} L ${pos.left} ${pos.top}`);
+        path.setAttribute("class", "visual-connection-path");
+        visualConnectionsSvg.appendChild(path);
+      });
+    });
+  };
+
+  if (groupMode && groupMode !== "none") {
+    drawAnchorConnections();
+    return;
+  }
+
+  const allowedIds = includedIds && includedIds.size ? includedIds : new Set(positions.keys());
+  connections
+    .filter((conn) => allowedIds.has(conn.from) && allowedIds.has(conn.to))
+    .forEach((conn) => {
+      const fromPos = positions.get(conn.from);
+      const toPos = positions.get(conn.to);
+      if (!fromPos || !toPos) return;
+      const midX = (fromPos.left + toPos.left) / 2;
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", `M ${fromPos.left} ${fromPos.top} L ${midX} ${fromPos.top} L ${toPos.left} ${toPos.top}`);
+      path.setAttribute("class", "visual-connection-path");
+      visualConnectionsSvg.appendChild(path);
+    });
 }
 
 function renderSaveList() {
@@ -5604,6 +5856,8 @@ function loadSerializedState(snapshot) {
   systems.length = 0;
   connections.length = 0;
   groups.length = 0;
+  visualNodePositions.clear();
+  visualLayoutContext = { width: 0, height: 0, padding: 50, groupMode: "none", clusters: new Map(), anchors: new Map(), positions: new Map(), includedIds: new Set() };
   connectionLayer.innerHTML = "";
   if (connectionHandleLayer) {
     connectionHandleLayer.innerHTML = "";
@@ -5688,6 +5942,12 @@ function loadSerializedState(snapshot) {
   lastDeletedSnapshot = null;
   undoDeleteBtn?.classList.add("hidden");
   applyAccessMode(snapshot.accessMode || "full");
+  if (!suppressHistoryCapture) {
+    historyStack.length = 0;
+    redoStack.length = 0;
+    lastHistorySignature = JSON.stringify(serializeState());
+    updateHistoryButtons();
+  }
 }
 
 function applyFilterState(filterState = {}) {
