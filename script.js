@@ -492,6 +492,7 @@ let spreadsheetFilterValue = "yes";
 let expandEntitiesGlobally = false;
 let showParentsFilter = false;
 let visualLayoutMode = "scaled";
+let dataTableShowAttributes = false;
 let lastDeletedSnapshot = null;
 let saveStatusTimer = null;
 let editingConnectionId = null;
@@ -509,6 +510,15 @@ let marqueePreviewIds = new Set();
 let relationFocus = null;
 let urlSyncTimer = null;
 let currentAccessMode = "full";
+const dataTableColumnFilters = {
+  domain: "",
+  entity: "",
+  attributes: "",
+  system: "",
+  functionOwner: "",
+  businessOwner: "",
+  platformOwner: "",
+};
 
 function isEditingLocked() {
   return currentAccessMode !== "full";
@@ -628,7 +638,17 @@ const customDomainList = document.getElementById("customDomainList");
 const dataTableModal = document.getElementById("dataTableModal");
 const closeDataTableBtn = document.getElementById("closeDataTableBtn");
 const dataTableGroupSelect = document.getElementById("dataTableGroupSelect");
+const dataTableAttributesToggle = document.getElementById("dataTableAttributesToggle");
 const systemDataTableBody = document.getElementById("systemDataTableBody");
+const dataTableFilterInputs = {
+  domain: document.getElementById("dataTableFilterDomain"),
+  entity: document.getElementById("dataTableFilterEntity"),
+  attributes: document.getElementById("dataTableFilterAttributes"),
+  system: document.getElementById("dataTableFilterSystem"),
+  functionOwner: document.getElementById("dataTableFilterFunctionOwner"),
+  businessOwner: document.getElementById("dataTableFilterBusinessOwner"),
+  platformOwner: document.getElementById("dataTableFilterPlatformOwner"),
+};
 const visualizeBtn = document.getElementById("visualizeBtn");
 const newDiagramModal = document.getElementById("newDiagramModal");
 const objectModal = document.getElementById("objectModal");
@@ -904,7 +924,26 @@ function init() {
   shareMenu?.addEventListener("click", handleShareMenuClick);
   dataTableToggle?.addEventListener("click", openDataTableModal);
   closeDataTableBtn?.addEventListener("click", closeDataTableModal);
-  dataTableGroupSelect?.addEventListener("change", renderSystemDataTable);
+  dataTableGroupSelect?.addEventListener("change", () => {
+    const selectedGroup = dataTableGroupSelect.value;
+    if (selectedGroup === "attributes") {
+      dataTableShowAttributes = true;
+      if (dataTableAttributesToggle) {
+        dataTableAttributesToggle.checked = true;
+      }
+    }
+    renderSystemDataTable();
+  });
+  dataTableAttributesToggle?.addEventListener("change", (event) => {
+    dataTableShowAttributes = event.target.checked;
+    renderSystemDataTable();
+  });
+  Object.entries(dataTableFilterInputs).forEach(([key, input]) => {
+    input?.addEventListener("input", (event) => {
+      dataTableColumnFilters[key] = (event.target.value || "").trim().toLowerCase();
+      renderSystemDataTable();
+    });
+  });
   dataTableModal?.addEventListener("click", (event) => {
     if (event.target === dataTableModal) {
       closeDataTableModal();
@@ -4524,6 +4563,15 @@ function closeVisualModal() {
 }
 
 function openDataTableModal() {
+  if (dataTableAttributesToggle) {
+    const groupIsAttributes = (dataTableGroupSelect?.value || "none") === "attributes";
+    const shouldShowAttributes = dataTableShowAttributes || groupIsAttributes;
+    dataTableAttributesToggle.checked = shouldShowAttributes;
+  }
+  Object.entries(dataTableFilterInputs).forEach(([key, input]) => {
+    if (!input) return;
+    input.value = dataTableColumnFilters[key] || "";
+  });
   renderSystemDataTable();
   dataTableModal?.classList.remove("hidden");
 }
@@ -5693,6 +5741,7 @@ function renderSystemDataTable() {
     "platformOwner",
   ];
   const groupColumnIndex = groupOrder.indexOf(groupBy);
+  const showAttributesColumn = dataTableShowAttributes || groupBy === "attributes";
 
   const normalizeValues = (value) => {
     if (Array.isArray(value)) {
@@ -5703,7 +5752,7 @@ function renderSystemDataTable() {
   };
 
   headerCells.forEach((th, index) => {
-    th.classList.toggle("highlight-column", index === groupColumnIndex);
+    th.classList.toggle("highlight-column", index % groupOrder.length === groupColumnIndex);
   });
 
   systemDataTableBody.innerHTML = "";
@@ -5750,10 +5799,39 @@ function renderSystemDataTable() {
     });
   });
 
+  const matchesFilter = (value, filterText) => {
+    const normalizedFilter = (filterText || "").trim().toLowerCase();
+    if (!normalizedFilter) return true;
+    const values = normalizeValues(value)
+      .join(", ")
+      .toLowerCase();
+    return values.includes(normalizedFilter);
+  };
+
+  const filteredRows = rawRows.filter((row) =>
+    matchesFilter(row.domain, dataTableColumnFilters.domain) &&
+    matchesFilter(row.entity, dataTableColumnFilters.entity) &&
+    matchesFilter(row.attributes, dataTableColumnFilters.attributes) &&
+    matchesFilter(row.system, dataTableColumnFilters.system) &&
+    matchesFilter(row.functionOwner, dataTableColumnFilters.functionOwner) &&
+    matchesFilter(row.businessOwner, dataTableColumnFilters.businessOwner) &&
+    matchesFilter(row.platformOwner, dataTableColumnFilters.platformOwner)
+  );
+
+  if (!filteredRows.length) {
+    const emptyRow = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 7;
+    cell.textContent = "No rows match the current table filters.";
+    emptyRow.appendChild(cell);
+    systemDataTableBody.appendChild(emptyRow);
+    return;
+  }
+
   if (groupBy !== "none" && groupColumnIndex >= 0) {
     const grouped = new Map();
 
-    rawRows.forEach((row) => {
+    filteredRows.forEach((row) => {
       const groupValues = normalizeValues(row[groupBy]);
 
       groupValues.forEach((key) => {
@@ -5790,8 +5868,10 @@ function renderSystemDataTable() {
       groupOrder.forEach((field, index) => {
         const cell = document.createElement("td");
         const values = Array.from(bucket[field]);
-        const display =
-          field === groupBy
+        const hideAttributes = !showAttributesColumn && field === "attributes" && groupBy !== "attributes";
+        const display = hideAttributes
+          ? "—"
+          : field === groupBy
             ? key || "—"
             : values.length
               ? values.sort((a, b) => a.localeCompare(b)).join(", ")
@@ -5807,14 +5887,17 @@ function renderSystemDataTable() {
     return;
   }
 
-  rawRows.forEach((entry) => {
+  filteredRows.forEach((entry) => {
     const row = document.createElement("tr");
     groupOrder.forEach((field) => {
       const cell = document.createElement("td");
       const values = normalizeValues(entry[field]);
-      const display = values.filter((val) => val && val !== "—").length
-        ? values.join(", ")
-        : "—";
+      const hideAttributes = !showAttributesColumn && field === "attributes" && groupBy !== "attributes";
+      const display = hideAttributes
+        ? "—"
+        : values.filter((val) => val && val !== "—").length
+          ? values.join(", ")
+          : "—";
       cell.textContent = display;
       row.appendChild(cell);
     });

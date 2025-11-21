@@ -34,9 +34,12 @@
           <button data-share-mode="view" role="menuitem">Share view-only</button>
           <button data-share-mode="locked" role="menuitem">Share locked</button>
         </div>
-        <button id="filterModeToggle" class="floating-filter-btn" aria-label="Toggle filter mode">
-          Fade
-        </button>
+        <div class="floating-filter-wrapper">
+          <div class="floating-filter-label" aria-hidden="true">Mode</div>
+          <button id="filterModeToggle" class="floating-filter-btn" aria-label="Toggle filter mode">
+            Fade
+          </button>
+        </div>
         <button id="dataTableToggle" class="floating-table-btn" aria-label="Open system data table">📊</button>
         <div class="canvas-toolbar" aria-label="Canvas controls">
           <div class="toolbar-actions">
@@ -333,6 +336,10 @@
                   <option value="platformOwner">Platform Owner</option>
                 </select>
               </label>
+              <label class="field compact inline-toggle">
+                <input type="checkbox" id="dataTableAttributesToggle" />
+                <span>Show attributes</span>
+              </label>
               <button id="closeDataTableBtn" aria-label="Close system data table">Close</button>
             </div>
           </div>
@@ -347,6 +354,15 @@
                   <th>Function Owner</th>
                   <th>Business Owner</th>
                   <th>Platform Owner</th>
+                </tr>
+                <tr class="table-filter-row">
+                  <th><input type="text" id="dataTableFilterDomain" class="column-filter-input" placeholder="Filter" /></th>
+                  <th><input type="text" id="dataTableFilterEntity" class="column-filter-input" placeholder="Filter" /></th>
+                  <th><input type="text" id="dataTableFilterAttributes" class="column-filter-input" placeholder="Filter" /></th>
+                  <th><input type="text" id="dataTableFilterSystem" class="column-filter-input" placeholder="Filter" /></th>
+                  <th><input type="text" id="dataTableFilterFunctionOwner" class="column-filter-input" placeholder="Filter" /></th>
+                  <th><input type="text" id="dataTableFilterBusinessOwner" class="column-filter-input" placeholder="Filter" /></th>
+                  <th><input type="text" id="dataTableFilterPlatformOwner" class="column-filter-input" placeholder="Filter" /></th>
                 </tr>
               </thead>
               <tbody id="systemDataTableBody"></tbody>
