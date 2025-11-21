@@ -491,6 +491,7 @@ let sorFilterValue = "any";
 let spreadsheetFilterValue = "yes";
 let expandEntitiesGlobally = false;
 let showParentsFilter = false;
+let showFullParentLineage = false;
 let visualLayoutMode = "scaled";
 let dataTableShowAttributes = false;
 let lastDeletedSnapshot = null;
@@ -614,6 +615,7 @@ const sorFilterSelect = document.getElementById("sorFilter");
 const spreadsheetFilterSelect = document.getElementById("spreadsheetFilter");
 const expandEntitiesToggle = document.getElementById("expandEntitiesToggle");
 const showParentsToggle = document.getElementById("showParentsToggle");
+const fullParentLineageToggle = document.getElementById("fullParentLineageToggle");
 const systemIconSelect = document.getElementById("systemIconSelect");
 const systemCommentsInput = document.getElementById("systemCommentsInput");
 const systemDescriptionInput = document.getElementById("systemDescriptionInput");
@@ -649,7 +651,7 @@ const dataTableFilterInputs = {
   businessOwner: document.getElementById("dataTableFilterBusinessOwner"),
   platformOwner: document.getElementById("dataTableFilterPlatformOwner"),
 };
-const visualizeBtn = document.getElementById("visualizeBtn");
+const visualToggleBtn = document.getElementById("visualToggle");
 const newDiagramModal = document.getElementById("newDiagramModal");
 const objectModal = document.getElementById("objectModal");
 const objectLabelInput = document.getElementById("objectLabelInput");
@@ -733,6 +735,7 @@ function applyAccessMode(mode = "full") {
       spreadsheetFilterSelect,
       expandEntitiesToggle,
       showParentsToggle,
+      fullParentLineageToggle,
       resetFiltersBtn,
       colorBySelect,
     ],
@@ -794,6 +797,7 @@ function init() {
   spreadsheetFilterValue = spreadsheetFilterSelect?.value || "yes";
   expandEntitiesGlobally = !!expandEntitiesToggle?.checked;
   showParentsFilter = !!showParentsToggle?.checked;
+  showFullParentLineage = !!fullParentLineageToggle?.checked;
   syncFilterModeControls();
   setFileName(currentFileName);
   populateFunctionOwnerOptions();
@@ -909,6 +913,15 @@ function init() {
     showParentsFilter = event.target.checked;
     updateHighlights();
   });
+  fullParentLineageToggle?.addEventListener("change", (event) => {
+    if (isFiltersLocked()) {
+      event.target.checked = showFullParentLineage;
+      return;
+    }
+    showFullParentLineage = event.target.checked;
+    updateHighlights();
+    scheduleShareUrlSync();
+  });
   colorBySelect.addEventListener("change", (event) => {
     if (isFiltersLocked()) return;
     currentColorBy = event.target.value;
@@ -1008,7 +1021,7 @@ function init() {
     }
   });
   saveGroupColorBtn?.addEventListener("click", applyGroupColor);
-  visualizeBtn?.addEventListener("click", openVisualModal);
+  visualToggleBtn?.addEventListener("click", openVisualModal);
   closeVisualModalBtn?.addEventListener("click", closeVisualModal);
   visualModal?.addEventListener("click", (event) => {
     if (event.target === visualModal) {
@@ -2405,10 +2418,15 @@ function handleConnectionLayerDoubleClick(event) {
 function getGroupHull(group) {
   if (!group) return null;
   const members = systems.filter((system) => group.systemIds?.includes(system.id));
+  const renderableMembers =
+    filterMode === "hide"
+      ? members.filter((system) => !system.element.classList.contains("hidden-filter"))
+      : members;
+  if (!renderableMembers.length && filterMode === "hide") return null;
   if (!members.length) return null;
   const padding = GROUP_OVERLAY_PADDING;
   const points = [];
-  members.forEach((system) => {
+  (renderableMembers.length ? renderableMembers : members).forEach((system) => {
     const rect = getSystemRect(system);
     const cx = rect.x + rect.width / 2;
     const cy = rect.y + rect.height / 2;
@@ -2516,6 +2534,8 @@ function renderGroups() {
     polygon.setAttribute("points", points);
     polygon.setAttribute("stroke", group.color || "#0f1424");
     polygon.setAttribute("fill", hexToRgba(group.color || "#ffffff", 0.2));
+    polygon.setAttribute("stroke-linejoin", "round");
+    polygon.setAttribute("stroke-linecap", "round");
     polygon.addEventListener("contextmenu", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -3564,7 +3584,6 @@ function resetFilters({ alsoClearSelection = false } = {}) {
   searchQuery = "";
   sorFilterValue = "any";
   spreadsheetFilterValue = "yes";
-  expandEntitiesGlobally = false;
   relationFocus = null;
   clearEntityLinkHighlight(false);
   if (alsoClearSelection) {
@@ -3582,13 +3601,6 @@ function resetFilters({ alsoClearSelection = false } = {}) {
   if (spreadsheetFilterSelect) {
     spreadsheetFilterSelect.value = "yes";
   }
-  if (expandEntitiesToggle) {
-    expandEntitiesToggle.checked = false;
-  }
-  if (showParentsToggle) {
-    showParentsToggle.checked = false;
-  }
-  showParentsFilter = false;
   updateGlobalDomainChips();
   applyGlobalEntityExpansion();
   updateHighlights();
@@ -3628,12 +3640,32 @@ function updateHighlights() {
   });
 
   const parentBoostIds = new Set();
-  if (showParentsFilter && baseFilteredIds.size) {
+  if ((showParentsFilter || showFullParentLineage) && baseFilteredIds.size) {
+    const visited = new Set(baseFilteredIds);
+    const queue = showFullParentLineage ? [...baseFilteredIds] : [];
     baseFilteredIds.forEach((id) => {
       connections.forEach((conn) => {
-        getIncomingSourcesTo(conn, id).forEach((sourceId) => parentBoostIds.add(sourceId));
+        getIncomingSourcesTo(conn, id).forEach((sourceId) => {
+          parentBoostIds.add(sourceId);
+          if (showFullParentLineage && !visited.has(sourceId)) {
+            visited.add(sourceId);
+            queue.push(sourceId);
+          }
+        });
       });
     });
+    while (showFullParentLineage && queue.length) {
+      const currentId = queue.shift();
+      connections.forEach((conn) => {
+        getIncomingSourcesTo(conn, currentId).forEach((sourceId) => {
+          if (!visited.has(sourceId)) {
+            visited.add(sourceId);
+            queue.push(sourceId);
+          }
+          parentBoostIds.add(sourceId);
+        });
+      });
+    }
   }
 
   systems.forEach((system) => {
@@ -3645,7 +3677,8 @@ function updateHighlights() {
       highlight = connectedSet ? connectedSet.has(system.id) : false;
     } else if (filtersActive) {
       const matchesFilters = baseFilteredIds.has(system.id);
-      const includeParent = showParentsFilter && parentBoostIds.has(system.id);
+      const includeParent =
+        (showParentsFilter || showFullParentLineage) && parentBoostIds.has(system.id);
       highlight = matchesFilters || includeParent;
     }
 
@@ -3954,6 +3987,8 @@ function setupPanning() {
 function setupContextMenuBlock() {
   document.addEventListener("contextmenu", (event) => {
     if (event.target.closest && event.target.closest("#canvasViewport")) {
+      if (event.target.closest(".system-node")) return;
+      if (findSystemAtPoint(event.pageX, event.pageY)) return;
       const group = findGroupAtPoint(event.pageX, event.pageY);
       if (group) {
         event.preventDefault();
@@ -3963,6 +3998,26 @@ function setupContextMenuBlock() {
       event.preventDefault();
     }
   });
+}
+
+function findSystemAtPoint(pageX, pageY) {
+  if (!canvasContent) return null;
+  const canvasRect = canvasContent.getBoundingClientRect();
+  const point = {
+    x: (pageX - canvasRect.left) / currentZoom,
+    y: (pageY - canvasRect.top) / currentZoom,
+  };
+  return (
+    systems.find((system) => {
+      const rect = getSystemRect(system);
+      return (
+        point.x >= rect.x &&
+        point.x <= rect.x + rect.width &&
+        point.y >= rect.y &&
+        point.y <= rect.y + rect.height
+      );
+    }) || null
+  );
 }
 
 function findGroupAtPoint(pageX, pageY) {
@@ -5466,6 +5521,7 @@ function serializeState(accessModeOverride) {
       spreadsheets: spreadsheetFilterValue,
       expandEntities: expandEntitiesGlobally,
       showParents: showParentsFilter,
+      fullParentLineage: showFullParentLineage,
       sidebarCollapsed: isSidebarCollapsed,
     },
     accessMode,
@@ -5579,6 +5635,7 @@ function applyFilterState(filterState = {}) {
   const spreadsheetFilter = filterState.spreadsheets || "yes";
   const expandEntities = !!filterState.expandEntities;
   const showParents = !!filterState.showParents;
+  const fullParentLineage = !!filterState.fullParentLineage;
 
   platformOwnerFilterText = platformOwnerValue.trim().toLowerCase();
   businessOwnerFilterText = businessOwnerValue.trim().toLowerCase();
@@ -5590,6 +5647,7 @@ function applyFilterState(filterState = {}) {
   spreadsheetFilterValue = spreadsheetFilter;
   expandEntitiesGlobally = expandEntities;
   showParentsFilter = showParents;
+  showFullParentLineage = fullParentLineage;
 
   if (platformOwnerFilterInput) platformOwnerFilterInput.value = platformOwnerValue;
   if (businessOwnerFilterInput) businessOwnerFilterInput.value = businessOwnerValue;
@@ -5601,6 +5659,7 @@ function applyFilterState(filterState = {}) {
   if (spreadsheetFilterSelect) spreadsheetFilterSelect.value = spreadsheetFilterValue;
   if (expandEntitiesToggle) expandEntitiesToggle.checked = expandEntitiesGlobally;
   if (showParentsToggle) showParentsToggle.checked = showParentsFilter;
+  if (fullParentLineageToggle) fullParentLineageToggle.checked = showFullParentLineage;
   syncFilterModeControls();
   if (typeof filterState.sidebarCollapsed === "boolean") {
     setSidebarCollapsedState(filterState.sidebarCollapsed);

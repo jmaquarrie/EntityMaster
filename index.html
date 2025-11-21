@@ -34,13 +34,20 @@
           <button data-share-mode="view" role="menuitem">Share view-only</button>
           <button data-share-mode="locked" role="menuitem">Share locked</button>
         </div>
-        <div class="floating-filter-wrapper">
-          <div class="floating-filter-label" aria-hidden="true">Highlight Mode</div>
-          <button id="filterModeToggle" class="floating-filter-btn" aria-label="Toggle filter mode">
-            Fade
-          </button>
+        <div class="floating-controls" aria-label="Floating mode controls">
+          <div class="floating-control">
+            <div class="floating-label" aria-hidden="true">Highlight Mode</div>
+            <button id="filterModeToggle" class="floating-btn" aria-label="Toggle filter mode">Fade</button>
+          </div>
+          <div class="floating-control">
+            <div class="floating-label" aria-hidden="true">Table Mode</div>
+            <button id="dataTableToggle" class="floating-btn" aria-label="Open system data table">📊</button>
+          </div>
+          <div class="floating-control">
+            <div class="floating-label" aria-hidden="true">Visualise</div>
+            <button id="visualToggle" class="floating-btn" aria-label="Open condensed visual">🗺️</button>
+          </div>
         </div>
-        <button id="dataTableToggle" class="floating-table-btn" aria-label="Open system data table">📊</button>
         <div class="canvas-toolbar" aria-label="Canvas controls">
           <div class="toolbar-actions">
             <button id="addSystemBtn">Add System</button>
@@ -154,7 +161,6 @@
             </div>
             <div class="sidebar-actions">
               <button id="resetFiltersBtn" type="button">Reset</button>
-              <button id="visualizeBtn" type="button" class="ghost">Visual</button>
             </div>
           </div>
         </aside>
@@ -475,6 +481,10 @@
             <label class="inline-toggle">
               <input type="checkbox" id="showParentsToggle" />
               <span>Show Parents</span>
+            </label>
+            <label class="inline-toggle">
+              <input type="checkbox" id="fullParentLineageToggle" />
+              <span>Show full Parent Lineage</span>
             </label>
           </div>
           <section class="settings-section">

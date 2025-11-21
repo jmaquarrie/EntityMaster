@@ -1455,20 +1455,52 @@ button.small {
   background: #f4f6ff;
 }
 
-.floating-table-btn {
+.floating-controls {
   position: fixed;
   bottom: 110px;
-  right: 18px;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
+  right: 16px;
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  z-index: 6;
+}
+
+.floating-control {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+}
+
+.floating-label {
+  font-size: 0.65rem;
+  font-weight: 400;
+  color: #0f1424;
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 2px rgba(15, 20, 36, 0.2);
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  pointer-events: none;
+}
+
+.floating-control:hover .floating-label {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.floating-btn {
+  width: 56px;
+  height: 34px;
+  border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.6);
   background: rgba(255, 255, 255, 0.35);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   box-shadow: 0 12px 30px rgba(17, 24, 36, 0.18);
   cursor: pointer;
-  font-size: 1.15rem;
+  font-size: 0.9rem;
   z-index: 6;
   color: #0f1424;
   display: inline-flex;
@@ -1476,63 +1508,10 @@ button.small {
   justify-content: center;
   padding: 0;
   line-height: 1;
+  font-weight: 400;
 }
 
-.floating-filter-wrapper {
-  position: fixed;
-  bottom: 110px;
-  right: 70px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  z-index: 6;
-}
-
-.floating-filter-label {
-  font-size: 0.7rem;
-  font-weight: 500;
-  color: #0f1424;
-  letter-spacing: 0.02em;
-  text-shadow: 0 1px 2px rgba(15, 20, 36, 0.2);
-  opacity: 0;
-  transform: translateY(4px);
-  transition: opacity 0.15s ease, transform 0.15s ease;
-  pointer-events: none;
-}
-
-.floating-filter-wrapper:hover .floating-filter-label {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.floating-filter-btn {
-  position: static;
-  height: 38px;
-  min-width: 64px;
-  padding: 0 0.75rem;
-  border-radius: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  background: rgba(255, 255, 255, 0.35);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  box-shadow: 0 18px 36px rgba(17, 24, 36, 0.14);
-  cursor: pointer;
-  font-weight: 600;
-  color: #0f1424;
-  z-index: 6;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.35rem;
-}
-
-.floating-filter-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 18px 36px rgba(17, 24, 36, 0.2);
-}
-
-.floating-table-btn:hover {
+.floating-btn:hover {
   transform: translateY(-1px);
   box-shadow: 0 14px 32px rgba(17, 24, 36, 0.22);
 }
