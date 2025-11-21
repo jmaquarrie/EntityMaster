@@ -542,6 +542,7 @@ const addSystemBtn = document.getElementById("addSystemBtn");
 const addObjectBtn = document.getElementById("addObjectBtn");
 const objectMenu = document.getElementById("objectMenu");
 const shareMenu = document.getElementById("shareMenu");
+const filterModeToggleBtn = document.getElementById("filterModeToggle");
 const dataTableToggle = document.getElementById("dataTableToggle");
 const fileNameDisplay = document.getElementById("fileNameDisplay");
 const panel = document.getElementById("systemPanel");
@@ -707,6 +708,7 @@ function applyAccessMode(mode = "full") {
       searchInput,
       searchTypeSelect,
       filterModeSelect,
+      filterModeToggleBtn,
       sorFilterSelect,
       spreadsheetFilterSelect,
       expandEntitiesToggle,
@@ -739,6 +741,29 @@ function applyAccessMode(mode = "full") {
   }
 }
 
+function syncFilterModeControls() {
+  if (filterModeSelect && filterModeSelect.value !== filterMode) {
+    filterModeSelect.value = filterMode;
+  }
+  if (filterModeToggleBtn) {
+    const label = filterMode === "hide" ? "Hide" : "Fade";
+    filterModeToggleBtn.textContent = label;
+    filterModeToggleBtn.setAttribute("aria-label", `Toggle filter mode (currently ${label})`);
+    filterModeToggleBtn.setAttribute("aria-pressed", filterMode === "hide" ? "true" : "false");
+  }
+}
+
+function setFilterMode(nextMode) {
+  const normalized = nextMode === "hide" ? "hide" : "fade";
+  if (filterMode === normalized) {
+    syncFilterModeControls();
+    return;
+  }
+  filterMode = normalized;
+  syncFilterModeControls();
+  updateHighlights();
+}
+
 function init() {
   setCanvasDimensions(CANVAS_WIDTH, CANVAS_HEIGHT);
   applyZoom(currentZoom);
@@ -749,6 +774,7 @@ function init() {
   spreadsheetFilterValue = spreadsheetFilterSelect?.value || "yes";
   expandEntitiesGlobally = !!expandEntitiesToggle?.checked;
   showParentsFilter = !!showParentsToggle?.checked;
+  syncFilterModeControls();
   setFileName(currentFileName);
   populateFunctionOwnerOptions();
   renderVisualFunctionOptions();
@@ -824,9 +850,16 @@ function init() {
     updateHighlights();
   });
   filterModeSelect?.addEventListener("change", (event) => {
+    if (isFiltersLocked()) {
+      syncFilterModeControls();
+      return;
+    }
+    setFilterMode(event.target.value);
+  });
+  filterModeToggleBtn?.addEventListener("click", () => {
     if (isFiltersLocked()) return;
-    filterMode = event.target.value;
-    updateHighlights();
+    const nextMode = filterMode === "fade" ? "hide" : "fade";
+    setFilterMode(nextMode);
   });
   sorFilterSelect?.addEventListener("change", (event) => {
     if (isFiltersLocked()) return;
@@ -5520,6 +5553,7 @@ function applyFilterState(filterState = {}) {
   if (spreadsheetFilterSelect) spreadsheetFilterSelect.value = spreadsheetFilterValue;
   if (expandEntitiesToggle) expandEntitiesToggle.checked = expandEntitiesGlobally;
   if (showParentsToggle) showParentsToggle.checked = showParentsFilter;
+  syncFilterModeControls();
   if (typeof filterState.sidebarCollapsed === "boolean") {
     setSidebarCollapsedState(filterState.sidebarCollapsed);
   }
@@ -5649,8 +5683,24 @@ function renderSystemDataTable() {
   const systemsToShow = getSystemsForCurrentFilters();
   const groupBy = dataTableGroupSelect?.value || "none";
   const headerCells = dataTableModal?.querySelectorAll(".system-data-table thead th") || [];
-  const groupOrder = ["domain", "entity", "system", "functionOwner", "businessOwner", "platformOwner"];
+  const groupOrder = [
+    "domain",
+    "entity",
+    "attributes",
+    "system",
+    "functionOwner",
+    "businessOwner",
+    "platformOwner",
+  ];
   const groupColumnIndex = groupOrder.indexOf(groupBy);
+
+  const normalizeValues = (value) => {
+    if (Array.isArray(value)) {
+      return value.length ? value.map((item) => (item ?? "").toString().trim()).filter(Boolean) : ["—"];
+    }
+    const text = typeof value === "string" ? value.trim() : value;
+    return text ? [text] : ["—"];
+  };
 
   headerCells.forEach((th, index) => {
     th.classList.toggle("highlight-column", index === groupColumnIndex);
@@ -5661,7 +5711,7 @@ function renderSystemDataTable() {
   if (!systemsToShow.length) {
     const emptyRow = document.createElement("tr");
     const cell = document.createElement("td");
-    cell.colSpan = 6;
+    cell.colSpan = 7;
     cell.textContent = "No systems match the current filters.";
     emptyRow.appendChild(cell);
     systemDataTableBody.appendChild(emptyRow);
@@ -5679,11 +5729,19 @@ function renderSystemDataTable() {
     const platformOwner = system.platformOwner || "";
     const systemName = system.name || "Untitled";
     const entities = system.entities?.length ? system.entities : [{ name: "" }];
+    const systemAttributes = Array.isArray(system.attributes) ? system.attributes : [];
 
     entities.forEach((entity) => {
+      const entityName = entity.name || "";
+      const matchingAttributes = systemAttributes
+        .filter((entry) => (entry.entity || "") === entityName)
+        .map((entry) => entry.attribute)
+        .filter((attr) => !!attr && !!attr.trim());
+
       rawRows.push({
         domain: domainLabel || "—",
-        entity: entity.name || "—",
+        entity: entityName || "—",
+        attributes: matchingAttributes,
         system: systemName,
         functionOwner: functionOwner || "—",
         businessOwner: businessOwner || "—",
@@ -5696,26 +5754,35 @@ function renderSystemDataTable() {
     const grouped = new Map();
 
     rawRows.forEach((row) => {
-      const key = row[groupBy] || "—";
-      if (!grouped.has(key)) {
-        grouped.set(key, {
-          domain: new Set(),
-          entity: new Set(),
-          system: new Set(),
-          functionOwner: new Set(),
-          businessOwner: new Set(),
-          platformOwner: new Set(),
+      const groupValues = normalizeValues(row[groupBy]);
+
+      groupValues.forEach((key) => {
+        if (!grouped.has(key)) {
+          grouped.set(key, {
+            domain: new Set(),
+            entity: new Set(),
+            attributes: new Set(),
+            system: new Set(),
+            functionOwner: new Set(),
+            businessOwner: new Set(),
+            platformOwner: new Set(),
+          });
+        }
+        const bucket = grouped.get(key);
+
+        Object.entries(row).forEach(([field, value]) => {
+          const values = normalizeValues(value);
+          values.forEach((val) => {
+            if (val && val !== "—") {
+              bucket[field].add(val);
+            }
+          });
         });
-      }
-      const bucket = grouped.get(key);
-      Object.entries(row).forEach(([field, value]) => {
-        if (value && value !== "—") {
-          bucket[field].add(value);
+
+        if (!bucket[groupBy].size) {
+          bucket[groupBy].add("—");
         }
       });
-      if (!bucket[groupBy].size) {
-        bucket[groupBy].add("—");
-      }
     });
 
     grouped.forEach((bucket, key) => {
@@ -5727,8 +5794,8 @@ function renderSystemDataTable() {
           field === groupBy
             ? key || "—"
             : values.length
-            ? values.sort((a, b) => a.localeCompare(b)).join(", ")
-            : "—";
+              ? values.sort((a, b) => a.localeCompare(b)).join(", ")
+              : "—";
         cell.textContent = display;
         if (index === groupColumnIndex) {
           cell.classList.add("highlight-column");
@@ -5744,7 +5811,11 @@ function renderSystemDataTable() {
     const row = document.createElement("tr");
     groupOrder.forEach((field) => {
       const cell = document.createElement("td");
-      cell.textContent = entry[field] || "—";
+      const values = normalizeValues(entry[field]);
+      const display = values.filter((val) => val && val !== "—").length
+        ? values.join(", ")
+        : "—";
+      cell.textContent = display;
       row.appendChild(cell);
     });
     systemDataTableBody.appendChild(row);

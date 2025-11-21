@@ -911,6 +911,8 @@ button.ghost {
   flex-direction: column;
   gap: 0.75rem;
   z-index: 3;
+  max-height: calc(100vh - 2.5rem);
+  overflow: hidden;
 }
 
 .sidebar-toggle {
@@ -935,6 +937,9 @@ button.ghost {
   display: flex;
   flex-direction: column;
   gap: 0.9rem;
+  overflow-y: auto;
+  max-height: calc(100vh - 6.5rem);
+  padding-right: 0.35rem;
 }
 
 .sidebar.collapsed .sidebar-content {
@@ -1439,6 +1444,32 @@ button.small {
   place-items: center;
 }
 
+.floating-filter-btn {
+  position: fixed;
+  bottom: 110px;
+  right: 74px;
+  height: 46px;
+  min-width: 72px;
+  padding: 0 0.85rem;
+  border-radius: 24px;
+  border: none;
+  background: #ffffff;
+  box-shadow: 0 12px 30px rgba(17, 24, 36, 0.18);
+  cursor: pointer;
+  font-weight: 700;
+  color: #0f1424;
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+}
+
+.floating-filter-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 32px rgba(17, 24, 36, 0.22);
+}
+
 .floating-table-btn:hover {
   transform: translateY(-1px);
   box-shadow: 0 14px 32px rgba(17, 24, 36, 0.22);
@@ -1838,6 +1869,15 @@ button.small {
 
 .settings-inline-form button {
   white-space: nowrap;
+}
+
+.settings-inline-toggles {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: flex-start;
+  margin: 0.5rem 0;
+  flex-wrap: wrap;
 }
 
 .token-list {
