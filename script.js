@@ -5802,10 +5802,19 @@ function renderSystemDataTable() {
   const matchesFilter = (value, filterText) => {
     const normalizedFilter = (filterText || "").trim().toLowerCase();
     if (!normalizedFilter) return true;
+
+    const terms = normalizedFilter
+      .split(/[\s,]+/)
+      .map((term) => term.trim())
+      .filter(Boolean);
+
+    if (!terms.length) return true;
+
     const values = normalizeValues(value)
       .join(", ")
       .toLowerCase();
-    return values.includes(normalizedFilter);
+
+    return terms.some((term) => values.includes(term));
   };
 
   const filteredRows = rawRows.filter((row) =>
