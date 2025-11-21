@@ -757,10 +757,10 @@ button.ghost {
 }
 
 .connection-group.selected-connection .connection-path {
-  stroke: #0f1424;
-  color: #0f1424;
-  stroke-width: 2.75;
-  opacity: 1;
+  stroke: #253252;
+  color: #253252;
+  stroke-width: 2.6;
+  opacity: 0.9;
 }
 
 .connection-group.selected-connection .connection-label {
@@ -1462,7 +1462,7 @@ button.small {
   bottom: 110px;
   right: 16px;
   display: flex;
-  gap: 6px;
+  gap: 4px;
   align-items: flex-end;
   z-index: 6;
 }

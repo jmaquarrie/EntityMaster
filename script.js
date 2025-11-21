@@ -2464,7 +2464,7 @@ function getGroupHull(group) {
   };
 }
 
-function buildRoundedHullPath(points, radius = 14) {
+function buildRoundedHullPath(points, radius = 22) {
   if (!points?.length) return "";
   if (points.length === 1) {
     const [point] = points;
@@ -2578,7 +2578,7 @@ function renderGroups() {
     const path = document.createElementNS(SVG_NS, "path");
     path.setAttribute("d", buildRoundedHullPath(localHull));
     path.setAttribute("stroke", group.color || "#0f1424");
-    path.setAttribute("fill", hexToRgba(group.color || "#ffffff", 0.2));
+    path.setAttribute("fill", hexToRgba(group.color || "#ffffff", 0.02));
     path.setAttribute("stroke-linejoin", "round");
     path.setAttribute("stroke-linecap", "round");
     path.addEventListener("contextmenu", (event) => {
@@ -3680,10 +3680,21 @@ function updateHighlights() {
   if (relationFocus?.sourceId) {
     lineageSeedIds.add(relationFocus.sourceId);
   }
-  if ((showParentsFilter || showFullParentLineage) && lineageSeedIds.size) {
-    const visited = new Set(lineageSeedIds);
-    const queue = showFullParentLineage ? [...lineageSeedIds] : [];
-    lineageSeedIds.forEach((id) => {
+
+  const parentSeedIds = new Set();
+  if (selectedSystemId) {
+    parentSeedIds.add(selectedSystemId);
+  } else if (relationFocus?.sourceId) {
+    parentSeedIds.add(relationFocus.sourceId);
+  } else {
+    baseFilteredIds.forEach((id) => parentSeedIds.add(id));
+  }
+
+  if ((showParentsFilter || showFullParentLineage) && parentSeedIds.size) {
+    const visited = new Set(parentSeedIds);
+    const queue = showFullParentLineage ? [...parentSeedIds] : [];
+
+    parentSeedIds.forEach((id) => {
       connections.forEach((conn) => {
         getIncomingSourcesTo(conn, id).forEach((sourceId) => {
           parentBoostIds.add(sourceId);
@@ -3694,6 +3705,7 @@ function updateHighlights() {
         });
       });
     });
+
     while (showFullParentLineage && queue.length) {
       const currentId = queue.shift();
       connections.forEach((conn) => {
