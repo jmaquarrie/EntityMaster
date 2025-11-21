@@ -1188,6 +1188,22 @@ button.ghost {
   gap: 0.75rem;
 }
 
+.table-modal-header {
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.table-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.table-header-actions .field.compact {
+  margin: 0;
+  min-width: 150px;
+}
+
 .table-body-wrapper {
   background: #f6f7fb;
   border-radius: 16px;
@@ -1209,6 +1225,12 @@ button.ghost {
   padding: 0.6rem 0.75rem;
   border-bottom: 1px solid #e3e7f3;
   vertical-align: top;
+}
+
+.system-data-table th.highlight-column,
+.system-data-table td.highlight-column {
+  background: #eef1fb;
+  font-weight: 700;
 }
 
 .inline-link {
@@ -1567,6 +1589,12 @@ button.small {
 
 .visual-controls .field.compact select {
   width: 100%;
+}
+
+#visualDistributeBtn.active {
+  background: #0f1424;
+  color: #fff;
+  box-shadow: 0 10px 24px rgba(15, 20, 36, 0.2);
 }
 
 .visual-container {

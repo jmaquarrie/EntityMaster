@@ -152,6 +152,12 @@
                 <span>Expand Entities</span>
               </label>
             </div>
+            <div class="sidebar-section">
+              <label class="inline-toggle">
+                <input type="checkbox" id="showParentsToggle" />
+                <span>Show Parents</span>
+              </label>
+            </div>
             <div class="sidebar-actions">
               <button id="resetFiltersBtn" type="button">Reset</button>
               <button id="visualizeBtn" type="button" class="ghost">Visual</button>
@@ -320,9 +326,23 @@
       </div>
       <div id="dataTableModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="dataTableTitle">
         <div class="modal-card table-modal-card">
-          <div class="modal-header">
+          <div class="modal-header table-modal-header">
             <h3 id="dataTableTitle">System Data</h3>
-            <button id="closeDataTableBtn" aria-label="Close system data table">Close</button>
+            <div class="table-header-actions">
+              <label class="field compact">
+                <span>Group by</span>
+                <select id="dataTableGroupSelect" aria-label="Group table rows">
+                  <option value="none">None</option>
+                  <option value="domain">Domain</option>
+                  <option value="entity">Entity</option>
+                  <option value="system">System</option>
+                  <option value="functionOwner">Function Owner</option>
+                  <option value="businessOwner">Business Owner</option>
+                  <option value="platformOwner">Platform Owner</option>
+                </select>
+              </label>
+              <button id="closeDataTableBtn" aria-label="Close system data table">Close</button>
+            </div>
           </div>
           <div class="table-body-wrapper">
             <table class="system-data-table">
@@ -497,6 +517,7 @@
                   <option value="businessOwner">Business Owner</option>
                 </select>
               </label>
+              <button id="visualDistributeBtn" type="button" class="ghost hidden">Distribute</button>
             </div>
             <div class="visual-control-group visual-secondary-controls">
               <div id="visualDomainControls" class="domain-controls hidden">

@@ -490,6 +490,8 @@ let filterMode = "fade";
 let sorFilterValue = "any";
 let spreadsheetFilterValue = "yes";
 let expandEntitiesGlobally = false;
+let showParentsFilter = false;
+let visualLayoutMode = "scaled";
 let lastDeletedSnapshot = null;
 let saveStatusTimer = null;
 let editingConnectionId = null;
@@ -600,6 +602,7 @@ const filterModeSelect = document.getElementById("filterModeSelect");
 const sorFilterSelect = document.getElementById("sorFilter");
 const spreadsheetFilterSelect = document.getElementById("spreadsheetFilter");
 const expandEntitiesToggle = document.getElementById("expandEntitiesToggle");
+const showParentsToggle = document.getElementById("showParentsToggle");
 const systemIconSelect = document.getElementById("systemIconSelect");
 const systemCommentsInput = document.getElementById("systemCommentsInput");
 const systemDescriptionInput = document.getElementById("systemDescriptionInput");
@@ -623,6 +626,7 @@ const customDomainInput = document.getElementById("customDomainInput");
 const customDomainList = document.getElementById("customDomainList");
 const dataTableModal = document.getElementById("dataTableModal");
 const closeDataTableBtn = document.getElementById("closeDataTableBtn");
+const dataTableGroupSelect = document.getElementById("dataTableGroupSelect");
 const systemDataTableBody = document.getElementById("systemDataTableBody");
 const visualizeBtn = document.getElementById("visualizeBtn");
 const newDiagramModal = document.getElementById("newDiagramModal");
@@ -644,6 +648,7 @@ const visualConnectionsSvg = document.getElementById("visualConnections");
 const visualGroupBySelect = document.getElementById("visualGroupBySelect");
 const visualDomainSelect = document.getElementById("visualDomainSelect");
 const visualDomainControls = document.getElementById("visualDomainControls");
+const visualDistributeBtn = document.getElementById("visualDistributeBtn");
 const visualFunctionSelect = document.getElementById("visualFunctionSelect");
 const visualFunctionControls = document.getElementById("visualFunctionControls");
 const visualEntitySelect = document.getElementById("visualEntitySelect");
@@ -705,6 +710,7 @@ function applyAccessMode(mode = "full") {
       sorFilterSelect,
       spreadsheetFilterSelect,
       expandEntitiesToggle,
+      showParentsToggle,
       resetFiltersBtn,
       colorBySelect,
     ],
@@ -742,6 +748,7 @@ function init() {
   sorFilterValue = sorFilterSelect?.value || "any";
   spreadsheetFilterValue = spreadsheetFilterSelect?.value || "yes";
   expandEntitiesGlobally = !!expandEntitiesToggle?.checked;
+  showParentsFilter = !!showParentsToggle?.checked;
   setFileName(currentFileName);
   populateFunctionOwnerOptions();
   renderVisualFunctionOptions();
@@ -841,6 +848,14 @@ function init() {
     expandEntitiesGlobally = event.target.checked;
     applyGlobalEntityExpansion();
   });
+  showParentsToggle?.addEventListener("change", (event) => {
+    if (isFiltersLocked()) {
+      event.target.checked = showParentsFilter;
+      return;
+    }
+    showParentsFilter = event.target.checked;
+    updateHighlights();
+  });
   colorBySelect.addEventListener("change", (event) => {
     if (isFiltersLocked()) return;
     currentColorBy = event.target.value;
@@ -856,6 +871,7 @@ function init() {
   shareMenu?.addEventListener("click", handleShareMenuClick);
   dataTableToggle?.addEventListener("click", openDataTableModal);
   closeDataTableBtn?.addEventListener("click", closeDataTableModal);
+  dataTableGroupSelect?.addEventListener("change", renderSystemDataTable);
   dataTableModal?.addEventListener("click", (event) => {
     if (event.target === dataTableModal) {
       closeDataTableModal();
@@ -930,6 +946,13 @@ function init() {
   visualGroupBySelect?.addEventListener("change", () => {
     if (!visualModal || visualModal.classList.contains("hidden")) return;
     updateVisualGroupingControlVisibility();
+    visualLayoutMode = "scaled";
+    renderVisualSnapshot();
+  });
+  visualDistributeBtn?.addEventListener("click", () => {
+    if (!visualModal || visualModal.classList.contains("hidden")) return;
+    if (visualGroupBySelect?.value !== "none") return;
+    visualLayoutMode = "distributed";
     renderVisualSnapshot();
   });
   visualDomainSelect?.addEventListener("change", () => {
@@ -1096,6 +1119,10 @@ function updateVisualGroupingControlVisibility() {
   visualFunctionControls?.classList.toggle("hidden", !isFunction);
   visualEntityControls?.classList.toggle("hidden", !isEntity);
   visualBusinessOwnerControls?.classList.toggle("hidden", !isBusinessOwner);
+  visualDistributeBtn?.classList.toggle("hidden", mode !== "none");
+  if (mode !== "none") {
+    visualLayoutMode = "scaled";
+  }
 }
 
 function renderVisualEntityOptions() {
@@ -3486,6 +3513,10 @@ function resetFilters({ alsoClearSelection = false } = {}) {
   if (expandEntitiesToggle) {
     expandEntitiesToggle.checked = false;
   }
+  if (showParentsToggle) {
+    showParentsToggle.checked = false;
+  }
+  showParentsFilter = false;
   updateGlobalDomainChips();
   applyGlobalEntityExpansion();
   updateHighlights();
@@ -3508,13 +3539,30 @@ function updateHighlights() {
     !!functionOwnerFilterText ||
     !!searchQuery ||
     sorFilterValue !== "any" ||
-    spreadsheetFilterValue !== "yes";
+    spreadsheetFilterValue !== "yes" ||
+    showParentsFilter;
 
   const hasEntitySelection = !!activeEntityLinkName;
   const normalizedEntity = hasEntitySelection ? activeEntityLinkName.toLowerCase() : "";
   const shouldApplyState = !!selectedSystemId || filtersActive || hasEntitySelection;
 
   const nextHighlightState = new Map();
+
+  const baseFilteredIds = new Set();
+  systems.forEach((system) => {
+    if (systemMatchesFilters(system)) {
+      baseFilteredIds.add(system.id);
+    }
+  });
+
+  const parentBoostIds = new Set();
+  if (showParentsFilter && baseFilteredIds.size) {
+    baseFilteredIds.forEach((id) => {
+      connections.forEach((conn) => {
+        getIncomingSourcesTo(conn, id).forEach((sourceId) => parentBoostIds.add(sourceId));
+      });
+    });
+  }
 
   systems.forEach((system) => {
     let highlight = true;
@@ -3524,7 +3572,9 @@ function updateHighlights() {
     } else if (selectedSystemId) {
       highlight = connectedSet ? connectedSet.has(system.id) : false;
     } else if (filtersActive) {
-      highlight = systemMatchesFilters(system);
+      const matchesFilters = baseFilteredIds.has(system.id);
+      const includeParent = showParentsFilter && parentBoostIds.has(system.id);
+      highlight = matchesFilters || includeParent;
     }
 
     if (hasEntitySelection) {
@@ -3564,7 +3614,8 @@ function hasActiveFilters() {
     !!functionOwnerFilterText ||
     !!searchQuery ||
     sorFilterValue !== "any" ||
-    spreadsheetFilterValue !== "yes"
+    spreadsheetFilterValue !== "yes" ||
+    showParentsFilter
   );
 }
 
@@ -3678,7 +3729,8 @@ function hasActiveFilters() {
     !!functionOwnerFilterText ||
     !!searchQuery ||
     sorFilterValue !== "any" ||
-    spreadsheetFilterValue !== "yes"
+    spreadsheetFilterValue !== "yes" ||
+    showParentsFilter
   );
 }
 
@@ -4424,6 +4476,7 @@ function closeSettingsModal() {
 function openVisualModal() {
   updateHighlights();
   if (!visualModal) return;
+  visualLayoutMode = "scaled";
   visualModal.classList.remove("hidden");
   renderVisualDomainOptions();
   renderVisualFunctionOptions();
@@ -4480,6 +4533,7 @@ function renderVisualSnapshot() {
   const groupByDomain = groupMode === "domain";
   const groupByEntity = groupMode === "entity";
   const groupByBusinessOwner = groupMode === "businessOwner";
+  visualDistributeBtn?.classList.toggle("active", groupMode === "none" && visualLayoutMode === "distributed");
   const fallbackDomainKey = visualDomainSelect?.value || domainDefinitions[0]?.key || "people";
   const fallbackFunctionOwner =
     visualFunctionSelect?.value || Array.from(functionOwnerOptions)[0] || "";
@@ -4953,44 +5007,58 @@ function renderVisualSnapshot() {
   const positionMap = new Map();
   const nodesFragment = document.createDocumentFragment();
 
-  const rawPositions = systemsToShow.map((system) => {
-    return {
-      system,
-      left: padding + (system.x - minX) * scale,
-      top: padding + (system.y - minY) * scale,
+  const rawPositions =
+    visualLayoutMode === "distributed"
+      ? systemsToShow.map((system, index) => {
+          const aspect = usableWidth / usableHeight;
+          const cols = Math.max(1, Math.ceil(Math.sqrt(systemsToShow.length * aspect)));
+          const rows = Math.max(1, Math.ceil(systemsToShow.length / cols));
+          const cellWidth = usableWidth / cols;
+          const cellHeight = usableHeight / rows;
+          const col = index % cols;
+          const row = Math.floor(index / cols);
+          const left = padding + cellWidth * (col + 0.5);
+          const top = padding + cellHeight * (row + 0.5);
+          return { system, left, top };
+        })
+      : systemsToShow.map((system) => ({
+          system,
+          left: padding + (system.x - minX) * scale,
+          top: padding + (system.y - minY) * scale,
+        }));
+
+  if (visualLayoutMode !== "distributed") {
+    const minSpacing = 140;
+    const bounds = {
+      minLeft: padding,
+      maxLeft: width - padding,
+      minTop: padding,
+      maxTop: height - padding,
     };
-  });
 
-  const minSpacing = 140;
-  const bounds = {
-    minLeft: padding,
-    maxLeft: width - padding,
-    minTop: padding,
-    maxTop: height - padding,
-  };
-
-  for (let iteration = 0; iteration < 40; iteration++) {
-    for (let i = 0; i < rawPositions.length; i++) {
-      for (let j = i + 1; j < rawPositions.length; j++) {
-        const a = rawPositions[i];
-        const b = rawPositions[j];
-        const dx = b.left - a.left;
-        const dy = b.top - a.top;
-        const dist = Math.hypot(dx, dy) || 0.0001;
-        if (dist >= minSpacing) continue;
-        const push = (minSpacing - dist) / 2;
-        const ux = dx / dist;
-        const uy = dy / dist;
-        a.left -= ux * push;
-        a.top -= uy * push;
-        b.left += ux * push;
-        b.top += uy * push;
+    for (let iteration = 0; iteration < 40; iteration++) {
+      for (let i = 0; i < rawPositions.length; i++) {
+        for (let j = i + 1; j < rawPositions.length; j++) {
+          const a = rawPositions[i];
+          const b = rawPositions[j];
+          const dx = b.left - a.left;
+          const dy = b.top - a.top;
+          const dist = Math.hypot(dx, dy) || 0.0001;
+          if (dist >= minSpacing) continue;
+          const push = (minSpacing - dist) / 2;
+          const ux = dx / dist;
+          const uy = dy / dist;
+          a.left -= ux * push;
+          a.top -= uy * push;
+          b.left += ux * push;
+          b.top += uy * push;
+        }
       }
+      rawPositions.forEach((pos) => {
+        pos.left = Math.min(bounds.maxLeft, Math.max(bounds.minLeft, pos.left));
+        pos.top = Math.min(bounds.maxTop, Math.max(bounds.minTop, pos.top));
+      });
     }
-    rawPositions.forEach((pos) => {
-      pos.left = Math.min(bounds.maxLeft, Math.max(bounds.minLeft, pos.left));
-      pos.top = Math.min(bounds.maxTop, Math.max(bounds.minTop, pos.top));
-    });
   }
 
   rawPositions.forEach(({ system, left, top }) => {
@@ -5316,6 +5384,7 @@ function serializeState(accessModeOverride) {
       sor: sorFilterValue,
       spreadsheets: spreadsheetFilterValue,
       expandEntities: expandEntitiesGlobally,
+      showParents: showParentsFilter,
       sidebarCollapsed: isSidebarCollapsed,
     },
     accessMode,
@@ -5428,6 +5497,7 @@ function applyFilterState(filterState = {}) {
   const searchValue = filterState.search || "";
   const spreadsheetFilter = filterState.spreadsheets || "yes";
   const expandEntities = !!filterState.expandEntities;
+  const showParents = !!filterState.showParents;
 
   platformOwnerFilterText = platformOwnerValue.trim().toLowerCase();
   businessOwnerFilterText = businessOwnerValue.trim().toLowerCase();
@@ -5438,6 +5508,7 @@ function applyFilterState(filterState = {}) {
   sorFilterValue = filterState.sor || sorFilterValue;
   spreadsheetFilterValue = spreadsheetFilter;
   expandEntitiesGlobally = expandEntities;
+  showParentsFilter = showParents;
 
   if (platformOwnerFilterInput) platformOwnerFilterInput.value = platformOwnerValue;
   if (businessOwnerFilterInput) businessOwnerFilterInput.value = businessOwnerValue;
@@ -5448,6 +5519,7 @@ function applyFilterState(filterState = {}) {
   if (sorFilterSelect) sorFilterSelect.value = sorFilterValue;
   if (spreadsheetFilterSelect) spreadsheetFilterSelect.value = spreadsheetFilterValue;
   if (expandEntitiesToggle) expandEntitiesToggle.checked = expandEntitiesGlobally;
+  if (showParentsToggle) showParentsToggle.checked = showParentsFilter;
   if (typeof filterState.sidebarCollapsed === "boolean") {
     setSidebarCollapsedState(filterState.sidebarCollapsed);
   }
@@ -5575,6 +5647,15 @@ function getSystemsForCurrentFilters() {
 function renderSystemDataTable() {
   if (!systemDataTableBody) return;
   const systemsToShow = getSystemsForCurrentFilters();
+  const groupBy = dataTableGroupSelect?.value || "none";
+  const headerCells = dataTableModal?.querySelectorAll(".system-data-table thead th") || [];
+  const groupOrder = ["domain", "entity", "system", "functionOwner", "businessOwner", "platformOwner"];
+  const groupColumnIndex = groupOrder.indexOf(groupBy);
+
+  headerCells.forEach((th, index) => {
+    th.classList.toggle("highlight-column", index === groupColumnIndex);
+  });
+
   systemDataTableBody.innerHTML = "";
 
   if (!systemsToShow.length) {
@@ -5587,6 +5668,8 @@ function renderSystemDataTable() {
     return;
   }
 
+  const rawRows = [];
+
   systemsToShow.forEach((system) => {
     const domainLabel = Array.from(system.domains)
       .map((key) => findDomainDefinition(key)?.label || key)
@@ -5598,21 +5681,73 @@ function renderSystemDataTable() {
     const entities = system.entities?.length ? system.entities : [{ name: "" }];
 
     entities.forEach((entity) => {
+      rawRows.push({
+        domain: domainLabel || "—",
+        entity: entity.name || "—",
+        system: systemName,
+        functionOwner: functionOwner || "—",
+        businessOwner: businessOwner || "—",
+        platformOwner: platformOwner || "—",
+      });
+    });
+  });
+
+  if (groupBy !== "none" && groupColumnIndex >= 0) {
+    const grouped = new Map();
+
+    rawRows.forEach((row) => {
+      const key = row[groupBy] || "—";
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          domain: new Set(),
+          entity: new Set(),
+          system: new Set(),
+          functionOwner: new Set(),
+          businessOwner: new Set(),
+          platformOwner: new Set(),
+        });
+      }
+      const bucket = grouped.get(key);
+      Object.entries(row).forEach(([field, value]) => {
+        if (value && value !== "—") {
+          bucket[field].add(value);
+        }
+      });
+      if (!bucket[groupBy].size) {
+        bucket[groupBy].add("—");
+      }
+    });
+
+    grouped.forEach((bucket, key) => {
       const row = document.createElement("tr");
-      [
-        domainLabel || "—",
-        entity.name || "—",
-        systemName,
-        functionOwner || "—",
-        businessOwner || "—",
-        platformOwner || "—",
-      ].forEach((value) => {
+      groupOrder.forEach((field, index) => {
         const cell = document.createElement("td");
-        cell.textContent = value;
+        const values = Array.from(bucket[field]);
+        const display =
+          field === groupBy
+            ? key || "—"
+            : values.length
+            ? values.sort((a, b) => a.localeCompare(b)).join(", ")
+            : "—";
+        cell.textContent = display;
+        if (index === groupColumnIndex) {
+          cell.classList.add("highlight-column");
+        }
         row.appendChild(cell);
       });
       systemDataTableBody.appendChild(row);
     });
+    return;
+  }
+
+  rawRows.forEach((entry) => {
+    const row = document.createElement("tr");
+    groupOrder.forEach((field) => {
+      const cell = document.createElement("td");
+      cell.textContent = entry[field] || "—";
+      row.appendChild(cell);
+    });
+    systemDataTableBody.appendChild(row);
   });
 }
 
