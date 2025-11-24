@@ -512,6 +512,7 @@ let activeEntitySourceId = null;
 let systemHighlightState = new Map();
 let currentFileName = "Untitled";
 let fileNameBeforeEdit = "Untitled";
+let currentSaveId = null;
 let marqueePreviewIds = new Set();
 let relationFocus = null;
 let urlSyncTimer = null;
@@ -3600,6 +3601,7 @@ function resetDiagramToBlank() {
     groupLayer.innerHTML = "";
   }
   systemCounter = 1;
+  currentSaveId = null;
   lastDeletedSnapshot = null;
   if (undoDeleteBtn) {
     undoDeleteBtn.classList.add("hidden");
@@ -4603,6 +4605,10 @@ function handleSaveDiagram() {
   };
   saves.push(entry);
   persistStoredDiagrams(saves);
+  currentSaveId = entry.id;
+  if (window.history?.replaceState) {
+    window.history.replaceState({}, document.title, buildSaveIdUrl(entry.id));
+  }
   if (!saveManagerModal.classList.contains("hidden")) {
     renderSaveList();
   }
@@ -4615,7 +4621,7 @@ function handleShareDiagram() {
 
 function handleShareDiagramWithMode(mode) {
   try {
-    const url = buildShareUrlFromState(serializeState(mode));
+    const url = buildShareUrlFromState(serializeState(mode, { stripSensitive: true }));
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(url).catch(() => openSharePrompt(url));
     } else {
@@ -4743,13 +4749,19 @@ function buildShareUrlFromState(state) {
   return `${window.location.origin}${window.location.pathname}?data=${encodeURIComponent(payload)}`;
 }
 
+function buildSaveIdUrl(id) {
+  return `${window.location.origin}${window.location.pathname}?saveId=${encodeURIComponent(id)}`;
+}
+
 function syncUrlWithState() {
   try {
     const snapshot = serializeState();
     if (!suppressHistoryCapture) {
       captureHistorySnapshot(snapshot);
     }
-    const url = buildShareUrlFromState(snapshot);
+    const url = currentSaveId
+      ? buildSaveIdUrl(currentSaveId)
+      : buildShareUrlFromState(serializeState(currentAccessMode, { stripSensitive: true }));
     if (window.history?.replaceState) {
       window.history.replaceState({}, document.title, url);
     }
@@ -5727,15 +5739,21 @@ function persistStoredDiagrams(entries) {
   }
 }
 
-function loadSavedDiagram(id) {
+function loadSavedDiagram(id, skipUrlUpdate = false) {
   const saves = getStoredDiagrams();
   const entry = saves.find((save) => save.id === id);
-  if (!entry) return;
+  if (!entry) return false;
   if (entry.fileName && entry.data && !entry.data.fileName) {
     entry.data.fileName = entry.fileName;
   }
   loadSerializedState(entry.data);
   closeSaveManager();
+  currentSaveId = id;
+  if (!skipUrlUpdate && window.history?.replaceState) {
+    window.history.replaceState({}, document.title, buildSaveIdUrl(id));
+  }
+  scheduleShareUrlSync();
+  return true;
 }
 
 function downloadSavedDiagram(id) {
@@ -5840,7 +5858,8 @@ function deleteSavedDiagram(id) {
   renderSaveList();
 }
 
-function serializeState(accessModeOverride) {
+function serializeState(accessModeOverride, options = {}) {
+  const { stripSensitive = false } = options;
   const accessMode = accessModeOverride || currentAccessMode || "full";
   return {
     fileName: currentFileName,
@@ -5856,17 +5875,21 @@ function serializeState(accessModeOverride) {
       icon: system.icon,
       comments: system.comments,
       description: system.description,
-      fileUrl: system.fileUrl,
       isSpreadsheet: system.isSpreadsheet,
       isObject: system.isObject,
       shapeType: system.shapeType,
       shapeLabel: system.shapeLabel,
       shapeColor: system.shapeColor,
       shapeComments: system.shapeComments,
-      attributes: Array.isArray(system.attributes)
-        ? system.attributes.map((entry) => ({ attribute: entry.attribute || "", entity: entry.entity || "" }))
-        : [],
       entities: system.entities.map((entity) => ({ name: entity.name, isSor: !!entity.isSor })),
+      ...(stripSensitive
+        ? { attributes: [] }
+        : {
+            fileUrl: system.fileUrl,
+            attributes: Array.isArray(system.attributes)
+              ? system.attributes.map((entry) => ({ attribute: entry.attribute || "", entity: entry.entity || "" }))
+              : [],
+          }),
     })),
     connections: connections.map((connection) => ({ ...connection })),
     groups: groups.map((group) => ({
@@ -5907,6 +5930,7 @@ function loadSerializedState(snapshot) {
   closePanel();
   handleClearHighlights();
   closeConnectionLabelEditor();
+  currentSaveId = null;
   systems.forEach((system) => system.element.remove());
   systems.length = 0;
   connections.length = 0;
@@ -6103,6 +6127,11 @@ function decodeStatePayload(payload) {
 function loadFromUrlParams() {
   try {
     const params = new URLSearchParams(window.location.search);
+    const savedId = params.get("saveId");
+    if (savedId) {
+      const loaded = loadSavedDiagram(savedId, true);
+      if (loaded) return true;
+    }
     const encoded = params.get("data");
     if (!encoded) return false;
     const snapshot = decodeStatePayload(encoded);
