@@ -1340,7 +1340,13 @@ button.ghost {
 }
 
 #attributesModal {
-  width: min(620px, calc(100vw - var(--panel-width) - 2rem));
+  position: fixed;
+  width: min(720px, calc(100vw - var(--panel-width) - 2rem));
+  z-index: 20;
+}
+
+.shared-hidden {
+  display: none !important;
 }
 
 .side-modal.hidden {

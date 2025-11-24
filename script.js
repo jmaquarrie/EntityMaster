@@ -6,7 +6,7 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const HANDLE_OFFSET = 24;
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 1.5;
-const ZOOM_STEP = 0.1;
+const ZOOM_STEP = 0.05;
 const STORAGE_KEY = "entityMasterSaves";
 const DEFAULT_ICON = "cube";
 const DEFAULT_OBJECT_COLOR = "#d1d5db";
@@ -530,6 +530,7 @@ const dataTableColumnFilters = {
   businessOwner: "",
   platformOwner: "",
 };
+let lastRenderedTableRows = [];
 
 function isEditingLocked() {
   return currentAccessMode !== "full";
@@ -601,6 +602,7 @@ const filterPanelToggle = document.getElementById("filterPanelToggle");
 const filterToggleIcon = filterPanelToggle?.querySelector(".toggle-icon");
 const filterPanelPlaceholder = document.getElementById("filterPanelPlaceholder");
 const visualFilterHost = document.getElementById("visualFilterHost");
+const sharedSensitiveElements = document.querySelectorAll("[data-shared-hidden]");
 const platformOwnerSuggestionsList = document.getElementById("platformOwnerSuggestions");
 const businessOwnerSuggestionsList = document.getElementById("businessOwnerSuggestions");
 const functionOwnerOptionsList = document.getElementById("functionOwnerOptions");
@@ -653,6 +655,7 @@ const customDomainInput = document.getElementById("customDomainInput");
 const customDomainList = document.getElementById("customDomainList");
 const dataTableModal = document.getElementById("dataTableModal");
 const closeDataTableBtn = document.getElementById("closeDataTableBtn");
+const saveTableCsvBtn = document.getElementById("saveTableCsvBtn");
 const dataTableGroupSelect = document.getElementById("dataTableGroupSelect");
 const dataTableAttributesToggle = document.getElementById("dataTableAttributesToggle");
 const systemDataTableBody = document.getElementById("systemDataTableBody");
@@ -736,6 +739,17 @@ function applyAccessMode(mode = "full") {
     ],
     readOnly
   );
+
+  sharedSensitiveElements.forEach((element) => {
+    if (readOnly) {
+      element.classList.add("shared-hidden");
+    } else {
+      element.classList.remove("shared-hidden");
+    }
+  });
+  if (readOnly) {
+    closeAttributesSideModal();
+  }
 
   toggleElementsDisabled(
     [
@@ -968,6 +982,7 @@ function init() {
     dataTableShowAttributes = event.target.checked;
     renderSystemDataTable();
   });
+  saveTableCsvBtn?.addEventListener("click", exportTableToCsv);
   Object.entries(dataTableFilterInputs).forEach(([key, input]) => {
     input?.addEventListener("input", (event) => {
       dataTableColumnFilters[key] = (event.target.value || "").trim().toLowerCase();
@@ -1837,6 +1852,7 @@ function removeConnection(connectionId) {
   }
   drawConnections();
   updateHighlights();
+  scheduleShareUrlSync();
 }
 
 function drawConnections() {
@@ -2373,6 +2389,7 @@ function renderConnectionHandle(connection, position) {
   deleteButton.innerHTML = "×";
   deleteButton.addEventListener("click", (event) => {
     event.stopPropagation();
+    event.preventDefault();
     removeConnection(connection.id);
   });
 
@@ -3102,7 +3119,7 @@ function positionAttributesModal() {
 }
 
 function openAttributesSideModal(entityFilter = "") {
-  if (!attributesModal || !activePanelSystem) return;
+  if (!attributesModal || !activePanelSystem || isEditingLocked()) return;
   attributesModalEntityFilter = entityFilter || "";
   selectedAttributeRows.clear();
   lastAttributeSelectedIndex = null;
@@ -3999,29 +4016,38 @@ function doesSystemMatchSearch(system) {
 
 function adjustZoom(direction) {
   const delta = direction === "in" ? ZOOM_STEP : -ZOOM_STEP;
-  applyZoom(currentZoom + delta);
+  applyZoom(currentZoom + delta, { centerOnViewport: true });
 }
 
-function applyZoom(value) {
-  currentZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value));
+function applyZoom(value, options = {}) {
+  const { centerOnViewport = false } = options;
+  const prevZoom = currentZoom;
+  const nextZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value));
+  let centerBefore;
+
+  if (centerOnViewport && canvasViewport) {
+    centerBefore = {
+      x: (canvasViewport.scrollLeft + canvasViewport.clientWidth / 2) / prevZoom,
+      y: (canvasViewport.scrollTop + canvasViewport.clientHeight / 2) / prevZoom,
+    };
+  }
+
+  currentZoom = nextZoom;
   canvasContent.style.transform = `scale(${currentZoom})`;
   zoomLabel.textContent = `${Math.round(currentZoom * 100)}%`;
+
+  if (centerOnViewport && canvasViewport && centerBefore) {
+    canvasViewport.scrollLeft = centerBefore.x * currentZoom - canvasViewport.clientWidth / 2;
+    canvasViewport.scrollTop = centerBefore.y * currentZoom - canvasViewport.clientHeight / 2;
+  }
 }
 
 function handleWheelZoom(event) {
   event.preventDefault();
   const prevZoom = currentZoom;
   const delta = event.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP;
-  applyZoom(currentZoom + delta);
+  applyZoom(currentZoom + delta, { centerOnViewport: true });
   if (prevZoom === currentZoom) return;
-  const rect = canvasViewport.getBoundingClientRect();
-  const pointerOffsetX = event.clientX - rect.left;
-  const pointerOffsetY = event.clientY - rect.top;
-  const offsetX = pointerOffsetX + canvasViewport.scrollLeft;
-  const offsetY = pointerOffsetY + canvasViewport.scrollTop;
-  const scale = currentZoom / prevZoom;
-  canvasViewport.scrollLeft = offsetX * scale - pointerOffsetX;
-  canvasViewport.scrollTop = offsetY * scale - pointerOffsetY;
 }
 
 function getCanvasRelativeCoords(clientX, clientY) {
@@ -4934,6 +4960,10 @@ function renderVisualSnapshot() {
     node.style.left = `${left}px`;
     node.style.top = `${top}px`;
 
+    const domainLabel = Array.from(system.domains || [])
+      .map((key) => findDomainDefinition(key)?.label || key)
+      .join(", ");
+
     const meta = document.createElement("div");
     meta.className = "visual-meta";
     const iconSpan = document.createElement("span");
@@ -4959,6 +4989,7 @@ function renderVisualSnapshot() {
       row.append(labelSpan, valueSpan);
       hoverCard.appendChild(row);
     };
+    addHoverRow("Domain(s)", domainLabel || "—");
     addHoverRow("Business Owner", system.businessOwner || "—");
     addHoverRow("Platform Owner", system.platformOwner || "—");
     addHoverRow("Function Owner", system.functionOwner || "—");
@@ -6226,6 +6257,41 @@ function getSystemsForCurrentFilters() {
   return systems.filter((system) => systemHighlightState.get(system.id)?.highlight);
 }
 
+function exportTableToCsv() {
+  if (!lastRenderedTableRows.length) return;
+  const headers = [
+    "Domain",
+    "Entity",
+    "Attributes",
+    "System",
+    "Function Owner",
+    "Business Owner",
+    "Platform Owner",
+  ];
+
+  const escapeCell = (value) => {
+    const text = (value ?? "").toString();
+    if (text.includes(",") || text.includes("\"") || text.includes("\n")) {
+      return `"${text.replace(/"/g, '""')}"`;
+    }
+    return text;
+  };
+
+  const lines = [headers.join(",")];
+  lastRenderedTableRows.forEach((row) => {
+    const cells = headers.map((header) => escapeCell(row[header]));
+    lines.push(cells.join(","));
+  });
+
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "systems.csv";
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 function renderSystemDataTable() {
   if (!systemDataTableBody) return;
   const systemsToShow = getSystemsForCurrentFilters();
@@ -6256,6 +6322,20 @@ function renderSystemDataTable() {
   });
 
   systemDataTableBody.innerHTML = "";
+  lastRenderedTableRows = [];
+
+  const pushExportRow = (rowValues) => {
+    if (!rowValues) return;
+    lastRenderedTableRows.push({
+      Domain: rowValues.domain,
+      Entity: rowValues.entity,
+      Attributes: rowValues.attributes,
+      System: rowValues.system,
+      "Function Owner": rowValues.functionOwner,
+      "Business Owner": rowValues.businessOwner,
+      "Platform Owner": rowValues.platformOwner,
+    });
+  };
 
   if (!systemsToShow.length) {
     const emptyRow = document.createElement("tr");
@@ -6374,6 +6454,7 @@ function renderSystemDataTable() {
 
     grouped.forEach((bucket, key) => {
       const row = document.createElement("tr");
+      const exportRow = {};
       groupOrder.forEach((field, index) => {
         const cell = document.createElement("td");
         const values = Array.from(bucket[field]);
@@ -6385,12 +6466,14 @@ function renderSystemDataTable() {
             : values.length
               ? values.sort((a, b) => a.localeCompare(b)).join(", ")
               : "—";
+        exportRow[field] = display;
         cell.textContent = display;
         if (index === groupColumnIndex) {
           cell.classList.add("highlight-column");
         }
         row.appendChild(cell);
       });
+      pushExportRow(exportRow);
       systemDataTableBody.appendChild(row);
     });
     return;
@@ -6398,6 +6481,7 @@ function renderSystemDataTable() {
 
   filteredRows.forEach((entry) => {
     const row = document.createElement("tr");
+    const exportRow = {};
     groupOrder.forEach((field) => {
       const cell = document.createElement("td");
       const values = normalizeValues(entry[field]);
@@ -6407,9 +6491,11 @@ function renderSystemDataTable() {
         : values.filter((val) => val && val !== "—").length
           ? values.join(", ")
           : "—";
+      exportRow[field] = display;
       cell.textContent = display;
       row.appendChild(cell);
     });
+    pushExportRow(exportRow);
     systemDataTableBody.appendChild(row);
   });
 }

@@ -233,7 +233,7 @@
             list="functionOwnerOptions"
           />
         </label>
-        <label class="field">
+        <label class="field" data-shared-hidden="true">
           <span>File URL</span>
           <input type="text" id="fileUrlInput" placeholder="https://" />
         </label>
@@ -244,7 +244,7 @@
             <button type="submit">Add</button>
           </form>
           <ul id="entityList" class="entity-list"></ul>
-          <button id="openAttributesModal" type="button" class="inline-link">Attributes</button>
+          <button id="openAttributesModal" type="button" class="inline-link" data-shared-hidden="true">Attributes</button>
         </section>
         <section class="field">
           <div class="section-title">Domains</div>
@@ -263,7 +263,14 @@
           <textarea id="systemCommentsInput" rows="3" placeholder="Add notes or context"></textarea>
         </label>
       </aside>
-      <div id="attributesModal" class="side-modal hidden" role="dialog" aria-modal="true" aria-labelledby="attributesModalTitle">
+      <div
+        id="attributesModal"
+        class="side-modal hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="attributesModalTitle"
+        data-shared-hidden="true"
+      >
         <div class="modal-card">
           <div class="modal-header">
             <div class="modal-title-stack">
@@ -353,6 +360,7 @@
                 <input type="checkbox" id="dataTableAttributesToggle" />
                 <span>Show attributes</span>
               </label>
+              <button id="saveTableCsvBtn" type="button" class="secondary">Save to CSV</button>
               <button id="closeDataTableBtn" aria-label="Close system data table">Close</button>
             </div>
           </div>
