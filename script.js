@@ -684,7 +684,6 @@ const visualConnectionsSvg = document.getElementById("visualConnections");
 const visualGroupBySelect = document.getElementById("visualGroupBySelect");
 const visualDomainSelect = document.getElementById("visualDomainSelect");
 const visualDomainControls = document.getElementById("visualDomainControls");
-const visualDistributeBtn = document.getElementById("visualDistributeBtn");
 const visualFunctionSelect = document.getElementById("visualFunctionSelect");
 const visualFunctionControls = document.getElementById("visualFunctionControls");
 const visualEntitySelect = document.getElementById("visualEntitySelect");
@@ -1051,12 +1050,6 @@ function init() {
     visualLayoutMode = "scaled";
     renderVisualSnapshot();
   });
-  visualDistributeBtn?.addEventListener("click", () => {
-    if (!visualModal || visualModal.classList.contains("hidden")) return;
-    if (visualGroupBySelect?.value !== "none") return;
-    visualLayoutMode = "distributed";
-    renderVisualSnapshot();
-  });
   visualDomainSelect?.addEventListener("change", () => {
     if (!visualModal || visualModal.classList.contains("hidden")) return;
     renderVisualSnapshot();
@@ -1223,7 +1216,6 @@ function updateVisualGroupingControlVisibility() {
   visualFunctionControls?.classList.toggle("hidden", !isFunction);
   visualEntityControls?.classList.toggle("hidden", !isEntity);
   visualBusinessOwnerControls?.classList.toggle("hidden", !isBusinessOwner);
-  visualDistributeBtn?.classList.toggle("hidden", mode !== "none");
   if (mode !== "none") {
     visualLayoutMode = "scaled";
   }
@@ -4898,7 +4890,6 @@ function renderVisualSnapshot() {
   const groupByDomain = groupMode === "domain";
   const groupByEntity = groupMode === "entity";
   const groupByBusinessOwner = groupMode === "businessOwner";
-  visualDistributeBtn?.classList.toggle("active", groupMode === "none" && visualLayoutMode === "distributed");
   const fallbackDomainKey = visualDomainSelect?.value || domainDefinitions[0]?.key || "people";
   const fallbackFunctionOwner =
     visualFunctionSelect?.value || Array.from(functionOwnerOptions)[0] || "";
@@ -4916,15 +4907,91 @@ function renderVisualSnapshot() {
     .sort((a, b) => a.localeCompare(b));
   const fallbackEntity = visualEntitySelect?.value || availableEntities[0] || "";
   const fallbackBusinessOwner = visualBusinessOwnerSelect?.value || availableBusinessOwners[0] || "";
+  const targetDomainKey = visualDomainSelect?.value || fallbackDomainKey;
+  const targetFunctionOwner = visualFunctionSelect?.value || fallbackFunctionOwner || "";
+  const targetEntity = visualEntitySelect?.value || fallbackEntity || "";
+  const targetBusinessOwner = visualBusinessOwnerSelect?.value || fallbackBusinessOwner || "";
 
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+  const createVisualNode = (system, left, top) => {
+    const node = document.createElement("div");
+    node.className = "visual-node";
+    node.dataset.systemId = system.id;
+    node.style.left = `${left}px`;
+    node.style.top = `${top}px`;
 
-  if (groupByFunction) {
-    const targetFunctionOwner = visualFunctionSelect?.value || fallbackFunctionOwner || "";
-    const functionGroups = new Map();
-    const anchorSystems = systemsToShow.filter(
+    const meta = document.createElement("div");
+    meta.className = "visual-meta";
+    const iconSpan = document.createElement("span");
+    iconSpan.className = "visual-icon";
+    iconSpan.textContent = getSystemIconSymbol(system);
+    const nameSpan = document.createElement("div");
+    nameSpan.className = "visual-name";
+    nameSpan.textContent = system.name || "Untitled";
+    meta.append(iconSpan, nameSpan);
+    node.appendChild(meta);
+
+    const hoverCard = document.createElement("div");
+    hoverCard.className = "visual-hover-card";
+    const addHoverRow = (label, value) => {
+      const row = document.createElement("div");
+      row.className = "visual-hover-row";
+      const labelSpan = document.createElement("span");
+      labelSpan.className = "visual-hover-label";
+      labelSpan.textContent = label;
+      const valueSpan = document.createElement("span");
+      valueSpan.className = "visual-hover-value";
+      valueSpan.textContent = value || "—";
+      row.append(labelSpan, valueSpan);
+      hoverCard.appendChild(row);
+    };
+    addHoverRow("Business Owner", system.businessOwner || "—");
+    addHoverRow("Platform Owner", system.platformOwner || "—");
+    addHoverRow("Function Owner", system.functionOwner || "—");
+    addHoverRow("Entities", `${system.entities?.length || 0}`);
+    node.appendChild(hoverCard);
+
+    return node;
+  };
+
+  let eligibleSystems = systemsToShow;
+  if (groupByDomain) {
+    eligibleSystems = systemsToShow.filter((system) => system.domains.has(targetDomainKey));
+  } else if (groupByFunction) {
+    eligibleSystems = systemsToShow.filter(
       (system) => (system.functionOwner || "").trim() === targetFunctionOwner.trim()
     );
+  } else if (groupByEntity) {
+    eligibleSystems = systemsToShow.filter((system) =>
+      system.entities.some(
+        (entity) => (entity.name || "").trim().toLowerCase() === targetEntity.trim().toLowerCase()
+      )
+    );
+  } else if (groupByBusinessOwner) {
+    eligibleSystems = systemsToShow.filter(
+      (system) => (system.businessOwner || "").trim() === targetBusinessOwner.trim()
+    );
+  }
+
+  if (!eligibleSystems.length) {
+    const empty = document.createElement("div");
+    empty.className = "visual-empty-state";
+    empty.textContent = "No systems match the current filters.";
+    visualNodesContainer.appendChild(empty);
+    setVisualLayoutContextFromRender({
+      width,
+      height,
+      padding,
+      groupMode: "none",
+      positionMap: new Map(),
+      includedIds: new Set(),
+    });
+    return;
+  }
+
+  if (groupByFunction) {
+    const functionGroups = new Map();
+    const anchorSystems = eligibleSystems;
     functionGroups.set(targetFunctionOwner, anchorSystems);
 
     const functionKeys = Array.from(functionGroups.keys());
@@ -4960,23 +5027,7 @@ function renderVisualSnapshot() {
         const top = stored?.top ?? defaultTop;
         positionMap.set(system.id, { left, top });
 
-        const node = document.createElement("div");
-        node.className = "visual-node";
-        node.dataset.systemId = system.id;
-        node.style.left = `${left}px`;
-        node.style.top = `${top}px`;
-
-        const meta = document.createElement("div");
-        meta.className = "visual-meta";
-        const iconSpan = document.createElement("span");
-        iconSpan.className = "visual-icon";
-        iconSpan.textContent = getSystemIconSymbol(system);
-        const nameSpan = document.createElement("div");
-        nameSpan.className = "visual-name";
-        nameSpan.textContent = system.name || "Untitled";
-        meta.append(iconSpan, nameSpan);
-
-        node.appendChild(meta);
+        const node = createVisualNode(system, left, top);
         nodesFragment.appendChild(node);
       });
     });
@@ -5035,17 +5086,15 @@ function renderVisualSnapshot() {
       anchors,
       clusters: new Map(Array.from(functionGroups, ([key, items]) => [key, items.map((s) => s.id)])),
       positionMap,
-      includedIds: new Set(systemsToShow.map((s) => s.id)),
+      includedIds: new Set(eligibleSystems.map((s) => s.id)),
     });
     return;
   }
 
   if (groupByBusinessOwner) {
-    const targetOwner = visualBusinessOwnerSelect?.value || fallbackBusinessOwner || "";
+    const targetOwner = targetBusinessOwner;
     const ownerGroups = new Map();
-    const anchorSystems = systemsToShow.filter(
-      (system) => (system.businessOwner || "").trim().toLowerCase() === targetOwner.trim().toLowerCase()
-    );
+    const anchorSystems = eligibleSystems;
     ownerGroups.set(targetOwner, anchorSystems);
 
     const ownerKeys = Array.from(ownerGroups.keys());
@@ -5081,23 +5130,7 @@ function renderVisualSnapshot() {
         const top = stored?.top ?? defaultTop;
         positionMap.set(system.id, { left, top });
 
-        const node = document.createElement("div");
-        node.className = "visual-node";
-        node.dataset.systemId = system.id;
-        node.style.left = `${left}px`;
-        node.style.top = `${top}px`;
-
-        const meta = document.createElement("div");
-        meta.className = "visual-meta";
-        const iconSpan = document.createElement("span");
-        iconSpan.className = "visual-icon";
-        iconSpan.textContent = getSystemIconSymbol(system);
-        const nameSpan = document.createElement("div");
-        nameSpan.className = "visual-name";
-        nameSpan.textContent = system.name || "Untitled";
-        meta.append(iconSpan, nameSpan);
-
-        node.appendChild(meta);
+        const node = createVisualNode(system, left, top);
         nodesFragment.appendChild(node);
       });
     });
@@ -5156,17 +5189,14 @@ function renderVisualSnapshot() {
       anchors,
       clusters: new Map(Array.from(ownerGroups, ([key, items]) => [key, items.map((s) => s.id)])),
       positionMap,
-      includedIds: new Set(systemsToShow.map((s) => s.id)),
+      includedIds: new Set(eligibleSystems.map((s) => s.id)),
     });
     return;
   }
 
   if (groupByEntity) {
-    const targetEntity = visualEntitySelect?.value || fallbackEntity || "";
     const entityGroups = new Map();
-    const anchorSystems = systemsToShow.filter((system) =>
-      system.entities.some((entity) => (entity.name || "").trim().toLowerCase() === targetEntity.trim().toLowerCase())
-    );
+    const anchorSystems = eligibleSystems;
     entityGroups.set(targetEntity, anchorSystems);
 
     const entityKeys = Array.from(entityGroups.keys());
@@ -5201,23 +5231,7 @@ function renderVisualSnapshot() {
         const top = stored?.top ?? defaultTop;
         positionMap.set(system.id, { left, top });
 
-        const node = document.createElement("div");
-        node.className = "visual-node";
-        node.dataset.systemId = system.id;
-        node.style.left = `${left}px`;
-        node.style.top = `${top}px`;
-
-        const meta = document.createElement("div");
-        meta.className = "visual-meta";
-        const iconSpan = document.createElement("span");
-        iconSpan.className = "visual-icon";
-        iconSpan.textContent = getSystemIconSymbol(system);
-        const nameSpan = document.createElement("div");
-        nameSpan.className = "visual-name";
-        nameSpan.textContent = system.name || "Untitled";
-        meta.append(iconSpan, nameSpan);
-
-        node.appendChild(meta);
+        const node = createVisualNode(system, left, top);
         nodesFragment.appendChild(node);
       });
     });
@@ -5276,7 +5290,7 @@ function renderVisualSnapshot() {
       anchors,
       clusters: new Map(Array.from(entityGroups, ([key, items]) => [key, items.map((s) => s.id)])),
       positionMap,
-      includedIds: new Set(systemsToShow.map((s) => s.id)),
+      includedIds: new Set(eligibleSystems.map((s) => s.id)),
     });
     return;
   }
@@ -5284,10 +5298,9 @@ function renderVisualSnapshot() {
   if (groupByDomain) {
     const domainGroups = new Map();
     const targetDomainKey = visualDomainSelect?.value || fallbackDomainKey;
-    systemsToShow.forEach((system) => {
+    eligibleSystems.forEach((system) => {
       const hasTarget = system.domains.has(targetDomainKey);
-      const hasAnyDomain = system.domains.size > 0;
-      if (!hasTarget && hasAnyDomain) return;
+      if (!hasTarget) return;
       const bucket = domainGroups.get(targetDomainKey) || [];
       bucket.push(system);
       domainGroups.set(targetDomainKey, bucket);
@@ -5330,23 +5343,7 @@ function renderVisualSnapshot() {
         const top = stored?.top ?? defaultTop;
         positionMap.set(system.id, { left, top });
 
-        const node = document.createElement("div");
-        node.className = "visual-node";
-        node.dataset.systemId = system.id;
-        node.style.left = `${left}px`;
-        node.style.top = `${top}px`;
-
-        const meta = document.createElement("div");
-        meta.className = "visual-meta";
-        const iconSpan = document.createElement("span");
-        iconSpan.className = "visual-icon";
-        iconSpan.textContent = getSystemIconSymbol(system);
-        const nameSpan = document.createElement("div");
-        nameSpan.className = "visual-name";
-        nameSpan.textContent = system.name || "Untitled";
-        meta.append(iconSpan, nameSpan);
-
-        node.appendChild(meta);
+        const node = createVisualNode(system, left, top);
         nodesFragment.appendChild(node);
       });
     });
@@ -5405,15 +5402,15 @@ function renderVisualSnapshot() {
       anchors,
       clusters: new Map(Array.from(domainGroups, ([key, items]) => [key, items.map((s) => s.id)])),
       positionMap,
-      includedIds: new Set(systemsToShow.map((s) => s.id)),
+      includedIds: new Set(eligibleSystems.map((s) => s.id)),
     });
     return;
   }
 
-  const minX = Math.min(...systemsToShow.map((s) => s.x));
-  const minY = Math.min(...systemsToShow.map((s) => s.y));
-  const maxX = Math.max(...systemsToShow.map((s) => s.x));
-  const maxY = Math.max(...systemsToShow.map((s) => s.y));
+  const minX = Math.min(...eligibleSystems.map((s) => s.x));
+  const minY = Math.min(...eligibleSystems.map((s) => s.y));
+  const maxX = Math.max(...eligibleSystems.map((s) => s.x));
+  const maxY = Math.max(...eligibleSystems.map((s) => s.y));
 
   const spanX = Math.max(maxX - minX, 1);
   const spanY = Math.max(maxY - minY, 1);
@@ -5426,10 +5423,10 @@ function renderVisualSnapshot() {
 
   const rawPositions =
     visualLayoutMode === "distributed"
-      ? systemsToShow.map((system, index) => {
+      ? eligibleSystems.map((system, index) => {
           const aspect = usableWidth / usableHeight;
-          const cols = Math.max(1, Math.ceil(Math.sqrt(systemsToShow.length * aspect)));
-          const rows = Math.max(1, Math.ceil(systemsToShow.length / cols));
+          const cols = Math.max(1, Math.ceil(Math.sqrt(eligibleSystems.length * aspect)));
+          const rows = Math.max(1, Math.ceil(eligibleSystems.length / cols));
           const cellWidth = usableWidth / cols;
           const cellHeight = usableHeight / rows;
           const col = index % cols;
@@ -5438,7 +5435,7 @@ function renderVisualSnapshot() {
           const top = padding + cellHeight * (row + 0.5);
           return { system, left, top };
         })
-      : systemsToShow.map((system) => ({
+      : eligibleSystems.map((system) => ({
           system,
           left: padding + (system.x - minX) * scale,
           top: padding + (system.y - minY) * scale,
@@ -5484,23 +5481,7 @@ function renderVisualSnapshot() {
     const targetTop = stored?.top ?? top;
     positionMap.set(system.id, { left: targetLeft, top: targetTop });
 
-    const node = document.createElement("div");
-    node.className = "visual-node";
-    node.dataset.systemId = system.id;
-    node.style.left = `${targetLeft}px`;
-    node.style.top = `${targetTop}px`;
-
-    const meta = document.createElement("div");
-    meta.className = "visual-meta";
-    const iconSpan = document.createElement("span");
-    iconSpan.className = "visual-icon";
-    iconSpan.textContent = getSystemIconSymbol(system);
-    const nameSpan = document.createElement("div");
-    nameSpan.className = "visual-name";
-    nameSpan.textContent = system.name || "Untitled";
-    meta.append(iconSpan, nameSpan);
-
-    node.appendChild(meta);
+    const node = createVisualNode(system, targetLeft, targetTop);
     nodesFragment.appendChild(node);
   });
 
@@ -5525,7 +5506,7 @@ function renderVisualSnapshot() {
   visualConnectionsSvg.setAttribute("width", width);
   visualConnectionsSvg.setAttribute("height", height);
 
-  const includedIds = new Set(systemsToShow.map((s) => s.id));
+  const includedIds = new Set(eligibleSystems.map((s) => s.id));
   connections
     .filter((conn) => includedIds.has(conn.from) && includedIds.has(conn.to))
     .forEach((conn) => {
