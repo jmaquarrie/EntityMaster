@@ -480,6 +480,7 @@ let linkingState = null;
 let systemCounter = 1;
 let currentColorBy = "none";
 let isSidebarCollapsed = true;
+let sidebarCollapsedBeforeVisual = null;
 let isPanning = false;
 let panStart = null;
 let selectionBoxElement = null;
@@ -597,6 +598,8 @@ const colorBySelect = document.getElementById("colorBySelect");
 const filterPanel = document.getElementById("filterPanel");
 const filterPanelToggle = document.getElementById("filterPanelToggle");
 const filterToggleIcon = filterPanelToggle?.querySelector(".toggle-icon");
+const filterPanelPlaceholder = document.getElementById("filterPanelPlaceholder");
+const visualFilterHost = document.getElementById("visualFilterHost");
 const platformOwnerSuggestionsList = document.getElementById("platformOwnerSuggestions");
 const businessOwnerSuggestionsList = document.getElementById("businessOwnerSuggestions");
 const functionOwnerOptionsList = document.getElementById("functionOwnerOptions");
@@ -4802,10 +4805,31 @@ function closeSettingsModal() {
   settingsModal?.classList.add("hidden");
 }
 
+function embedFilterPanelIntoVisual() {
+  if (!filterPanel || !visualFilterHost || !filterPanelPlaceholder) return;
+  if (sidebarCollapsedBeforeVisual === null) {
+    sidebarCollapsedBeforeVisual = isSidebarCollapsed;
+  }
+  setSidebarCollapsedState(false);
+  filterPanel.classList.add("embedded");
+  visualFilterHost.appendChild(filterPanel);
+}
+
+function restoreFilterPanelHome() {
+  if (!filterPanel || !filterPanelPlaceholder || !filterPanelPlaceholder.parentElement) return;
+  filterPanel.classList.remove("embedded");
+  filterPanelPlaceholder.parentElement.insertBefore(filterPanel, filterPanelPlaceholder);
+  if (sidebarCollapsedBeforeVisual !== null) {
+    setSidebarCollapsedState(sidebarCollapsedBeforeVisual);
+    sidebarCollapsedBeforeVisual = null;
+  }
+}
+
 function openVisualModal() {
   updateHighlights();
   if (!visualModal) return;
   visualLayoutMode = "scaled";
+  embedFilterPanelIntoVisual();
   visualModal.classList.remove("hidden");
   renderVisualDomainOptions();
   renderVisualFunctionOptions();
@@ -4817,6 +4841,7 @@ function openVisualModal() {
 
 function closeVisualModal() {
   visualModal?.classList.add("hidden");
+  restoreFilterPanelHome();
 }
 
 function openDataTableModal() {
@@ -5531,10 +5556,20 @@ function renderVisualSnapshot() {
 
 function attachVisualNodeBringToFront() {
   visualNodesContainer?.querySelectorAll(".visual-node").forEach((node) => {
+    const id = node.dataset.systemId;
     node.addEventListener("click", () => {
       visualNodeZIndex += 1;
       node.style.zIndex = `${visualNodeZIndex}`;
       node.parentElement?.appendChild(node);
+    });
+
+    node.addEventListener("dblclick", (event) => {
+      event.stopPropagation();
+      if (!id) return;
+      const targetSystem = systems.find((system) => system.id === id);
+      if (!targetSystem) return;
+      selectSystem(targetSystem);
+      panel?.classList.remove("hidden");
     });
   });
 }
