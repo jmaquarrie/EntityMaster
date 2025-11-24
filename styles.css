@@ -1195,7 +1195,8 @@ button.ghost {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(8, 10, 24, 0.45);
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(12px) saturate(130%);
   z-index: 12;
   padding: 1.5rem;
 }
@@ -1205,18 +1206,18 @@ button.ghost {
 }
 
 .modal-card {
-  background: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.9);
   border-radius: 20px;
   padding: 1.25rem;
   width: min(500px, 90vw);
   max-height: 85vh;
   overflow-y: auto;
-  box-shadow: 0 25px 60px rgba(12, 19, 54, 0.35);
+  box-shadow: 0 25px 60px rgba(12, 19, 54, 0.2);
   display: flex;
   flex-direction: column;
   gap: 1rem;
   backdrop-filter: blur(18px) saturate(120%);
-  border: 1px solid rgba(255, 255, 255, 0.4);
+  border: 1px solid rgba(17, 24, 36, 0.08);
 }
 
 .table-modal-card {
@@ -1226,9 +1227,9 @@ button.ghost {
   max-width: none;
   border-radius: 20px;
   padding: 1rem 1.25rem 1.25rem;
-  background: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(18px) saturate(120%);
-  border: 1px solid rgba(255, 255, 255, 0.4);
+  border: 1px solid rgba(17, 24, 36, 0.08);
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -1330,10 +1331,12 @@ button.ghost {
   width: min(560px, calc(100vw - var(--panel-width) - 3rem));
   max-height: calc(100vh - 3rem);
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.98);
+  background: rgba(255, 255, 255, 0.9);
   border-radius: 16px;
-  box-shadow: 0 18px 35px rgba(10, 18, 54, 0.35);
+  box-shadow: 0 18px 35px rgba(10, 18, 54, 0.2);
   z-index: 12;
+  backdrop-filter: blur(16px) saturate(120%);
+  border: 1px solid rgba(17, 24, 36, 0.08);
 }
 
 #attributesModal {
@@ -1664,9 +1667,10 @@ button.small {
   height: calc(100vh - 1.5rem);
   max-height: none;
   gap: 0.5rem;
-  background: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.9);
   backdrop-filter: blur(18px) saturate(120%);
-  border: 1px solid rgba(255, 255, 255, 0.35);
+  border: 1px solid rgba(17, 24, 36, 0.08);
+  box-shadow: 0 25px 60px rgba(12, 19, 54, 0.2);
 }
 
 .visual-body {

@@ -520,6 +520,7 @@ let urlSyncTimer = null;
 let currentAccessMode = "full";
 const visualNodePositions = new Map();
 let visualLayoutContext = { width: 0, height: 0, padding: 50, groupMode: "none", clusters: new Map(), anchors: new Map(), positions: new Map(), includedIds: new Set() };
+let visualRenderPending = false;
 const dataTableColumnFilters = {
   domain: "",
   entity: "",
@@ -3828,6 +3829,9 @@ function updateHighlights() {
   if (dataTableModal && !dataTableModal.classList.contains("hidden")) {
     renderSystemDataTable();
   }
+  if (visualModal && !visualModal.classList.contains("hidden")) {
+    requestVisualRender();
+  }
   scheduleShareUrlSync();
 }
 
@@ -4834,6 +4838,16 @@ function openVisualModal() {
 function closeVisualModal() {
   visualModal?.classList.add("hidden");
   restoreFilterPanelHome();
+}
+
+function requestVisualRender() {
+  if (!visualModal || visualModal.classList.contains("hidden")) return;
+  if (visualRenderPending) return;
+  visualRenderPending = true;
+  window.requestAnimationFrame(() => {
+    visualRenderPending = false;
+    renderVisualSnapshot();
+  });
 }
 
 function openDataTableModal() {
