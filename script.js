@@ -5558,12 +5558,8 @@ function renderVisualSnapshot() {
       const fromPos = positionMap.get(conn.from);
       const toPos = positionMap.get(conn.to);
       if (!fromPos || !toPos) return;
-      const midX = (fromPos.left + toPos.left) / 2;
       const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      path.setAttribute(
-        "d",
-        `M ${fromPos.left} ${fromPos.top} L ${midX} ${fromPos.top} L ${toPos.left} ${toPos.top}`
-      );
+      path.setAttribute("d", `M ${fromPos.left} ${fromPos.top} L ${toPos.left} ${toPos.top}`);
       path.setAttribute("class", "visual-connection-path");
       visualConnectionsSvg.appendChild(path);
     });
@@ -5706,9 +5702,8 @@ function refreshVisualConnectionsFromContext() {
       const fromPos = positions.get(conn.from);
       const toPos = positions.get(conn.to);
       if (!fromPos || !toPos) return;
-      const midX = (fromPos.left + toPos.left) / 2;
       const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      path.setAttribute("d", `M ${fromPos.left} ${fromPos.top} L ${midX} ${fromPos.top} L ${toPos.left} ${toPos.top}`);
+      path.setAttribute("d", `M ${fromPos.left} ${fromPos.top} L ${toPos.left} ${toPos.top}`);
       path.setAttribute("class", "visual-connection-path");
       visualConnectionsSvg.appendChild(path);
     });

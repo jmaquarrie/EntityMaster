@@ -1341,7 +1341,7 @@ button.ghost {
 
 #attributesModal {
   position: fixed;
-  width: min(720px, calc(100vw - var(--panel-width) - 2rem));
+  width: min(720px, calc(83vw - var(--panel-width) - 2rem));
   z-index: 20;
 }
 
@@ -1899,6 +1899,7 @@ button.small {
   stroke: #b5bddc;
   stroke-width: 2;
   fill: none;
+  stroke-dasharray: 6 6;
 }
 
 .visual-empty-state {
