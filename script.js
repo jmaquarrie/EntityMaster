@@ -1972,40 +1972,59 @@ function applyConnectionFilterClasses(shouldApplyState) {
 function drawEntityLinks() {
   if (!entityLinkLayer) return;
   entityLinkLayer.innerHTML = "";
-  if (!activeEntityLinkName) return;
 
-  const target = activeEntityLinkName.toLowerCase();
-  const anchors = systems
-    .map((system) => {
-      const row = Array.from(system.element.querySelectorAll(".entity-row")).find(
-        (candidate) => candidate.dataset.entityName?.toLowerCase() === target
-      );
-      if (!row) return null;
-      const entity = system.entities.find((item) => item.name.toLowerCase() === target);
-      if (!entity) return null;
-      const point = getEntityRowAnchor(row);
-      return point ? { systemId: system.id, point } : null;
-    })
-    .filter(Boolean);
+  if (activeEntityLinkName) {
+    const target = activeEntityLinkName.toLowerCase();
+    const anchors = systems
+      .map((system) => {
+        const row = Array.from(system.element.querySelectorAll(".entity-row")).find(
+          (candidate) => candidate.dataset.entityName?.toLowerCase() === target
+        );
+        if (!row) return null;
+        const entity = system.entities.find((item) => item.name.toLowerCase() === target);
+        if (!entity) return null;
+        const point = getEntityRowAnchor(row);
+        return point ? { systemId: system.id, point } : null;
+      })
+      .filter(Boolean);
 
-  if (anchors.length < 2) return;
+    if (anchors.length >= 2) {
+      const sourceAnchor =
+        (activeEntitySourceId && anchors.find((anchor) => anchor.systemId === activeEntitySourceId)) || anchors[0];
 
-  const sourceAnchor =
-    (activeEntitySourceId && anchors.find((anchor) => anchor.systemId === activeEntitySourceId)) || anchors[0];
+      if (sourceAnchor) {
+        if (!activeEntitySourceId) {
+          activeEntitySourceId = sourceAnchor.systemId;
+        }
 
-  if (!sourceAnchor) return;
-  if (!activeEntitySourceId) {
-    activeEntitySourceId = sourceAnchor.systemId;
+        anchors
+          .filter((anchor) => anchor.systemId !== sourceAnchor.systemId)
+          .forEach((anchor) => {
+            const path = document.createElementNS(SVG_NS, "path");
+            path.classList.add("entity-link-path");
+            path.setAttribute("d", getCurvedPath(sourceAnchor.point, anchor.point));
+            entityLinkLayer.appendChild(path);
+          });
+      }
+    }
   }
 
-  anchors
-    .filter((anchor) => anchor.systemId !== sourceAnchor.systemId)
-    .forEach((anchor) => {
-      const path = document.createElementNS(SVG_NS, "path");
-      path.classList.add("entity-link-path");
-      path.setAttribute("d", getCurvedPath(sourceAnchor.point, anchor.point));
-      entityLinkLayer.appendChild(path);
-    });
+  if (relationFocus?.mode === "entityConnections") {
+    const sourceSystem = systems.find((system) => system.id === relationFocus.sourceId);
+    if (sourceSystem) {
+      const sharedTargets = getSystemsSharingEntities(sourceSystem.id);
+      const sourcePoint = getSystemCenter(sourceSystem);
+      sharedTargets.forEach((targetId) => {
+        const targetSystem = systems.find((candidate) => candidate.id === targetId);
+        if (!targetSystem) return;
+        const targetPoint = getSystemCenter(targetSystem);
+        const path = document.createElementNS(SVG_NS, "path");
+        path.classList.add("entity-link-path", "entity-connection-path");
+        path.setAttribute("d", getCurvedPath(sourcePoint, targetPoint));
+        entityLinkLayer.appendChild(path);
+      });
+    }
+  }
 }
 
 function getEntityRowAnchor(row) {
@@ -3876,6 +3895,30 @@ function getImmediateConnectedSystemIds(startId) {
   return visited;
 }
 
+function getSystemsSharingEntities(sourceId) {
+  const sourceSystem = systems.find((system) => system.id === sourceId);
+  if (!sourceSystem || !Array.isArray(sourceSystem.entities)) return new Set();
+
+  const sourceEntities = new Set(
+    sourceSystem.entities
+      .map((entity) => (entity.name || "").toLowerCase())
+      .filter((name) => name.trim().length > 0)
+  );
+
+  if (!sourceEntities.size) return new Set();
+
+  const related = new Set();
+  systems.forEach((system) => {
+    if (system.id === sourceId || !Array.isArray(system.entities)) return;
+    const hasMatch = system.entities.some((entity) => sourceEntities.has((entity.name || "").toLowerCase()));
+    if (hasMatch) {
+      related.add(system.id);
+    }
+  });
+
+  return related;
+}
+
 function getRelationFocusIds(sourceId, mode) {
   const related = new Set([sourceId]);
 
@@ -3920,12 +3963,18 @@ function getRelationFocusIds(sourceId, mode) {
     return related;
   }
 
+  if (mode === "entityConnections") {
+    getSystemsSharingEntities(sourceId).forEach((id) => related.add(id));
+    return related;
+  }
+
   return related;
 }
 
 function focusOnSystemRelations(system, mode) {
   relationFocus = { sourceId: system.id, mode, visibleIds: getRelationFocusIds(system.id, mode) };
   selectedSystemId = system.id;
+  clearEntityLinkHighlight(false);
   clearMultiSelect();
   updateHighlights();
 }
@@ -4279,6 +4328,10 @@ function handleSystemContextMenu(event, system) {
           { label: "Data Lineage", onClick: () => focusOnSystemRelations(system, "lineage") },
           { label: "Show children", onClick: () => focusOnSystemRelations(system, "children") },
           { label: "Show parents", onClick: () => focusOnSystemRelations(system, "parents") },
+          {
+            label: "Show Entity Connections",
+            onClick: () => focusOnSystemRelations(system, "entityConnections"),
+          },
         ]
       : [
           {
@@ -4314,6 +4367,10 @@ function handleSystemContextMenu(event, system) {
         { label: "Data Lineage", onClick: () => focusOnSystemRelations(system, "lineage") },
         { label: "Show children", onClick: () => focusOnSystemRelations(system, "children") },
         { label: "Show parents", onClick: () => focusOnSystemRelations(system, "parents") },
+        {
+          label: "Show Entity Connections",
+          onClick: () => focusOnSystemRelations(system, "entityConnections"),
+        },
       ]
     : [
         { label: "Clone", onClick: () => cloneSystem(system) },
@@ -4321,6 +4378,10 @@ function handleSystemContextMenu(event, system) {
         { label: "Data Lineage", onClick: () => focusOnSystemRelations(system, "lineage") },
         { label: "Show children", onClick: () => focusOnSystemRelations(system, "children") },
         { label: "Show parents", onClick: () => focusOnSystemRelations(system, "parents") },
+        {
+          label: "Show Entity Connections",
+          onClick: () => focusOnSystemRelations(system, "entityConnections"),
+        },
         ...(owningGroup && !readOnly
           ? [
               { label: "Edit Group", onClick: () => openGroupEditor(owningGroup) },
