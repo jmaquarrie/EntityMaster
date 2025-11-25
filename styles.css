@@ -944,6 +944,23 @@ button.ghost {
   padding-right: 0.35rem;
 }
 
+.sidebar-reset-collapsed {
+  align-self: flex-end;
+  margin: 0.35rem 0;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 20, 36, 0.2);
+  background: rgba(255, 255, 255, 0.85);
+  color: #0f1424;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.sidebar-reset-collapsed.hidden {
+  display: none;
+}
+
 .sidebar.collapsed .sidebar-content {
   display: none;
 }

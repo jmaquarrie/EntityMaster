@@ -600,6 +600,7 @@ const colorBySelect = document.getElementById("colorBySelect");
 const filterPanel = document.getElementById("filterPanel");
 const filterPanelToggle = document.getElementById("filterPanelToggle");
 const filterToggleIcon = filterPanelToggle?.querySelector(".toggle-icon");
+const collapsedResetFiltersBtn = document.getElementById("collapsedResetFiltersBtn");
 const filterPanelPlaceholder = document.getElementById("filterPanelPlaceholder");
 const visualFilterHost = document.getElementById("visualFilterHost");
 const sharedSensitiveElements = document.querySelectorAll("[data-shared-hidden]");
@@ -773,6 +774,7 @@ function applyAccessMode(mode = "full") {
       showParentsToggle,
       fullParentLineageToggle,
       resetFiltersBtn,
+      collapsedResetFiltersBtn,
       colorBySelect,
     ],
     filtersBlocked
@@ -965,6 +967,7 @@ function init() {
     scheduleShareUrlSync();
   });
   resetFiltersBtn?.addEventListener("click", () => resetFilters({ alsoClearSelection: true }));
+  collapsedResetFiltersBtn?.addEventListener("click", () => resetFilters({ alsoClearSelection: true }));
   filterPanelToggle.addEventListener("click", toggleFilterPanel);
   newDiagramBtn?.addEventListener("click", handleNewDiagramClick);
   undoActionBtn?.addEventListener("click", handleUndoAction);
@@ -3845,6 +3848,7 @@ function resetFilters({ alsoClearSelection = false } = {}) {
   updateGlobalDomainChips();
   applyGlobalEntityExpansion();
   updateHighlights();
+  syncResetButtonsVisibility();
 }
 
 function handleClearHighlights() {
@@ -3973,10 +3977,11 @@ function updateHighlights() {
     requestVisualRender();
   }
   scheduleShareUrlSync();
+  syncResetButtonsVisibility();
 }
 
-function hasActiveFilters() {
-  return (
+function syncResetButtonsVisibility() {
+  const filtersActive =
     !!relationFocus ||
     activeDomainFilters.size > 0 ||
     !!platformOwnerFilterText ||
@@ -3986,8 +3991,15 @@ function hasActiveFilters() {
     sorFilterValue !== "any" ||
     spreadsheetFilterValue !== "yes" ||
     showParentsFilter ||
-    showFullParentLineage
-  );
+    showFullParentLineage;
+  if (collapsedResetFiltersBtn) {
+    const shouldShow = filtersActive && isSidebarCollapsed;
+    collapsedResetFiltersBtn.classList.toggle("hidden", !shouldShow);
+    collapsedResetFiltersBtn.disabled = isFiltersLocked();
+  }
+  if (resetFiltersBtn) {
+    resetFiltersBtn.disabled = isFiltersLocked();
+  }
 }
 
 function getImmediateConnectedSystemIds(startId) {
@@ -4085,8 +4097,8 @@ function focusOnSystemRelations(system, mode) {
 
 function systemMatchesFilters(system) {
   if (activeDomainFilters.size) {
-    const hasMatch = Array.from(activeDomainFilters).some((domain) => system.domains.has(domain));
-    if (!hasMatch) {
+    const hasAllDomains = Array.from(activeDomainFilters).every((domain) => system.domains.has(domain));
+    if (!hasAllDomains) {
       return false;
     }
   }
@@ -4131,7 +4143,8 @@ function hasActiveFilters() {
     !!searchQuery ||
     sorFilterValue !== "any" ||
     spreadsheetFilterValue !== "yes" ||
-    showParentsFilter
+    showParentsFilter ||
+    showFullParentLineage
   );
 }
 
@@ -4256,6 +4269,7 @@ function setSidebarCollapsedState(collapsed) {
   filterPanel.classList.toggle("collapsed", isSidebarCollapsed);
   filterPanelToggle.setAttribute("aria-expanded", String(!isSidebarCollapsed));
   updateSidebarToggleIcon();
+  syncResetButtonsVisibility();
 }
 
 function setupPanning() {
