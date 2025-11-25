@@ -491,6 +491,7 @@ let filterMode = "fade";
 let sorFilterValue = "any";
 let spreadsheetFilterValue = "yes";
 let filePresenceFilterValue = "any";
+let collapsedResetRecentlyUsed = false;
 let expandEntitiesGlobally = false;
 let showParentsFilter = false;
 let showFullParentLineage = false;
@@ -979,8 +980,14 @@ function init() {
     applyColorCoding();
     scheduleShareUrlSync();
   });
-  resetFiltersBtn?.addEventListener("click", () => resetFilters({ alsoClearSelection: true }));
-  collapsedResetFiltersBtn?.addEventListener("click", () => resetFilters({ alsoClearSelection: true }));
+  resetFiltersBtn?.addEventListener("click", () => {
+    collapsedResetRecentlyUsed = false;
+    resetFilters({ alsoClearSelection: true });
+  });
+  collapsedResetFiltersBtn?.addEventListener("click", () => {
+    collapsedResetRecentlyUsed = true;
+    resetFilters({ alsoClearSelection: true });
+  });
   filterPanelToggle.addEventListener("click", toggleFilterPanel);
   newDiagramBtn?.addEventListener("click", handleNewDiagramClick);
   undoActionBtn?.addEventListener("click", handleUndoAction);
@@ -4019,8 +4026,11 @@ function syncResetButtonsVisibility() {
     filePresenceFilterValue !== "any" ||
     showParentsFilter ||
     showFullParentLineage;
+  if (!isSidebarCollapsed) {
+    collapsedResetRecentlyUsed = false;
+  }
   if (collapsedResetFiltersBtn) {
-    const shouldShow = filtersActive && isSidebarCollapsed;
+    const shouldShow = filtersActive && isSidebarCollapsed && !collapsedResetRecentlyUsed;
     collapsedResetFiltersBtn.classList.toggle("hidden", !shouldShow);
     collapsedResetFiltersBtn.disabled = isFiltersLocked();
   }
@@ -4303,6 +4313,9 @@ function toggleFilterPanel() {
 
 function setSidebarCollapsedState(collapsed) {
   isSidebarCollapsed = !!collapsed;
+  if (!isSidebarCollapsed) {
+    collapsedResetRecentlyUsed = false;
+  }
   filterPanel.classList.toggle("collapsed", isSidebarCollapsed);
   filterPanelToggle.setAttribute("aria-expanded", String(!isSidebarCollapsed));
   updateSidebarToggleIcon();
