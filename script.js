@@ -694,6 +694,7 @@ const visualEntitySelect = document.getElementById("visualEntitySelect");
 const visualEntityControls = document.getElementById("visualEntityControls");
 const visualBusinessOwnerSelect = document.getElementById("visualBusinessOwnerSelect");
 const visualBusinessOwnerControls = document.getElementById("visualBusinessOwnerControls");
+const visualConnectorTypeSelect = document.getElementById("visualConnectorTypeSelect");
 const accessBadge = document.getElementById("accessBadge");
 
 let activePanelSystem = null;
@@ -1082,6 +1083,10 @@ function init() {
     if (!visualModal || visualModal.classList.contains("hidden")) return;
     renderVisualSnapshot();
   });
+  visualConnectorTypeSelect?.addEventListener("change", () => {
+    if (!visualModal || visualModal.classList.contains("hidden")) return;
+    renderVisualSnapshot();
+  });
   undoDeleteBtn?.addEventListener("click", handleUndoDelete);
   document.addEventListener("click", handleDocumentClickForContextMenu);
   document.addEventListener("click", handleDocumentClickForShareMenu);
@@ -1188,28 +1193,42 @@ function renderGlobalDomainChips() {
     .join("");
 }
 
-function renderVisualDomainOptions() {
-  if (!visualDomainSelect) return;
-  const previous = visualDomainSelect.value;
-  visualDomainSelect.innerHTML = domainDefinitions
-    .map((domain) => `<option value="${domain.key}">${domain.label}</option>`)
-    .join("");
-  const foundExisting = domainDefinitions.some((domain) => domain.key === previous);
-  if (foundExisting) {
-    visualDomainSelect.value = previous;
-  } else if (domainDefinitions.length) {
-    visualDomainSelect.value = domainDefinitions[0].key;
-  } else {
-    visualDomainSelect.value = "people";
-  }
+function getAvailableDomainsForSystems(sourceSystems = systems) {
+  const availableKeys = new Set();
+  sourceSystems.forEach((system) => {
+    (system.domains || new Set()).forEach((key) => availableKeys.add(key));
+  });
+  return domainDefinitions.filter((domain) => availableKeys.has(domain.key));
 }
 
-function renderVisualFunctionOptions() {
-  if (!visualFunctionSelect) return;
+function renderVisualDomainOptions(sourceSystems = systems) {
+  if (!visualDomainSelect) return [];
+  const previous = visualDomainSelect.value;
+  const available = getAvailableDomainsForSystems(sourceSystems);
+  visualDomainSelect.innerHTML = available
+    .map((domain) => `<option value="${domain.key}">${domain.label}</option>`)
+    .join("");
+  const foundExisting = available.some((domain) => domain.key === previous);
+  if (foundExisting) {
+    visualDomainSelect.value = previous;
+  } else if (available.length) {
+    visualDomainSelect.value = available[0].key;
+  } else {
+    visualDomainSelect.value = "";
+  }
+  return available;
+}
+
+function renderVisualFunctionOptions(sourceSystems = systems) {
+  if (!visualFunctionSelect) return [];
   const previous = visualFunctionSelect.value;
-  const sorted = Array.from(functionOwnerOptions)
-    .filter((value) => !!value)
-    .sort((a, b) => a.localeCompare(b));
+  const sorted = Array.from(
+    sourceSystems.reduce((set, system) => {
+      const owner = (system.functionOwner || "").trim();
+      if (owner) set.add(owner);
+      return set;
+    }, new Set())
+  ).sort((a, b) => a.localeCompare(b));
   visualFunctionSelect.innerHTML = sorted.map((value) => `<option value="${value}">${value}</option>`).join("");
   if (sorted.includes(previous)) {
     visualFunctionSelect.value = previous;
@@ -1218,6 +1237,7 @@ function renderVisualFunctionOptions() {
   } else {
     visualFunctionSelect.value = "";
   }
+  return sorted;
 }
 
 function updateVisualGroupingControlVisibility() {
@@ -1237,11 +1257,11 @@ function updateVisualGroupingControlVisibility() {
   }
 }
 
-function renderVisualEntityOptions() {
-  if (!visualEntitySelect) return;
+function renderVisualEntityOptions(sourceSystems = systems) {
+  if (!visualEntitySelect) return [];
   const previous = visualEntitySelect.value;
   const names = new Set();
-  systems.forEach((system) => {
+  sourceSystems.forEach((system) => {
     system.entities.forEach((entity) => {
       if (entity.name) names.add(entity.name);
     });
@@ -1255,12 +1275,19 @@ function renderVisualEntityOptions() {
   } else {
     visualEntitySelect.value = "";
   }
+  return sorted;
 }
 
-function renderVisualBusinessOwnerOptions() {
-  if (!visualBusinessOwnerSelect) return;
+function renderVisualBusinessOwnerOptions(sourceSystems = systems) {
+  if (!visualBusinessOwnerSelect) return [];
   const previous = visualBusinessOwnerSelect.value;
-  const owners = Array.from(ownerSuggestionSets.business)
+  const owners = Array.from(
+    sourceSystems.reduce((set, system) => {
+      const owner = (system.businessOwner || "").trim();
+      if (owner) set.add(owner);
+      return set;
+    }, new Set())
+  )
     .filter((value) => !!value)
     .sort((a, b) => a.localeCompare(b));
   visualBusinessOwnerSelect.innerHTML = owners.map((value) => `<option value="${value}">${value}</option>`).join("");
@@ -1271,6 +1298,7 @@ function renderVisualBusinessOwnerOptions() {
   } else {
     visualBusinessOwnerSelect.value = "";
   }
+  return owners;
 }
 
 function handleDomainChipClick(event) {
@@ -4937,6 +4965,38 @@ function requestVisualRender() {
   });
 }
 
+function drawVisualEntityConnectors(svgRoot, positionMap, includedIds = new Set()) {
+  if (!svgRoot || !positionMap) return;
+  const groups = new Map();
+
+  systems.forEach((system) => {
+    if (!includedIds.has(system.id)) return;
+    system.entities.forEach((entity) => {
+      const name = (entity.name || "").trim();
+      if (!name) return;
+      if (!groups.has(name)) {
+        groups.set(name, new Set());
+      }
+      groups.get(name).add(system.id);
+    });
+  });
+
+  groups.forEach((ids) => {
+    const list = Array.from(ids);
+    for (let i = 0; i < list.length; i += 1) {
+      for (let j = i + 1; j < list.length; j += 1) {
+        const fromPos = positionMap.get(list[i]);
+        const toPos = positionMap.get(list[j]);
+        if (!fromPos || !toPos) continue;
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", `M ${fromPos.left} ${fromPos.top} L ${toPos.left} ${toPos.top}`);
+        path.setAttribute("class", "visual-connection-path");
+        svgRoot.appendChild(path);
+      }
+    }
+  });
+}
+
 function openDataTableModal() {
   if (dataTableAttributesToggle) {
     const groupIsAttributes = (dataTableGroupSelect?.value || "none") === "attributes";
@@ -4958,11 +5018,6 @@ function closeDataTableModal() {
 function renderVisualSnapshot() {
   if (!visualContainer || !visualNodesContainer || !visualConnectionsSvg) return;
 
-  renderVisualDomainOptions();
-  renderVisualFunctionOptions();
-  renderVisualEntityOptions();
-  renderVisualBusinessOwnerOptions();
-
   visualNodesContainer.innerHTML = "";
   visualConnectionsSvg.innerHTML = "";
 
@@ -4976,6 +5031,12 @@ function renderVisualSnapshot() {
     if (!filteredContextActive) return true;
     return systemHighlightState.get(system.id)?.highlight;
   });
+
+  const availableDomains = renderVisualDomainOptions(systemsToShow);
+  const availableFunctions = renderVisualFunctionOptions(systemsToShow);
+  const availableEntities = renderVisualEntityOptions(systemsToShow);
+  const availableBusinessOwners = renderVisualBusinessOwnerOptions(systemsToShow);
+  const connectorMode = visualConnectorTypeSelect?.value || "system";
 
   if (!systemsToShow.length) {
     const empty = document.createElement("div");
@@ -4991,21 +5052,10 @@ function renderVisualSnapshot() {
   const groupByDomain = groupMode === "domain";
   const groupByEntity = groupMode === "entity";
   const groupByBusinessOwner = groupMode === "businessOwner";
-  const fallbackDomainKey = visualDomainSelect?.value || domainDefinitions[0]?.key || "people";
+  const fallbackDomainKey =
+    visualDomainSelect?.value || availableDomains[0]?.key || domainDefinitions[0]?.key || "people";
   const fallbackFunctionOwner =
-    visualFunctionSelect?.value || Array.from(functionOwnerOptions)[0] || "";
-  const availableEntities = Array.from(
-    systems.reduce((set, system) => {
-      system.entities.forEach((entity) => {
-        if (entity.name) set.add(entity.name);
-      });
-      return set;
-    },
-    new Set()
-  )).sort((a, b) => a.localeCompare(b));
-  const availableBusinessOwners = Array.from(ownerSuggestionSets.business)
-    .filter((value) => !!value)
-    .sort((a, b) => a.localeCompare(b));
+    visualFunctionSelect?.value || availableFunctions[0] || Array.from(functionOwnerOptions)[0] || "";
   const fallbackEntity = visualEntitySelect?.value || availableEntities[0] || "";
   const fallbackBusinessOwner = visualBusinessOwnerSelect?.value || availableBusinessOwners[0] || "";
   const targetDomainKey = visualDomainSelect?.value || fallbackDomainKey;
@@ -5095,6 +5145,8 @@ function renderVisualSnapshot() {
     return;
   }
 
+  const includedIds = new Set(eligibleSystems.map((s) => s.id));
+
   if (groupByFunction) {
     const functionGroups = new Map();
     const anchorSystems = eligibleSystems;
@@ -5172,18 +5224,22 @@ function renderVisualSnapshot() {
     visualConnectionsSvg.setAttribute("width", width);
     visualConnectionsSvg.setAttribute("height", height);
 
-    functionGroups.forEach((cluster, functionOwner) => {
-      const anchor = anchors.get(functionOwner);
-      if (!anchor) return;
-      cluster.forEach((system) => {
-        const pos = positionMap.get(system.id);
-        if (!pos) return;
-        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        path.setAttribute("d", `M ${anchor.left} ${anchor.top} L ${pos.left} ${pos.top}`);
-        path.setAttribute("class", "visual-connection-path");
-        visualConnectionsSvg.appendChild(path);
+    if (connectorMode === "entity") {
+      drawVisualEntityConnectors(visualConnectionsSvg, positionMap, includedIds);
+    } else {
+      functionGroups.forEach((cluster, functionOwner) => {
+        const anchor = anchors.get(functionOwner);
+        if (!anchor) return;
+        cluster.forEach((system) => {
+          const pos = positionMap.get(system.id);
+          if (!pos) return;
+          const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          path.setAttribute("d", `M ${anchor.left} ${anchor.top} L ${pos.left} ${pos.top}`);
+          path.setAttribute("class", "visual-connection-path");
+          visualConnectionsSvg.appendChild(path);
+        });
       });
-    });
+    }
     setVisualLayoutContextFromRender({
       width,
       height,
@@ -5275,18 +5331,22 @@ function renderVisualSnapshot() {
     visualConnectionsSvg.setAttribute("width", width);
     visualConnectionsSvg.setAttribute("height", height);
 
-    ownerGroups.forEach((cluster, ownerKey) => {
-      const anchor = anchors.get(ownerKey);
-      if (!anchor) return;
-      cluster.forEach((system) => {
-        const pos = positionMap.get(system.id);
-        if (!pos) return;
-        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        path.setAttribute("d", `M ${anchor.left} ${anchor.top} L ${pos.left} ${pos.top}`);
-        path.setAttribute("class", "visual-connection-path");
-        visualConnectionsSvg.appendChild(path);
+    if (connectorMode === "entity") {
+      drawVisualEntityConnectors(visualConnectionsSvg, positionMap, includedIds);
+    } else {
+      ownerGroups.forEach((cluster, ownerKey) => {
+        const anchor = anchors.get(ownerKey);
+        if (!anchor) return;
+        cluster.forEach((system) => {
+          const pos = positionMap.get(system.id);
+          if (!pos) return;
+          const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          path.setAttribute("d", `M ${anchor.left} ${anchor.top} L ${pos.left} ${pos.top}`);
+          path.setAttribute("class", "visual-connection-path");
+          visualConnectionsSvg.appendChild(path);
+        });
       });
-    });
+    }
     setVisualLayoutContextFromRender({
       width,
       height,
@@ -5376,18 +5436,22 @@ function renderVisualSnapshot() {
     visualConnectionsSvg.setAttribute("width", width);
     visualConnectionsSvg.setAttribute("height", height);
 
-    entityGroups.forEach((cluster, entityName) => {
-      const anchor = anchors.get(entityName);
-      if (!anchor) return;
-      cluster.forEach((system) => {
-        const pos = positionMap.get(system.id);
-        if (!pos) return;
-        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        path.setAttribute("d", `M ${anchor.left} ${anchor.top} L ${pos.left} ${pos.top}`);
-        path.setAttribute("class", "visual-connection-path");
-        visualConnectionsSvg.appendChild(path);
+    if (connectorMode === "entity") {
+      drawVisualEntityConnectors(visualConnectionsSvg, positionMap, includedIds);
+    } else {
+      entityGroups.forEach((cluster, entityName) => {
+        const anchor = anchors.get(entityName);
+        if (!anchor) return;
+        cluster.forEach((system) => {
+          const pos = positionMap.get(system.id);
+          if (!pos) return;
+          const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          path.setAttribute("d", `M ${anchor.left} ${anchor.top} L ${pos.left} ${pos.top}`);
+          path.setAttribute("class", "visual-connection-path");
+          visualConnectionsSvg.appendChild(path);
+        });
       });
-    });
+    }
     setVisualLayoutContextFromRender({
       width,
       height,
@@ -5488,18 +5552,22 @@ function renderVisualSnapshot() {
     visualConnectionsSvg.setAttribute("width", width);
     visualConnectionsSvg.setAttribute("height", height);
 
-    domainGroups.forEach((cluster, domainKey) => {
-      const anchor = anchors.get(domainKey);
-      if (!anchor) return;
-      cluster.forEach((system) => {
-        const pos = positionMap.get(system.id);
-        if (!pos) return;
-        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        path.setAttribute("d", `M ${anchor.left} ${anchor.top} L ${pos.left} ${pos.top}`);
-        path.setAttribute("class", "visual-connection-path");
-        visualConnectionsSvg.appendChild(path);
+    if (connectorMode === "entity") {
+      drawVisualEntityConnectors(visualConnectionsSvg, positionMap, includedIds);
+    } else {
+      domainGroups.forEach((cluster, domainKey) => {
+        const anchor = anchors.get(domainKey);
+        if (!anchor) return;
+        cluster.forEach((system) => {
+          const pos = positionMap.get(system.id);
+          if (!pos) return;
+          const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          path.setAttribute("d", `M ${anchor.left} ${anchor.top} L ${pos.left} ${pos.top}`);
+          path.setAttribute("class", "visual-connection-path");
+          visualConnectionsSvg.appendChild(path);
+        });
       });
-    });
+    }
     setVisualLayoutContextFromRender({
       width,
       height,
@@ -5612,18 +5680,21 @@ function renderVisualSnapshot() {
   visualConnectionsSvg.setAttribute("width", width);
   visualConnectionsSvg.setAttribute("height", height);
 
-  const includedIds = new Set(eligibleSystems.map((s) => s.id));
-  connections
-    .filter((conn) => includedIds.has(conn.from) && includedIds.has(conn.to))
-    .forEach((conn) => {
-      const fromPos = positionMap.get(conn.from);
-      const toPos = positionMap.get(conn.to);
-      if (!fromPos || !toPos) return;
-      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      path.setAttribute("d", `M ${fromPos.left} ${fromPos.top} L ${toPos.left} ${toPos.top}`);
-      path.setAttribute("class", "visual-connection-path");
-      visualConnectionsSvg.appendChild(path);
-    });
+  if (connectorMode === "entity") {
+    drawVisualEntityConnectors(visualConnectionsSvg, positionMap, includedIds);
+  } else {
+    connections
+      .filter((conn) => includedIds.has(conn.from) && includedIds.has(conn.to))
+      .forEach((conn) => {
+        const fromPos = positionMap.get(conn.from);
+        const toPos = positionMap.get(conn.to);
+        if (!fromPos || !toPos) return;
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", `M ${fromPos.left} ${fromPos.top} L ${toPos.left} ${toPos.top}`);
+        path.setAttribute("class", "visual-connection-path");
+        visualConnectionsSvg.appendChild(path);
+      });
+  }
 
   setVisualLayoutContextFromRender({
     width,
