@@ -588,6 +588,7 @@ const attributesTableBody = document.getElementById("attributesTableBody");
 const addAttributeRowBtn = document.getElementById("addAttributeRowBtn");
 const resetAttributeFilterBtn = document.getElementById("resetAttributeFilterBtn");
 const attributesCsvInput = document.getElementById("attributesCsvInput");
+const includeEntityCsvToggle = document.getElementById("includeEntityCsvToggle");
 const processAttributesCsvBtn = document.getElementById("processAttributesCsvBtn");
 const closePanelBtn = document.getElementById("closePanelBtn");
 const panelDomainChoices = document.getElementById("panelDomainChoices");
@@ -3417,9 +3418,18 @@ function handleProcessAttributesCsv() {
     .filter(Boolean);
   if (!tokens.length) return;
   const attributes = ensureAttributesArray(activePanelSystem);
-  tokens.forEach((attribute) => {
-    attributes.push({ attribute, entity: attributesModalEntityFilter || "" });
-  });
+  if (includeEntityCsvToggle?.checked) {
+    for (let i = 0; i < tokens.length; i += 2) {
+      const attribute = tokens[i];
+      if (!attribute) continue;
+      const entity = tokens[i + 1] || attributesModalEntityFilter || "";
+      attributes.push({ attribute, entity });
+    }
+  } else {
+    tokens.forEach((attribute) => {
+      attributes.push({ attribute, entity: attributesModalEntityFilter || "" });
+    });
+  }
   if (attributesCsvInput) {
     attributesCsvInput.value = "";
   }
