@@ -1324,6 +1324,23 @@ button.ghost {
   color: #1c2550;
 }
 
+.table-system-link {
+  padding: 0;
+  margin: 0;
+  background: none;
+  border: none;
+  color: #0f1424;
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+}
+
+.table-system-link:hover,
+.table-system-link:focus-visible {
+  color: #1c2550;
+  outline: none;
+}
+
 .side-modal {
   position: absolute;
   top: 1.5rem;

@@ -6367,6 +6367,7 @@ function renderSystemDataTable() {
         entity: entityName || "—",
         attributes: matchingAttributes,
         system: systemName,
+        systemId: system.id,
         functionOwner: functionOwner || "—",
         businessOwner: businessOwner || "—",
         platformOwner: platformOwner || "—",
@@ -6487,7 +6488,22 @@ function renderSystemDataTable() {
           ? values.join(", ")
           : "—";
       exportRow[field] = display;
-      cell.textContent = display;
+
+      if (field === "system" && groupBy === "none" && entry.systemId) {
+        const linkBtn = document.createElement("button");
+        linkBtn.type = "button";
+        linkBtn.className = "table-system-link";
+        linkBtn.textContent = display;
+        linkBtn.addEventListener("click", () => {
+          const targetSystem = systems.find((sys) => sys.id === entry.systemId);
+          if (targetSystem) {
+            selectSystem(targetSystem);
+          }
+        });
+        cell.appendChild(linkBtn);
+      } else {
+        cell.textContent = display;
+      }
       row.appendChild(cell);
     });
     pushExportRow(exportRow);
