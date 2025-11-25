@@ -706,6 +706,7 @@ let attributesModalEntityFilter = "";
 const selectedAttributeRows = new Set();
 let lastAttributeSelectedIndex = null;
 let visualConnectorMode = visualConnectorTypeSelect?.value || "system";
+let visualConnectorUserChoice = visualConnectorMode;
 let rememberedVisualConnectorMode = visualConnectorMode;
 let visualConnectorEntityFilter = "all";
 
@@ -1091,6 +1092,7 @@ function init() {
   visualConnectorTypeSelect?.addEventListener("change", () => {
     if (!visualModal || visualModal.classList.contains("hidden")) return;
     visualConnectorMode = visualConnectorTypeSelect.value || "system";
+    visualConnectorUserChoice = visualConnectorMode;
     rememberedVisualConnectorMode = visualConnectorMode;
     updateVisualConnectorVisibility();
     renderVisualSnapshot();
@@ -1280,13 +1282,14 @@ function updateVisualConnectorVisibility() {
   if (!showConnectorType) {
     if (visualConnectorMode !== "system") {
       rememberedVisualConnectorMode = visualConnectorMode;
+      visualConnectorUserChoice = visualConnectorMode;
     }
     visualConnectorMode = "system";
     if (visualConnectorTypeSelect) {
       visualConnectorTypeSelect.value = "system";
     }
   } else if (visualConnectorTypeSelect) {
-    const desired = rememberedVisualConnectorMode || visualConnectorMode || "system";
+    const desired = rememberedVisualConnectorMode || visualConnectorUserChoice || visualConnectorMode || "system";
     visualConnectorMode = desired;
     visualConnectorTypeSelect.value = desired;
   }
@@ -1342,19 +1345,26 @@ function renderVisualBusinessOwnerOptions(sourceSystems = systems) {
 function renderVisualConnectorEntityOptions(sourceSystems = systems) {
   if (!visualConnectorEntitySelect) return [];
   const previous = visualConnectorEntitySelect.value || visualConnectorEntityFilter || "all";
-  const names = new Set();
+  const counts = new Map();
   sourceSystems.forEach((system) => {
+    const systemNames = new Set();
     system.entities.forEach((entity) => {
       const name = (entity.name || "").trim();
-      if (name) names.add(name);
+      if (name) systemNames.add(name);
+    });
+    systemNames.forEach((name) => {
+      counts.set(name, (counts.get(name) || 0) + 1);
     });
   });
-  const sorted = Array.from(names).sort((a, b) => a.localeCompare(b));
+  const sorted = Array.from(counts.keys()).sort((a, b) => a.localeCompare(b));
   const options = ["all", ...sorted];
   visualConnectorEntitySelect.innerHTML = options
     .map((value) => {
-      const label = value === "all" ? "All" : value;
-      return `<option value="${value}">${label}</option>`;
+      if (value === "all") {
+        return `<option value="all">All (${sourceSystems.length})</option>`;
+      }
+      const count = counts.get(value) || 0;
+      return `<option value="${value}">${value} (${count})</option>`;
     })
     .join("");
   if (options.includes(previous)) {
@@ -5019,6 +5029,17 @@ function openVisualModal() {
 
 function closeVisualModal() {
   visualModal?.classList.add("hidden");
+  visualConnectorMode = "system";
+  visualConnectorUserChoice = "system";
+  rememberedVisualConnectorMode = "system";
+  visualConnectorEntityFilter = "all";
+  if (visualConnectorTypeSelect) {
+    visualConnectorTypeSelect.value = "system";
+  }
+  if (visualConnectorEntitySelect) {
+    visualConnectorEntitySelect.value = "all";
+  }
+  updateVisualConnectorVisibility();
   restoreFilterPanelHome();
 }
 
@@ -5795,6 +5816,14 @@ function attachVisualNodeBringToFront() {
   visualNodesContainer?.querySelectorAll(".visual-node").forEach((node) => {
     const id = node.dataset.systemId;
     node.addEventListener("click", () => {
+      if ((visualGroupBySelect?.value || "none") === "none") {
+        const preferred = rememberedVisualConnectorMode || visualConnectorUserChoice || visualConnectorMode;
+        if (preferred && visualConnectorTypeSelect) {
+          visualConnectorMode = preferred;
+          visualConnectorTypeSelect.value = preferred;
+          updateVisualConnectorVisibility();
+        }
+      }
       visualNodeZIndex += 1;
       node.style.zIndex = `${visualNodeZIndex}`;
       node.parentElement?.appendChild(node);
