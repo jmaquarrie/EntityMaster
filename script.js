@@ -5159,11 +5159,17 @@ function openDataTableModal() {
   });
   syncDataTableHideEmptyVisibility();
   renderSystemDataTable();
-  dataTableModal?.classList.remove("hidden");
+  if (dataTableModal) {
+    dataTableModal.classList.remove("hidden");
+    dataTableModal.setAttribute("aria-hidden", "false");
+  }
 }
 
 function closeDataTableModal() {
-  dataTableModal?.classList.add("hidden");
+  if (dataTableModal) {
+    dataTableModal.classList.add("hidden");
+    dataTableModal.setAttribute("aria-hidden", "true");
+  }
 }
 
 function renderVisualSnapshot() {
@@ -6558,7 +6564,13 @@ function getSystemsForCurrentFilters() {
   if (!filteredContextActive) {
     return [...systems];
   }
-  return systems.filter((system) => systemHighlightState.get(system.id)?.highlight);
+  const highlighted = systems.filter((system) => systemHighlightState.get(system.id)?.highlight);
+  if (highlighted.length) {
+    return highlighted;
+  }
+  // Fall back to direct filter evaluation so the data table still renders grouped rows
+  // even if highlight state hasn't been applied yet (e.g., after grouping changes).
+  return systems.filter((system) => systemMatchesFilters(system));
 }
 
 function exportTableToCsv() {
