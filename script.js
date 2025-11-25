@@ -700,6 +700,8 @@ const visualFunctionSelect = document.getElementById("visualFunctionSelect");
 const visualFunctionControls = document.getElementById("visualFunctionControls");
 const visualEntitySelect = document.getElementById("visualEntitySelect");
 const visualEntityControls = document.getElementById("visualEntityControls");
+const visualAttributeSelect = document.getElementById("visualAttributeSelect");
+const visualAttributeControls = document.getElementById("visualAttributeControls");
 const visualBusinessOwnerSelect = document.getElementById("visualBusinessOwnerSelect");
 const visualBusinessOwnerControls = document.getElementById("visualBusinessOwnerControls");
 const visualConnectorTypeSelect = document.getElementById("visualConnectorTypeSelect");
@@ -1116,6 +1118,10 @@ function init() {
     if (!visualModal || visualModal.classList.contains("hidden")) return;
     renderVisualSnapshot();
   });
+  visualAttributeSelect?.addEventListener("change", () => {
+    if (!visualModal || visualModal.classList.contains("hidden")) return;
+    renderVisualSnapshot();
+  });
   visualBusinessOwnerSelect?.addEventListener("change", () => {
     if (!visualModal || visualModal.classList.contains("hidden")) return;
     renderVisualSnapshot();
@@ -1143,14 +1149,15 @@ function init() {
       positionAttributesModal();
     }
   });
-  applyAccessMode(currentAccessMode);
-  setSidebarCollapsedState(isSidebarCollapsed);
+    applyAccessMode(currentAccessMode);
+    setSidebarCollapsedState(isSidebarCollapsed);
 
-  renderVisualDomainOptions();
-  renderVisualFunctionOptions();
-  renderVisualEntityOptions();
-  renderVisualBusinessOwnerOptions();
-  updateVisualGroupingControlVisibility();
+    renderVisualDomainOptions();
+    renderVisualFunctionOptions();
+    renderVisualEntityOptions();
+    renderVisualAttributeOptions();
+    renderVisualBusinessOwnerOptions();
+    updateVisualGroupingControlVisibility();
 
   const loadedFromUrl = loadFromUrlParams();
   if (!loadedFromUrl) {
@@ -1292,11 +1299,13 @@ function updateVisualGroupingControlVisibility() {
   const isDomain = mode === "domain";
   const isFunction = mode === "function";
   const isEntity = mode === "entity";
+  const isAttribute = mode === "attribute";
   const isBusinessOwner = mode === "businessOwner";
 
   visualDomainControls?.classList.toggle("hidden", !isDomain);
   visualFunctionControls?.classList.toggle("hidden", !isFunction);
   visualEntityControls?.classList.toggle("hidden", !isEntity);
+  visualAttributeControls?.classList.toggle("hidden", !isAttribute);
   visualBusinessOwnerControls?.classList.toggle("hidden", !isBusinessOwner);
   if (mode !== "none") {
     visualLayoutMode = "scaled";
@@ -1346,6 +1355,38 @@ function renderVisualEntityOptions(sourceSystems = systems) {
     visualEntitySelect.value = sorted[0];
   } else {
     visualEntitySelect.value = "";
+  }
+  return sorted;
+}
+
+function renderVisualAttributeOptions(sourceSystems = systems) {
+  if (!visualAttributeSelect) return [];
+  const previous = visualAttributeSelect.value;
+  const counts = new Map();
+  sourceSystems.forEach((system) => {
+    const seenForSystem = new Set();
+    (system.attributes || []).forEach((entry) => {
+      const name = (entry.attribute || "").trim();
+      if (!name) return;
+      seenForSystem.add(name);
+    });
+    seenForSystem.forEach((name) => {
+      counts.set(name, (counts.get(name) || 0) + 1);
+    });
+  });
+  const sorted = Array.from(counts.keys()).sort((a, b) => a.localeCompare(b));
+  visualAttributeSelect.innerHTML = sorted
+    .map((value) => {
+      const count = counts.get(value) || 0;
+      return `<option value="${value}">${value} (${count})</option>`;
+    })
+    .join("");
+  if (sorted.includes(previous)) {
+    visualAttributeSelect.value = previous;
+  } else if (sorted.length) {
+    visualAttributeSelect.value = sorted[0];
+  } else {
+    visualAttributeSelect.value = "";
   }
   return sorted;
 }
@@ -5085,6 +5126,7 @@ function openVisualModal() {
   renderVisualDomainOptions();
   renderVisualFunctionOptions();
   renderVisualEntityOptions();
+  renderVisualAttributeOptions();
   renderVisualBusinessOwnerOptions();
   renderVisualConnectorEntityOptions();
   updateVisualGroupingControlVisibility();
@@ -5205,6 +5247,7 @@ function renderVisualSnapshot() {
   const availableDomains = renderVisualDomainOptions(systemsToShow);
   const availableFunctions = renderVisualFunctionOptions(systemsToShow);
   const availableEntities = renderVisualEntityOptions(systemsToShow);
+  const availableAttributes = renderVisualAttributeOptions(systemsToShow);
   const availableBusinessOwners = renderVisualBusinessOwnerOptions(systemsToShow);
   renderVisualConnectorEntityOptions(systemsToShow);
   const connectorMode = visualConnectorMode || "system";
@@ -5223,16 +5266,19 @@ function renderVisualSnapshot() {
   const groupByFunction = groupMode === "function";
   const groupByDomain = groupMode === "domain";
   const groupByEntity = groupMode === "entity";
+  const groupByAttribute = groupMode === "attribute";
   const groupByBusinessOwner = groupMode === "businessOwner";
   const fallbackDomainKey =
     visualDomainSelect?.value || availableDomains[0]?.key || domainDefinitions[0]?.key || "people";
   const fallbackFunctionOwner =
     visualFunctionSelect?.value || availableFunctions[0] || Array.from(functionOwnerOptions)[0] || "";
   const fallbackEntity = visualEntitySelect?.value || availableEntities[0] || "";
+  const fallbackAttribute = visualAttributeSelect?.value || availableAttributes[0] || "";
   const fallbackBusinessOwner = visualBusinessOwnerSelect?.value || availableBusinessOwners[0] || "";
   const targetDomainKey = visualDomainSelect?.value || fallbackDomainKey;
   const targetFunctionOwner = visualFunctionSelect?.value || fallbackFunctionOwner || "";
   const targetEntity = visualEntitySelect?.value || fallbackEntity || "";
+  const targetAttribute = visualAttributeSelect?.value || fallbackAttribute || "";
   const targetBusinessOwner = visualBusinessOwnerSelect?.value || fallbackBusinessOwner || "";
 
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -5301,6 +5347,12 @@ function renderVisualSnapshot() {
     eligibleSystems = systemsToShow.filter((system) =>
       system.entities.some(
         (entity) => (entity.name || "").trim().toLowerCase() === targetEntity.trim().toLowerCase()
+      )
+    );
+  } else if (groupByAttribute) {
+    eligibleSystems = systemsToShow.filter((system) =>
+      (system.attributes || []).some(
+        (entry) => (entry.attribute || "").trim().toLowerCase() === targetAttribute.trim().toLowerCase()
       )
     );
   } else if (groupByBusinessOwner) {
@@ -5534,6 +5586,111 @@ function renderVisualSnapshot() {
       groupMode: "businessOwner",
       anchors,
       clusters: new Map(Array.from(ownerGroups, ([key, items]) => [key, items.map((s) => s.id)])),
+      positionMap,
+      includedIds: new Set(eligibleSystems.map((s) => s.id)),
+    });
+    return;
+  }
+
+  if (groupByAttribute) {
+    const attributeGroups = new Map();
+    const anchorSystems = eligibleSystems;
+    attributeGroups.set(targetAttribute, anchorSystems);
+
+    const attributeKeys = Array.from(attributeGroups.keys());
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const anchors = new Map();
+    const positionMap = new Map();
+    const nodesFragment = document.createDocumentFragment();
+
+    attributeKeys.forEach((attributeName) => {
+      const anchorX = centerX;
+      const anchorY = centerY;
+      anchors.set(attributeName, { left: anchorX, top: anchorY });
+
+      const attributeNode = document.createElement("div");
+      attributeNode.className = "visual-domain";
+      attributeNode.dataset.domainKey = attributeName || "attribute";
+      attributeNode.style.left = `${anchorX}px`;
+      attributeNode.style.top = `${anchorY}px`;
+      attributeNode.textContent = attributeName || "Attribute";
+      attributeNode.style.setProperty("--domain-color", "#0f1424");
+      nodesFragment.appendChild(attributeNode);
+
+      const cluster = attributeGroups.get(attributeName) || [];
+      const clusterRadius = 140 + Math.min(cluster.length, 8) * 12;
+      cluster.forEach((system, systemIndex) => {
+        const clusterAngle = cluster.length === 1 ? -Math.PI / 2 : (systemIndex / cluster.length) * Math.PI * 2;
+        const defaultLeft = anchorX + Math.cos(clusterAngle) * clusterRadius;
+        const defaultTop = anchorY + Math.sin(clusterAngle) * clusterRadius;
+        const stored = visualNodePositions.get(system.id);
+        const left = stored?.left ?? defaultLeft;
+        const top = stored?.top ?? defaultTop;
+        positionMap.set(system.id, { left, top });
+
+        const node = createVisualNode(system, left, top);
+        nodesFragment.appendChild(node);
+      });
+    });
+
+    visualNodesContainer.appendChild(nodesFragment);
+
+    visualNodesContainer.querySelectorAll(".visual-domain").forEach((node) => {
+      const attributeKey = node.dataset.domainKey;
+      const anchor = anchors.get(attributeKey);
+      if (!anchor) return;
+      const halfWidth = (node.offsetWidth || 0) / 2;
+      const halfHeight = (node.offsetHeight || 0) / 2;
+      const left = clamp(anchor.left, padding + halfWidth, width - padding - halfWidth);
+      const top = clamp(anchor.top, padding + halfHeight, height - padding - halfHeight);
+      node.style.left = `${left}px`;
+      node.style.top = `${top}px`;
+      anchors.set(attributeKey, { left, top });
+    });
+
+    visualNodesContainer.querySelectorAll(".visual-node").forEach((node) => {
+      const systemId = node.dataset.systemId;
+      const target = positionMap.get(systemId);
+      if (!systemId || !target) return;
+      const halfWidth = (node.offsetWidth || 0) / 2;
+      const halfHeight = (node.offsetHeight || 0) / 2;
+      const left = clamp(target.left, padding + halfWidth, width - padding - halfWidth);
+      const top = clamp(target.top, padding + halfHeight, height - padding - halfHeight);
+      node.style.left = `${left}px`;
+      node.style.top = `${top}px`;
+      positionMap.set(systemId, { left, top });
+    });
+
+    attachVisualNodeBringToFront();
+
+    visualConnectionsSvg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    visualConnectionsSvg.setAttribute("width", width);
+    visualConnectionsSvg.setAttribute("height", height);
+
+    if (connectorMode === "entity") {
+      drawVisualEntityConnectors(visualConnectionsSvg, positionMap, includedIds);
+    } else {
+      attributeGroups.forEach((cluster, attributeName) => {
+        const anchor = anchors.get(attributeName);
+        if (!anchor) return;
+        cluster.forEach((system) => {
+          const pos = positionMap.get(system.id);
+          if (!pos) return;
+          const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          path.setAttribute("d", `M ${anchor.left} ${anchor.top} L ${pos.left} ${pos.top}`);
+          path.setAttribute("class", "visual-connection-path");
+          visualConnectionsSvg.appendChild(path);
+        });
+      });
+    }
+    setVisualLayoutContextFromRender({
+      width,
+      height,
+      padding,
+      groupMode: "attribute",
+      anchors,
+      clusters: new Map(Array.from(attributeGroups, ([key, items]) => [key, items.map((s) => s.id)])),
       positionMap,
       includedIds: new Set(eligibleSystems.map((s) => s.id)),
     });
