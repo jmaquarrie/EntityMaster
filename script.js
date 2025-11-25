@@ -495,6 +495,8 @@ let showParentsFilter = false;
 let showFullParentLineage = false;
 let visualLayoutMode = "scaled";
 let dataTableShowAttributes = false;
+let dataTableHideEmptyFields = false;
+let lastDataTableGroupField = "domain";
 let lastDeletedSnapshot = null;
 let saveStatusTimer = null;
 let editingConnectionId = null;
@@ -658,6 +660,8 @@ const dataTableModal = document.getElementById("dataTableModal");
 const closeDataTableBtn = document.getElementById("closeDataTableBtn");
 const saveTableCsvBtn = document.getElementById("saveTableCsvBtn");
 const dataTableGroupSelect = document.getElementById("dataTableGroupSelect");
+const dataTableHideEmptyToggle = document.getElementById("dataTableHideEmptyToggle");
+const dataTableHideEmptyWrapper = document.getElementById("dataTableHideEmptyWrapper");
 const dataTableAttributesToggle = document.getElementById("dataTableAttributesToggle");
 const systemDataTableBody = document.getElementById("systemDataTableBody");
 const dataTableFilterInputs = {
@@ -980,12 +984,20 @@ function init() {
   closeDataTableBtn?.addEventListener("click", closeDataTableModal);
   dataTableGroupSelect?.addEventListener("change", () => {
     const selectedGroup = dataTableGroupSelect.value;
+    if (selectedGroup !== "none") {
+      lastDataTableGroupField = selectedGroup;
+    }
     if (selectedGroup === "attributes") {
       dataTableShowAttributes = true;
       if (dataTableAttributesToggle) {
         dataTableAttributesToggle.checked = true;
       }
     }
+    syncDataTableHideEmptyVisibility();
+    renderSystemDataTable();
+  });
+  dataTableHideEmptyToggle?.addEventListener("change", (event) => {
+    dataTableHideEmptyFields = event.target.checked;
     renderSystemDataTable();
   });
   dataTableAttributesToggle?.addEventListener("change", (event) => {
@@ -4174,6 +4186,8 @@ function doesSystemMatchSearch(system) {
       return (system.functionOwner || "").toLowerCase().includes(query);
     case "entity":
       return system.entities.some((entity) => entity.name.toLowerCase().includes(query));
+    case "attributes":
+      return (system.attributes || []).some((entry) => (entry.attribute || "").toLowerCase().includes(query));
     case "system":
     default:
       return system.name.toLowerCase().includes(query);
@@ -5067,6 +5081,12 @@ function requestVisualRender() {
   });
 }
 
+function syncDataTableHideEmptyVisibility() {
+  if (!dataTableHideEmptyWrapper) return;
+  const groupBy = dataTableGroupSelect?.value || "none";
+  dataTableHideEmptyWrapper.classList.toggle("hidden", groupBy !== "none");
+}
+
 function drawVisualEntityConnectors(svgRoot, positionMap, includedIds = new Set(), targetEntity = "") {
   if (!svgRoot || !positionMap) return;
   const groups = new Map();
@@ -5107,10 +5127,14 @@ function openDataTableModal() {
     const shouldShowAttributes = dataTableShowAttributes || groupIsAttributes;
     dataTableAttributesToggle.checked = shouldShowAttributes;
   }
+  if (dataTableHideEmptyToggle) {
+    dataTableHideEmptyToggle.checked = dataTableHideEmptyFields;
+  }
   Object.entries(dataTableFilterInputs).forEach(([key, input]) => {
     if (!input) return;
     input.value = dataTableColumnFilters[key] || "";
   });
+  syncDataTableHideEmptyVisibility();
   renderSystemDataTable();
   dataTableModal?.classList.remove("hidden");
 }
@@ -6547,8 +6571,14 @@ function exportTableToCsv() {
 
 function renderSystemDataTable() {
   if (!systemDataTableBody) return;
+  syncDataTableHideEmptyVisibility();
   const systemsToShow = getSystemsForCurrentFilters();
   const groupBy = dataTableGroupSelect?.value || "none";
+  if (groupBy !== "none") {
+    lastDataTableGroupField = groupBy;
+  }
+  const hideEmptyRows = dataTableHideEmptyFields && groupBy === "none";
+  const groupFieldForHiding = groupBy === "none" ? lastDataTableGroupField || "domain" : groupBy;
   const headerCells = dataTableModal?.querySelectorAll(".system-data-table thead th") || [];
   const groupOrder = [
     "domain",
@@ -6651,15 +6681,29 @@ function renderSystemDataTable() {
     return terms.some((term) => values.includes(term));
   };
 
-  const filteredRows = rawRows.filter((row) =>
-    matchesFilter(row.domain, dataTableColumnFilters.domain) &&
-    matchesFilter(row.entity, dataTableColumnFilters.entity) &&
-    matchesFilter(row.attributes, dataTableColumnFilters.attributes) &&
-    matchesFilter(row.system, dataTableColumnFilters.system) &&
-    matchesFilter(row.functionOwner, dataTableColumnFilters.functionOwner) &&
-    matchesFilter(row.businessOwner, dataTableColumnFilters.businessOwner) &&
-    matchesFilter(row.platformOwner, dataTableColumnFilters.platformOwner)
-  );
+  const filteredRows = rawRows.filter((row) => {
+    if (
+      !matchesFilter(row.domain, dataTableColumnFilters.domain) ||
+      !matchesFilter(row.entity, dataTableColumnFilters.entity) ||
+      !matchesFilter(row.attributes, dataTableColumnFilters.attributes) ||
+      !matchesFilter(row.system, dataTableColumnFilters.system) ||
+      !matchesFilter(row.functionOwner, dataTableColumnFilters.functionOwner) ||
+      !matchesFilter(row.businessOwner, dataTableColumnFilters.businessOwner) ||
+      !matchesFilter(row.platformOwner, dataTableColumnFilters.platformOwner)
+    ) {
+      return false;
+    }
+
+    if (hideEmptyRows) {
+      const groupValues = normalizeValues(row[groupFieldForHiding]);
+      const hasValue = groupValues.some((val) => val && val !== "—");
+      if (!hasValue) {
+        return false;
+      }
+    }
+
+    return true;
+  });
 
   if (!filteredRows.length) {
     const emptyRow = document.createElement("tr");
