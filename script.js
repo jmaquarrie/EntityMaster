@@ -490,6 +490,7 @@ let bulkSelection = [];
 let filterMode = "fade";
 let sorFilterValue = "any";
 let spreadsheetFilterValue = "yes";
+let filePresenceFilterValue = "any";
 let expandEntitiesGlobally = false;
 let showParentsFilter = false;
 let showFullParentLineage = false;
@@ -664,6 +665,7 @@ const dataTableHideEmptyToggle = document.getElementById("dataTableHideEmptyTogg
 const dataTableHideEmptyWrapper = document.getElementById("dataTableHideEmptyWrapper");
 const dataTableAttributesToggle = document.getElementById("dataTableAttributesToggle");
 const systemDataTableBody = document.getElementById("systemDataTableBody");
+const filePresenceFilterSelect = document.getElementById("filePresenceFilter");
 const dataTableFilterInputs = {
   domain: document.getElementById("dataTableFilterDomain"),
   entity: document.getElementById("dataTableFilterEntity"),
@@ -837,6 +839,7 @@ function init() {
   filterMode = filterModeSelect?.value || "fade";
   sorFilterValue = sorFilterSelect?.value || "any";
   spreadsheetFilterValue = spreadsheetFilterSelect?.value || "yes";
+  filePresenceFilterValue = filePresenceFilterSelect?.value || "any";
   expandEntitiesGlobally = !!expandEntitiesToggle?.checked;
   showParentsFilter = !!showParentsToggle?.checked;
   showFullParentLineage = !!fullParentLineageToggle?.checked;
@@ -936,6 +939,12 @@ function init() {
   spreadsheetFilterSelect?.addEventListener("change", (event) => {
     if (isFiltersLocked()) return;
     spreadsheetFilterValue = event.target.value;
+    selectedSystemId = null;
+    updateHighlights();
+  });
+  filePresenceFilterSelect?.addEventListener("change", (event) => {
+    if (isFiltersLocked()) return;
+    filePresenceFilterValue = event.target.value;
     selectedSystemId = null;
     updateHighlights();
   });
@@ -3840,6 +3849,7 @@ function resetFilters({ alsoClearSelection = false } = {}) {
   searchQuery = "";
   sorFilterValue = "any";
   spreadsheetFilterValue = "yes";
+  filePresenceFilterValue = "any";
   relationFocus = null;
   clearEntityLinkHighlight(false);
   if (alsoClearSelection) {
@@ -3856,6 +3866,9 @@ function resetFilters({ alsoClearSelection = false } = {}) {
   }
   if (spreadsheetFilterSelect) {
     spreadsheetFilterSelect.value = "yes";
+  }
+  if (filePresenceFilterSelect) {
+    filePresenceFilterSelect.value = "any";
   }
   updateGlobalDomainChips();
   applyGlobalEntityExpansion();
@@ -3940,7 +3953,8 @@ function updateHighlights() {
     !!functionOwnerFilterText ||
     !!searchQuery ||
     sorFilterValue !== "any" ||
-    spreadsheetFilterValue !== "yes";
+    spreadsheetFilterValue !== "yes" ||
+    filePresenceFilterValue !== "any";
 
   const filtersActive = baseFiltersActive || ((showParentsFilter || showFullParentLineage) && lineageSeedIds.size > 0);
   const shouldApplyState = !!selectedSystemId || filtersActive || hasEntitySelection;
@@ -4002,6 +4016,7 @@ function syncResetButtonsVisibility() {
     !!searchQuery ||
     sorFilterValue !== "any" ||
     spreadsheetFilterValue !== "yes" ||
+    filePresenceFilterValue !== "any" ||
     showParentsFilter ||
     showFullParentLineage;
   if (collapsedResetFiltersBtn) {
@@ -4010,6 +4025,7 @@ function syncResetButtonsVisibility() {
     collapsedResetFiltersBtn.disabled = isFiltersLocked();
   }
   if (resetFiltersBtn) {
+    resetFiltersBtn.classList.toggle("hidden", !filtersActive);
     resetFiltersBtn.disabled = isFiltersLocked();
   }
 }
@@ -4138,6 +4154,12 @@ function systemMatchesFilters(system) {
   if (spreadsheetFilterValue === "no" && system.isSpreadsheet) {
     return false;
   }
+  if (filePresenceFilterValue === "yes" && !(system.fileUrl && system.fileUrl.trim())) {
+    return false;
+  }
+  if (filePresenceFilterValue === "no" && system.fileUrl && system.fileUrl.trim()) {
+    return false;
+  }
   if (searchQuery) {
     return doesSystemMatchSearch(system);
   }
@@ -4155,6 +4177,7 @@ function hasActiveFilters() {
     !!searchQuery ||
     sorFilterValue !== "any" ||
     spreadsheetFilterValue !== "yes" ||
+    filePresenceFilterValue !== "any" ||
     showParentsFilter ||
     showFullParentLineage
   );
@@ -6254,6 +6277,7 @@ function serializeState(accessModeOverride, options = {}) {
       filterMode,
       sor: sorFilterValue,
       spreadsheets: spreadsheetFilterValue,
+      filePresence: filePresenceFilterValue,
       expandEntities: expandEntitiesGlobally,
       showParents: showParentsFilter,
       fullParentLineage: showFullParentLineage,
@@ -6377,6 +6401,7 @@ function applyFilterState(filterState = {}) {
   const functionOwnerValue = filterState.functionOwner || "";
   const searchValue = filterState.search || "";
   const spreadsheetFilter = filterState.spreadsheets || "yes";
+  const filePresenceFilter = filterState.filePresence || "any";
   const expandEntities = !!filterState.expandEntities;
   const showParents = !!filterState.showParents;
   const fullParentLineage = !!filterState.fullParentLineage;
@@ -6389,6 +6414,7 @@ function applyFilterState(filterState = {}) {
   filterMode = filterState.filterMode || filterMode;
   sorFilterValue = filterState.sor || sorFilterValue;
   spreadsheetFilterValue = spreadsheetFilter;
+  filePresenceFilterValue = filePresenceFilter;
   expandEntitiesGlobally = expandEntities;
   showParentsFilter = showParents;
   showFullParentLineage = fullParentLineage;
@@ -6401,6 +6427,7 @@ function applyFilterState(filterState = {}) {
   if (filterModeSelect) filterModeSelect.value = filterMode;
   if (sorFilterSelect) sorFilterSelect.value = sorFilterValue;
   if (spreadsheetFilterSelect) spreadsheetFilterSelect.value = spreadsheetFilterValue;
+  if (filePresenceFilterSelect) filePresenceFilterSelect.value = filePresenceFilterValue;
   if (expandEntitiesToggle) expandEntitiesToggle.checked = expandEntitiesGlobally;
   if (showParentsToggle) showParentsToggle.checked = showParentsFilter;
   if (fullParentLineageToggle) fullParentLineageToggle.checked = showFullParentLineage;
