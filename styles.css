@@ -1769,6 +1769,11 @@ button.small {
   display: none;
 }
 
+.visual-connector-select.hidden,
+.visual-entity-connector-controls.hidden {
+  display: none;
+}
+
 .visual-control-group {
   display: flex;
   align-items: center;

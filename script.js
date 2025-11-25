@@ -695,6 +695,8 @@ const visualEntityControls = document.getElementById("visualEntityControls");
 const visualBusinessOwnerSelect = document.getElementById("visualBusinessOwnerSelect");
 const visualBusinessOwnerControls = document.getElementById("visualBusinessOwnerControls");
 const visualConnectorTypeSelect = document.getElementById("visualConnectorTypeSelect");
+const visualConnectorEntitySelect = document.getElementById("visualConnectorEntitySelect");
+const visualConnectorEntityControls = document.querySelector(".visual-entity-connector-controls");
 const accessBadge = document.getElementById("accessBadge");
 
 let activePanelSystem = null;
@@ -703,6 +705,9 @@ let visualNodeZIndex = 10;
 let attributesModalEntityFilter = "";
 const selectedAttributeRows = new Set();
 let lastAttributeSelectedIndex = null;
+let visualConnectorMode = visualConnectorTypeSelect?.value || "system";
+let rememberedVisualConnectorMode = visualConnectorMode;
+let visualConnectorEntityFilter = "all";
 
 function applyAccessMode(mode = "full") {
   currentAccessMode = mode || "full";
@@ -1085,6 +1090,14 @@ function init() {
   });
   visualConnectorTypeSelect?.addEventListener("change", () => {
     if (!visualModal || visualModal.classList.contains("hidden")) return;
+    visualConnectorMode = visualConnectorTypeSelect.value || "system";
+    rememberedVisualConnectorMode = visualConnectorMode;
+    updateVisualConnectorVisibility();
+    renderVisualSnapshot();
+  });
+  visualConnectorEntitySelect?.addEventListener("change", () => {
+    if (!visualModal || visualModal.classList.contains("hidden")) return;
+    visualConnectorEntityFilter = visualConnectorEntitySelect.value || "all";
     renderVisualSnapshot();
   });
   undoDeleteBtn?.addEventListener("click", handleUndoDelete);
@@ -1252,17 +1265,34 @@ function updateVisualGroupingControlVisibility() {
   visualFunctionControls?.classList.toggle("hidden", !isFunction);
   visualEntityControls?.classList.toggle("hidden", !isEntity);
   visualBusinessOwnerControls?.classList.toggle("hidden", !isBusinessOwner);
-  const connectorTypeWrapper = visualConnectorTypeSelect?.closest(".visual-connector-select");
-  const showConnectorType = mode === "none";
-  connectorTypeWrapper?.classList.toggle("hidden", !showConnectorType);
-  if (!showConnectorType && visualConnectorTypeSelect) {
-    if (visualConnectorTypeSelect.value !== "system") {
-      visualConnectorTypeSelect.value = "system";
-    }
-  }
   if (mode !== "none") {
     visualLayoutMode = "scaled";
   }
+  updateVisualConnectorVisibility();
+}
+
+function updateVisualConnectorVisibility() {
+  const mode = visualGroupBySelect?.value || "none";
+  const connectorTypeWrapper = visualConnectorTypeSelect?.closest(".visual-connector-select");
+  const showConnectorType = mode === "none";
+  connectorTypeWrapper?.classList.toggle("hidden", !showConnectorType);
+
+  if (!showConnectorType) {
+    if (visualConnectorMode !== "system") {
+      rememberedVisualConnectorMode = visualConnectorMode;
+    }
+    visualConnectorMode = "system";
+    if (visualConnectorTypeSelect) {
+      visualConnectorTypeSelect.value = "system";
+    }
+  } else if (visualConnectorTypeSelect) {
+    const desired = rememberedVisualConnectorMode || visualConnectorMode || "system";
+    visualConnectorMode = desired;
+    visualConnectorTypeSelect.value = desired;
+  }
+
+  const showEntityConnectorFilter = showConnectorType && visualConnectorMode === "entity";
+  visualConnectorEntityControls?.classList.toggle("hidden", !showEntityConnectorFilter);
 }
 
 function renderVisualEntityOptions(sourceSystems = systems) {
@@ -1307,6 +1337,34 @@ function renderVisualBusinessOwnerOptions(sourceSystems = systems) {
     visualBusinessOwnerSelect.value = "";
   }
   return owners;
+}
+
+function renderVisualConnectorEntityOptions(sourceSystems = systems) {
+  if (!visualConnectorEntitySelect) return [];
+  const previous = visualConnectorEntitySelect.value || visualConnectorEntityFilter || "all";
+  const names = new Set();
+  sourceSystems.forEach((system) => {
+    system.entities.forEach((entity) => {
+      const name = (entity.name || "").trim();
+      if (name) names.add(name);
+    });
+  });
+  const sorted = Array.from(names).sort((a, b) => a.localeCompare(b));
+  const options = ["all", ...sorted];
+  visualConnectorEntitySelect.innerHTML = options
+    .map((value) => {
+      const label = value === "all" ? "All" : value;
+      return `<option value="${value}">${label}</option>`;
+    })
+    .join("");
+  if (options.includes(previous)) {
+    visualConnectorEntitySelect.value = previous;
+    visualConnectorEntityFilter = previous;
+  } else {
+    visualConnectorEntitySelect.value = "all";
+    visualConnectorEntityFilter = "all";
+  }
+  return options;
 }
 
 function handleDomainChipClick(event) {
@@ -4954,6 +5012,7 @@ function openVisualModal() {
   renderVisualFunctionOptions();
   renderVisualEntityOptions();
   renderVisualBusinessOwnerOptions();
+  renderVisualConnectorEntityOptions();
   updateVisualGroupingControlVisibility();
   window.requestAnimationFrame(renderVisualSnapshot);
 }
@@ -4973,15 +5032,17 @@ function requestVisualRender() {
   });
 }
 
-function drawVisualEntityConnectors(svgRoot, positionMap, includedIds = new Set()) {
+function drawVisualEntityConnectors(svgRoot, positionMap, includedIds = new Set(), targetEntity = "") {
   if (!svgRoot || !positionMap) return;
   const groups = new Map();
+  const normalizedTarget = (targetEntity || "").trim().toLowerCase();
 
   systems.forEach((system) => {
     if (!includedIds.has(system.id)) return;
     system.entities.forEach((entity) => {
       const name = (entity.name || "").trim();
       if (!name) return;
+      if (normalizedTarget && name.toLowerCase() !== normalizedTarget) return;
       if (!groups.has(name)) {
         groups.set(name, new Set());
       }
@@ -5044,7 +5105,9 @@ function renderVisualSnapshot() {
   const availableFunctions = renderVisualFunctionOptions(systemsToShow);
   const availableEntities = renderVisualEntityOptions(systemsToShow);
   const availableBusinessOwners = renderVisualBusinessOwnerOptions(systemsToShow);
-  const connectorMode = visualConnectorTypeSelect?.value || "system";
+  renderVisualConnectorEntityOptions(systemsToShow);
+  const connectorMode = visualConnectorMode || "system";
+  const connectorEntityFilter = visualConnectorEntityFilter || "all";
 
   if (!systemsToShow.length) {
     const empty = document.createElement("div");
@@ -5119,6 +5182,14 @@ function renderVisualSnapshot() {
   };
 
   let eligibleSystems = systemsToShow;
+  if (connectorMode === "entity" && groupMode === "none") {
+    if (connectorEntityFilter !== "all" && connectorEntityFilter.trim()) {
+      const matchName = connectorEntityFilter.trim().toLowerCase();
+      eligibleSystems = eligibleSystems.filter((system) =>
+        system.entities.some((entity) => (entity.name || "").trim().toLowerCase() === matchName)
+      );
+    }
+  }
   if (groupByDomain) {
     eligibleSystems = systemsToShow.filter((system) => system.domains.has(targetDomainKey));
   } else if (groupByFunction) {
@@ -5688,12 +5759,16 @@ function renderVisualSnapshot() {
   visualConnectionsSvg.setAttribute("width", width);
   visualConnectionsSvg.setAttribute("height", height);
 
-  if (connectorMode === "entity") {
-    drawVisualEntityConnectors(visualConnectionsSvg, positionMap, includedIds);
-  } else {
-    connections
-      .filter((conn) => includedIds.has(conn.from) && includedIds.has(conn.to))
-      .forEach((conn) => {
+    if (connectorMode === "entity") {
+      const targetEntityName =
+        connectorEntityFilter !== "all" && connectorEntityFilter.trim()
+          ? connectorEntityFilter
+          : "";
+      drawVisualEntityConnectors(visualConnectionsSvg, positionMap, includedIds, targetEntityName);
+    } else {
+      connections
+        .filter((conn) => includedIds.has(conn.from) && includedIds.has(conn.to))
+        .forEach((conn) => {
         const fromPos = positionMap.get(conn.from);
         const toPos = positionMap.get(conn.to);
         if (!fromPos || !toPos) return;
