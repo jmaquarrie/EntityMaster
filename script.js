@@ -1252,6 +1252,14 @@ function updateVisualGroupingControlVisibility() {
   visualFunctionControls?.classList.toggle("hidden", !isFunction);
   visualEntityControls?.classList.toggle("hidden", !isEntity);
   visualBusinessOwnerControls?.classList.toggle("hidden", !isBusinessOwner);
+  const connectorTypeWrapper = visualConnectorTypeSelect?.closest(".visual-connector-select");
+  const showConnectorType = mode === "none";
+  connectorTypeWrapper?.classList.toggle("hidden", !showConnectorType);
+  if (!showConnectorType && visualConnectorTypeSelect) {
+    if (visualConnectorTypeSelect.value !== "system") {
+      visualConnectorTypeSelect.value = "system";
+    }
+  }
   if (mode !== "none") {
     visualLayoutMode = "scaled";
   }
