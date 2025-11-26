@@ -5200,7 +5200,7 @@ function requestVisualRender() {
 function syncDataTableHideEmptyVisibility() {
   if (!dataTableHideEmptyWrapper) return;
   const groupBy = dataTableGroupSelect?.value || "none";
-  dataTableHideEmptyWrapper.classList.toggle("hidden", groupBy !== "none");
+  dataTableHideEmptyWrapper.classList.toggle("hidden", groupBy === "none");
 }
 
 function drawVisualEntityConnectors(svgRoot, positionMap, includedIds = new Set(), targetEntity = "") {
@@ -6824,7 +6824,7 @@ function renderSystemDataTable() {
   if (groupBy !== "none") {
     lastDataTableGroupField = groupBy;
   }
-  const hideEmptyRows = dataTableHideEmptyFields && groupBy === "none";
+  const hideEmptyRows = dataTableHideEmptyFields && groupBy !== "none";
   const groupFieldForHiding = groupBy === "none" ? lastDataTableGroupField || "domain" : groupBy;
   const headerCells = dataTableModal?.querySelectorAll(".system-data-table thead th") || [];
   const groupOrder = [
@@ -6983,6 +6983,7 @@ function renderSystemDataTable() {
         const bucket = grouped.get(key);
 
         Object.entries(row).forEach(([field, value]) => {
+          if (!bucket[field]) return;
           const values = normalizeValues(value);
           values.forEach((val) => {
             if (val && val !== "—") {
