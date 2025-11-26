@@ -498,6 +498,7 @@ let showFullParentLineage = false;
 let visualLayoutMode = "scaled";
 let dataTableShowAttributes = false;
 let dataTableHideEmptyFields = false;
+let dataTableMultiSystemOnly = false;
 let lastDataTableGroupField = "domain";
 let lastDeletedSnapshot = null;
 let saveStatusTimer = null;
@@ -666,6 +667,7 @@ const dataTableGroupSelect = document.getElementById("dataTableGroupSelect");
 const dataTableHideEmptyToggle = document.getElementById("dataTableHideEmptyToggle");
 const dataTableHideEmptyWrapper = document.getElementById("dataTableHideEmptyWrapper");
 const dataTableAttributesToggle = document.getElementById("dataTableAttributesToggle");
+const dataTableMultiSystemToggle = document.getElementById("dataTableMultiSystemToggle");
 const systemDataTableBody = document.getElementById("systemDataTableBody");
 const filePresenceFilterSelect = document.getElementById("filePresenceFilter");
 const dataTableFilterInputs = {
@@ -708,6 +710,7 @@ const visualBusinessOwnerControls = document.getElementById("visualBusinessOwner
 const visualConnectorTypeSelect = document.getElementById("visualConnectorTypeSelect");
 const visualConnectorEntitySelect = document.getElementById("visualConnectorEntitySelect");
 const visualConnectorEntityControls = document.querySelector(".visual-entity-connector-controls");
+const visualShowDescriptionToggle = document.getElementById("visualShowDescriptionToggle");
 const accessBadge = document.getElementById("accessBadge");
 
 let activePanelSystem = null;
@@ -720,6 +723,7 @@ let visualConnectorMode = visualConnectorTypeSelect?.value || "system";
 let visualConnectorUserChoice = visualConnectorMode;
 let rememberedVisualConnectorMode = visualConnectorMode;
 let visualConnectorEntityFilter = "all";
+let visualShowDescriptions = false;
 
 function applyAccessMode(mode = "full") {
   currentAccessMode = mode || "full";
@@ -1023,6 +1027,10 @@ function init() {
     dataTableShowAttributes = event.target.checked;
     renderSystemDataTable();
   });
+  dataTableMultiSystemToggle?.addEventListener("change", (event) => {
+    dataTableMultiSystemOnly = event.target.checked;
+    renderSystemDataTable();
+  });
   saveTableCsvBtn?.addEventListener("click", exportTableToCsv);
   Object.entries(dataTableFilterInputs).forEach(([key, input]) => {
     input?.addEventListener("input", (event) => {
@@ -1138,6 +1146,11 @@ function init() {
   visualConnectorEntitySelect?.addEventListener("change", () => {
     if (!visualModal || visualModal.classList.contains("hidden")) return;
     visualConnectorEntityFilter = visualConnectorEntitySelect.value || "all";
+    renderVisualSnapshot();
+  });
+  visualShowDescriptionToggle?.addEventListener("change", () => {
+    if (!visualModal || visualModal.classList.contains("hidden")) return;
+    visualShowDescriptions = visualShowDescriptionToggle.checked;
     renderVisualSnapshot();
   });
   undoDeleteBtn?.addEventListener("click", handleUndoDelete);
@@ -5219,6 +5232,9 @@ function openVisualModal() {
   renderVisualAttributeOptions();
   renderVisualBusinessOwnerOptions();
   renderVisualConnectorEntityOptions();
+  if (visualShowDescriptionToggle) {
+    visualShowDescriptionToggle.checked = visualShowDescriptions;
+  }
   updateVisualGroupingControlVisibility();
   window.requestAnimationFrame(renderVisualSnapshot);
 }
@@ -5298,6 +5314,9 @@ function openDataTableModal() {
   if (dataTableHideEmptyToggle) {
     dataTableHideEmptyToggle.checked = dataTableHideEmptyFields;
   }
+  if (dataTableMultiSystemToggle) {
+    dataTableMultiSystemToggle.checked = dataTableMultiSystemOnly;
+  }
   Object.entries(dataTableFilterInputs).forEach(([key, input]) => {
     if (!input) return;
     input.value = dataTableColumnFilters[key] || "";
@@ -5358,6 +5377,15 @@ function renderVisualSnapshot() {
   const groupByEntity = groupMode === "entity";
   const groupByAttribute = groupMode === "attribute";
   const groupByBusinessOwner = groupMode === "businessOwner";
+  const formatDescriptionSnippet = (text) => {
+    const raw = (text || "").trim();
+    if (!raw) return "";
+    const words = raw.split(/\s+/);
+    if (words.length > 10) {
+      return `${words.slice(0, 10).join(" ")}...`;
+    }
+    return raw;
+  };
   const fallbackDomainKey =
     visualDomainSelect?.value || availableDomains[0]?.key || domainDefinitions[0]?.key || "people";
   const fallbackFunctionOwner =
@@ -5393,6 +5421,16 @@ function renderVisualSnapshot() {
     nameSpan.textContent = system.name || "Untitled";
     meta.append(iconSpan, nameSpan);
     node.appendChild(meta);
+
+    if (visualShowDescriptions) {
+      const snippet = formatDescriptionSnippet(system.description);
+      if (snippet) {
+        const desc = document.createElement("p");
+        desc.className = "visual-description";
+        desc.textContent = snippet;
+        node.appendChild(desc);
+      }
+    }
 
     const hoverCard = document.createElement("div");
     hoverCard.className = "visual-hover-card";
@@ -6890,6 +6928,7 @@ function renderSystemDataTable() {
   ];
   const groupColumnIndex = groupOrder.indexOf(groupBy);
   const showAttributesColumn = dataTableShowAttributes || groupBy === "attributes";
+  const requireMultiSystemGrouping = dataTableMultiSystemOnly && groupBy !== "none" && groupBy !== "system";
 
   const normalizeValues = (value) => {
     if (Array.isArray(value)) {
@@ -7015,6 +7054,8 @@ function renderSystemDataTable() {
   if (groupBy !== "none" && groupColumnIndex >= 0) {
     const grouped = new Map();
 
+    let appendedGroupedRows = 0;
+
     filteredRows.forEach((row) => {
       const groupValues = normalizeValues(row[groupBy]);
 
@@ -7049,6 +7090,12 @@ function renderSystemDataTable() {
     });
 
     grouped.forEach((bucket, key) => {
+      if (requireMultiSystemGrouping) {
+        const systemCount = bucket.system?.size ?? 0;
+        if (systemCount <= 1) {
+          return;
+        }
+      }
       const row = document.createElement("tr");
       const exportRow = {};
       groupOrder.forEach((field, index) => {
@@ -7071,7 +7118,16 @@ function renderSystemDataTable() {
       });
       pushExportRow(exportRow);
       systemDataTableBody.appendChild(row);
+      appendedGroupedRows += 1;
     });
+    if (!appendedGroupedRows) {
+      const emptyRow = document.createElement("tr");
+      const cell = document.createElement("td");
+      cell.colSpan = 7;
+      cell.textContent = "No rows match the current table filters.";
+      emptyRow.appendChild(cell);
+      systemDataTableBody.appendChild(emptyRow);
+    }
     return;
   }
 

@@ -1761,6 +1761,11 @@ button.small {
   flex-wrap: wrap;
 }
 
+.visual-description-toggle {
+  margin-left: auto;
+  align-self: flex-start;
+}
+
 .visual-body {
   display: flex;
   gap: 1rem;
@@ -1788,6 +1793,8 @@ button.small {
 .visual-description {
   margin: 0;
   color: #3c3f55;
+  font-size: 12px;
+  line-height: 1.3;
 }
 
 

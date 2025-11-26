@@ -382,6 +382,10 @@
                 <input type="checkbox" id="dataTableAttributesToggle" />
                 <span>Show attributes</span>
               </label>
+              <label class="field compact inline-toggle">
+                <input type="checkbox" id="dataTableMultiSystemToggle" />
+                <span>Show multi-system only</span>
+              </label>
               <button id="saveTableCsvBtn" type="button" class="secondary">Save to CSV</button>
               <button id="closeDataTableBtn" aria-label="Close system data table">Close</button>
             </div>
@@ -567,11 +571,11 @@
       <div id="visualModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="visualModalTitle">
         <div class="modal-card visual-modal-card">
           <div class="modal-header visual-header">
-            <div class="visual-header-main">
-              <h3 id="visualModalTitle">Visualise</h3>
-              <div class="visual-header-controls">
-                <label class="field compact visual-group-select">
-                  <span>Group by</span>
+              <div class="visual-header-main">
+                <h3 id="visualModalTitle">Visualise</h3>
+                <div class="visual-header-controls">
+                  <label class="field compact visual-group-select">
+                    <span>Group by</span>
                   <select id="visualGroupBySelect" aria-label="Visual grouping choice">
                     <option value="none">None</option>
                     <option value="domain">Domain</option>
@@ -624,6 +628,10 @@
                     </label>
                   </div>
                 </div>
+                <label class="field compact inline-toggle visual-description-toggle">
+                  <input type="checkbox" id="visualShowDescriptionToggle" />
+                  <span>Show Description</span>
+                </label>
               </div>
             </div>
             <button id="closeVisualModal" class="icon-btn" type="button" aria-label="Close visualise">×</button>
