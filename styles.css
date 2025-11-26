@@ -947,14 +947,15 @@ button.ghost {
 .sidebar-reset-collapsed {
   align-self: flex-end;
   margin: 0.35rem 0;
-  padding: 0.25rem 0.65rem;
+  padding: 0.5rem 1.2rem;
   border-radius: 999px;
-  border: 1px solid rgba(15, 20, 36, 0.2);
-  background: rgba(255, 255, 255, 0.85);
-  color: #0f1424;
-  font-size: 0.85rem;
+  border: none;
+  background: #121839;
+  color: #fff;
+  font-size: 0.95rem;
   cursor: pointer;
-  transition: opacity 0.15s ease;
+  box-shadow: 0 0.25rem 0.5rem rgba(18, 24, 57, 0.25);
+  transition: opacity 0.15s ease, transform 0.1s ease;
 }
 
 .sidebar-reset-collapsed.hidden {
@@ -2038,6 +2039,9 @@ button.small {
   box-shadow: 0 6px 18px rgba(18, 38, 63, 0.15);
   padding: 0.25rem 0;
   min-width: 160px;
+  width: max-content;
+  max-width: 320px;
+  white-space: nowrap;
   z-index: 600;
 }
 

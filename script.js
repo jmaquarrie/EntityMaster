@@ -3000,7 +3000,7 @@ function handleConnectionLabelKeyDown(event) {
   }
 }
 
-function selectSystem(system) {
+function selectSystem(system, { skipHighlight = false } = {}) {
   relationFocus = null;
   selectedSystemId = system.id;
   if (system.isObject) {
@@ -3013,7 +3013,9 @@ function selectSystem(system) {
     activePanelSystem = system;
     openPanel(system);
   }
-  updateHighlights();
+  if (!skipHighlight) {
+    updateHighlights();
+  }
 }
 
 function openPanel(system) {
@@ -6081,7 +6083,7 @@ function attachVisualNodeBringToFront() {
       if (!id) return;
       const targetSystem = systems.find((system) => system.id === id);
       if (!targetSystem) return;
-      selectSystem(targetSystem);
+      selectSystem(targetSystem, { skipHighlight: true });
       panel?.classList.remove("hidden");
     });
   });
@@ -7018,7 +7020,7 @@ function renderSystemDataTable() {
         linkBtn.addEventListener("click", () => {
           const targetSystem = systems.find((sys) => sys.id === entry.systemId);
           if (targetSystem) {
-            selectSystem(targetSystem);
+            selectSystem(targetSystem, { skipHighlight: true });
           }
         });
         cell.appendChild(linkBtn);
