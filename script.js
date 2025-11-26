@@ -3143,14 +3143,17 @@ function handleAddEntity(event) {
   renderVisualEntityOptions();
 }
 
-function renderEntityList(system) {
+function renderEntityList(system, { skipAttributesRefresh = false } = {}) {
   entityList.innerHTML = "";
+  const attributeCounts = countAttributesByEntity(system);
   system.entities.forEach((entity, index) => {
     const li = document.createElement("li");
     if (entity.isSor) li.classList.add("sor");
+    li.dataset.entityName = entity.name;
 
     const nameSpan = document.createElement("span");
-    nameSpan.textContent = entity.name;
+    const entityAttributeCount = attributeCounts[entity.name] || 0;
+    nameSpan.textContent = `${entity.name} (${entityAttributeCount})`;
     nameSpan.className = "entity-name";
     nameSpan.tabIndex = 0;
     const openAttributesForEntity = () => {
@@ -3200,7 +3203,8 @@ function renderEntityList(system) {
 
   updateSystemMeta(system);
   refreshEntityLinkIfActive();
-  if (attributesModal && !attributesModal.classList.contains("hidden")) {
+  updateAttributesLinkLabel(system);
+  if (attributesModal && !attributesModal.classList.contains("hidden") && !skipAttributesRefresh) {
     renderAttributesModal(system);
   }
 }
@@ -3210,6 +3214,32 @@ function ensureAttributesArray(system) {
     system.attributes = [];
   }
   return system.attributes;
+}
+
+function countAttributesByEntity(system) {
+  ensureAttributesArray(system);
+  const counts = {};
+  system.attributes.forEach(({ attribute, entity }) => {
+    const key = (entity || "").trim();
+    counts[key] = (counts[key] || 0) + 1;
+  });
+  return counts;
+}
+
+function getTotalAttributeCount(system) {
+  ensureAttributesArray(system);
+  return system.attributes.length;
+}
+
+function updateAttributesLinkLabel(system) {
+  if (!attributesModalTrigger || !system) return;
+  const total = getTotalAttributeCount(system);
+  attributesModalTrigger.textContent = `Attributes (${total})`;
+}
+
+function refreshAttributeSummaries(system, { skipAttributesRefresh = true } = {}) {
+  if (!system || !entityList) return;
+  renderEntityList(system, { skipAttributesRefresh });
 }
 
 function updateAttributesModalTitle() {
@@ -3297,6 +3327,7 @@ function renderAttributesModal(system) {
   });
   updateAttributesModalTitle();
   toggleAttributesResetButton();
+  updateAttributesLinkLabel(system);
   positionAttributesModal();
 }
 
@@ -3360,6 +3391,7 @@ function handleAttributeTableInput(event) {
     }
     attributes[idx][field] = target.value;
   });
+  refreshAttributeSummaries(activePanelSystem);
 }
 
 function handleAttributeTableClick(event) {
@@ -3379,6 +3411,7 @@ function handleAttributeTableClick(event) {
     selectedAttributeRows.clear();
     adjustedSelection.forEach((idx) => selectedAttributeRows.add(idx));
     renderAttributesModal(activePanelSystem);
+    refreshAttributeSummaries(activePanelSystem);
     return;
   }
 
@@ -3405,6 +3438,7 @@ function handleAddAttributeRow() {
   const attributes = ensureAttributesArray(activePanelSystem);
   attributes.push({ attribute: "", entity: attributesModalEntityFilter || "" });
   renderAttributesModal(activePanelSystem);
+  refreshAttributeSummaries(activePanelSystem);
 }
 
 function handleProcessAttributesCsv() {
@@ -3436,6 +3470,7 @@ function handleProcessAttributesCsv() {
     attributesCsvInput.value = "";
   }
   renderAttributesModal(activePanelSystem);
+  refreshAttributeSummaries(activePanelSystem);
 }
 
 function handleDomainSelection(event) {

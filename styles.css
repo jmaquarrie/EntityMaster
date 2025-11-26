@@ -1376,7 +1376,10 @@ button.ghost {
 
 #attributesModal {
   position: fixed;
-  width: min(720px, calc(83vw - var(--panel-width) - 2rem));
+  width: min(500px, 90vw);
+  max-width: min(500px, 90vw);
+  height: calc(100vh - 3rem);
+  top: 1.5rem;
   z-index: 20;
 }
 
@@ -1404,7 +1407,7 @@ button.ghost {
 
 .table-scroll {
   overflow: auto;
-  max-height: 320px;
+  max-height: calc(100vh - 280px);
   border: 1px solid #e5e8f2;
   border-radius: 10px;
   min-width: 100%;
@@ -1419,9 +1422,10 @@ button.ghost {
 
 .attributes-table th,
 .attributes-table td {
-  padding: 0.6rem 0.65rem;
+  padding: 0.45rem 0.5rem;
   border-bottom: 1px solid #e6e8f2;
   text-align: left;
+  font-size: 0.95rem;
 }
 
 .attributes-table tr.selected {
@@ -1439,7 +1443,7 @@ button.ghost {
 .attributes-table .actions-col,
 .attributes-table th.actions-col,
 .attributes-table td.actions-col {
-  width: 56px;
+  width: 48px;
   text-align: center;
 }
 
@@ -1497,6 +1501,17 @@ button.ghost {
   background-size: 6px 6px, 6px 6px;
   background-repeat: no-repeat;
   padding-right: 24px;
+}
+
+.attributes-csv-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.35rem 0 0.15rem;
+}
+
+.attributes-csv-toggle input {
+  margin: 0;
 }
 
 .entity-name {
