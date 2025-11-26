@@ -1148,6 +1148,14 @@ button.ghost {
   gap: 0.35rem;
 }
 
+.entity-name-block {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: 1;
+  min-width: 0;
+}
+
 .entity-actions {
   display: flex;
   align-items: center;
@@ -1160,6 +1168,12 @@ button.ghost {
   border: none;
   padding: 0;
   font-size: 1.1rem;
+}
+
+.edit-entity-btn {
+  font-size: 0.95rem;
+  padding: 0.1rem;
+  color: #0f1424;
 }
 
 .entity-list .sor-toggle {

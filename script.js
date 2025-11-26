@@ -3140,7 +3140,32 @@ function handleAddEntity(event) {
   updateSystemMeta(activePanelSystem);
   refreshEntityLinkIfActive();
   updateHighlights();
+}
+
+function renameEntityName(system, index) {
+  if (isEditingLocked()) return;
+  if (!system || !system.entities || !system.entities[index]) return;
+  const entity = system.entities[index];
+  const updatedName = prompt("Edit entity name", entity.name);
+  if (updatedName === null) return;
+  const trimmed = updatedName.trim();
+  if (!trimmed || trimmed === entity.name) return;
+  const oldName = entity.name;
+  entity.name = trimmed;
+  const attributes = ensureAttributesArray(system);
+  attributes.forEach((entry) => {
+    if ((entry.entity || "") === oldName) {
+      entry.entity = trimmed;
+    }
+  });
+  if (attributesModalEntityFilter === oldName) {
+    attributesModalEntityFilter = trimmed;
+    updateAttributesModalTitle();
+    toggleAttributesResetButton();
+  }
+  renderEntityList(system);
   renderVisualEntityOptions();
+  updateHighlights();
 }
 
 function renderEntityList(system, { skipAttributesRefresh = false } = {}) {
@@ -3151,6 +3176,8 @@ function renderEntityList(system, { skipAttributesRefresh = false } = {}) {
     if (entity.isSor) li.classList.add("sor");
     li.dataset.entityName = entity.name;
 
+    const nameWrap = document.createElement("div");
+    nameWrap.className = "entity-name-block";
     const nameSpan = document.createElement("span");
     const entityAttributeCount = attributeCounts[entity.name] || 0;
     nameSpan.textContent = `${entity.name} (${entityAttributeCount})`;
@@ -3167,6 +3194,14 @@ function renderEntityList(system, { skipAttributesRefresh = false } = {}) {
         openAttributesForEntity();
       }
     });
+
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.className = "edit-entity-btn";
+    editBtn.setAttribute("aria-label", `Edit ${entity.name}`);
+    editBtn.textContent = "✎";
+    editBtn.addEventListener("click", () => renameEntityName(system, index));
+    nameWrap.append(nameSpan, editBtn);
 
     const actions = document.createElement("div");
     actions.className = "entity-actions";
@@ -3193,11 +3228,10 @@ function renderEntityList(system, { skipAttributesRefresh = false } = {}) {
       renderEntityList(system);
       updateSystemMeta(system);
       updateHighlights();
-      renderVisualEntityOptions();
     });
 
     actions.append(sorLabel, removeBtn);
-    li.append(nameSpan, actions);
+    li.append(nameWrap, actions);
     entityList.appendChild(li);
   });
 
@@ -3207,6 +3241,7 @@ function renderEntityList(system, { skipAttributesRefresh = false } = {}) {
   if (attributesModal && !attributesModal.classList.contains("hidden") && !skipAttributesRefresh) {
     renderAttributesModal(system);
   }
+  renderVisualEntityOptions();
 }
 
 function ensureAttributesArray(system) {
