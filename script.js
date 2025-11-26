@@ -3450,6 +3450,10 @@ function handleAttributeTableClick(event) {
     return;
   }
 
+  if (target.closest(".cell-input")) {
+    return;
+  }
+
   const row = target.closest("tr");
   if (!row) return;
   const rowIndex = Number(row.dataset.index);
@@ -3464,7 +3468,20 @@ function handleAttributeTableClick(event) {
     selectedAttributeRows.add(rowIndex);
   }
   lastAttributeSelectedIndex = rowIndex;
-  renderAttributesModal(activePanelSystem);
+  syncAttributeRowSelectionClasses();
+}
+
+function syncAttributeRowSelectionClasses() {
+  if (!attributesTableBody) return;
+  attributesTableBody.querySelectorAll("tr").forEach((row) => {
+    const idx = Number(row.dataset.index);
+    if (Number.isNaN(idx)) return;
+    if (selectedAttributeRows.has(idx)) {
+      row.classList.add("selected");
+    } else {
+      row.classList.remove("selected");
+    }
+  });
 }
 
 function handleAddAttributeRow() {
