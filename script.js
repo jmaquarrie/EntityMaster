@@ -442,6 +442,8 @@ const DEFAULT_DOMAINS = [
 ];
 
 let domainDefinitions = DEFAULT_DOMAINS.map((domain) => ({ ...domain, isCustom: false }));
+const DOMAIN_NONE_KEY = "__none__";
+const OWNER_NONE_FILTER = "__none__";
 
 const systems = [];
 const OBJECT_TYPES = {
@@ -518,6 +520,12 @@ let activeEntitySourceId = null;
 let systemHighlightState = new Map();
 let currentFileName = "Untitled";
 let fileNameBeforeEdit = "Untitled";
+
+function normalizeOwnerFilterValue(value) {
+  const trimmed = (value || "").trim();
+  if (!trimmed) return "";
+  return trimmed.toLowerCase() === "none" ? OWNER_NONE_FILTER : trimmed.toLowerCase();
+}
 let currentSaveId = null;
 let marqueePreviewIds = new Set();
 let relationFocus = null;
@@ -898,19 +906,19 @@ function init() {
   fileUrlInput?.addEventListener("input", handleFileUrlChange);
   platformOwnerFilterInput.addEventListener("input", (event) => {
     if (isFiltersLocked()) return;
-    platformOwnerFilterText = event.target.value.trim().toLowerCase();
+    platformOwnerFilterText = normalizeOwnerFilterValue(event.target.value);
     selectedSystemId = null;
     updateHighlights();
   });
   businessOwnerFilterInput.addEventListener("input", (event) => {
     if (isFiltersLocked()) return;
-    businessOwnerFilterText = event.target.value.trim().toLowerCase();
+    businessOwnerFilterText = normalizeOwnerFilterValue(event.target.value);
     selectedSystemId = null;
     updateHighlights();
   });
   functionOwnerFilterInput.addEventListener("input", (event) => {
     if (isFiltersLocked()) return;
-    functionOwnerFilterText = event.target.value.trim().toLowerCase();
+    functionOwnerFilterText = normalizeOwnerFilterValue(event.target.value);
     selectedSystemId = null;
     updateHighlights();
   });
@@ -1252,12 +1260,14 @@ function renderPanelDomainChoices() {
 
 function renderGlobalDomainChips() {
   if (!globalDomainChips) return;
-  globalDomainChips.innerHTML = domainDefinitions
+  const chips = domainDefinitions
     .map(
       (domain) =>
         `<button class="domain-chip" data-domain="${domain.key}" style="color:${domain.color};">${domain.label}</button>`
     )
     .join("");
+  const noneChip = `<button class="domain-chip" data-domain="${DOMAIN_NONE_KEY}" style="color:#0f1424;">None</button>`;
+  globalDomainChips.innerHTML = chips + noneChip;
 }
 
 function getAvailableDomainsForSystems(sourceSystems = systems) {
@@ -4288,23 +4298,38 @@ function focusOnSystemRelations(system, mode) {
 
 function systemMatchesFilters(system) {
   if (activeDomainFilters.size) {
-    const hasAllDomains = Array.from(activeDomainFilters).every((domain) => system.domains.has(domain));
-    if (!hasAllDomains) {
-      return false;
+    if (activeDomainFilters.has(DOMAIN_NONE_KEY)) {
+      if (system.domains.size > 0 || activeDomainFilters.size > 1) {
+        return false;
+      }
+    } else {
+      const hasAllDomains = Array.from(activeDomainFilters).every((domain) => system.domains.has(domain));
+      if (!hasAllDomains) {
+        return false;
+      }
     }
   }
   if (platformOwnerFilterText) {
-    if (!(system.platformOwner || "").toLowerCase().includes(platformOwnerFilterText)) {
+    const ownerValue = (system.platformOwner || "").trim();
+    if (platformOwnerFilterText === OWNER_NONE_FILTER) {
+      if (ownerValue) return false;
+    } else if (!ownerValue.toLowerCase().includes(platformOwnerFilterText)) {
       return false;
     }
   }
   if (businessOwnerFilterText) {
-    if (!(system.businessOwner || "").toLowerCase().includes(businessOwnerFilterText)) {
+    const ownerValue = (system.businessOwner || "").trim();
+    if (businessOwnerFilterText === OWNER_NONE_FILTER) {
+      if (ownerValue) return false;
+    } else if (!ownerValue.toLowerCase().includes(businessOwnerFilterText)) {
       return false;
     }
   }
   if (functionOwnerFilterText) {
-    if (!(system.functionOwner || "").toLowerCase().includes(functionOwnerFilterText)) {
+    const ownerValue = (system.functionOwner || "").trim();
+    if (functionOwnerFilterText === OWNER_NONE_FILTER) {
+      if (ownerValue) return false;
+    } else if (!ownerValue.toLowerCase().includes(functionOwnerFilterText)) {
       return false;
     }
   }
@@ -4425,11 +4450,12 @@ function getCanvasRelativeCoords(clientX, clientY) {
 }
 
 function populateFunctionOwnerOptions() {
-  functionOwnerOptionsList.innerHTML = Array.from(functionOwnerOptions)
+  const baseOptions = Array.from(functionOwnerOptions)
     .filter((value) => !!value)
     .sort((a, b) => a.localeCompare(b))
-    .map((value) => `<option value="${value}"></option>`)
-    .join("");
+    .map((value) => `<option value="${value}"></option>`);
+  baseOptions.push('<option value="None"></option>');
+  functionOwnerOptionsList.innerHTML = baseOptions.join("");
 }
 
 function ensureFunctionOwnerOption(value) {
@@ -4448,14 +4474,16 @@ function refreshOwnerSuggestionLists() {
     if (system.platformOwner) ownerSuggestionSets.platform.add(system.platformOwner);
     if (system.businessOwner) ownerSuggestionSets.business.add(system.businessOwner);
   });
-  platformOwnerSuggestionsList.innerHTML = Array.from(ownerSuggestionSets.platform)
+  const platformOptions = Array.from(ownerSuggestionSets.platform)
     .sort((a, b) => a.localeCompare(b))
-    .map((value) => `<option value="${value}"></option>`)
-    .join("");
-  businessOwnerSuggestionsList.innerHTML = Array.from(ownerSuggestionSets.business)
+    .map((value) => `<option value="${value}"></option>`);
+  platformOptions.push('<option value="None"></option>');
+  platformOwnerSuggestionsList.innerHTML = platformOptions.join("");
+  const businessOptions = Array.from(ownerSuggestionSets.business)
     .sort((a, b) => a.localeCompare(b))
-    .map((value) => `<option value="${value}"></option>`)
-    .join("");
+    .map((value) => `<option value="${value}"></option>`);
+  businessOptions.push('<option value="None"></option>');
+  businessOwnerSuggestionsList.innerHTML = businessOptions.join("");
   renderVisualBusinessOwnerOptions();
 }
 
@@ -6710,9 +6738,9 @@ function applyFilterState(filterState = {}) {
   const showParents = !!filterState.showParents;
   const fullParentLineage = !!filterState.fullParentLineage;
 
-  platformOwnerFilterText = platformOwnerValue.trim().toLowerCase();
-  businessOwnerFilterText = businessOwnerValue.trim().toLowerCase();
-  functionOwnerFilterText = functionOwnerValue.trim().toLowerCase();
+  platformOwnerFilterText = normalizeOwnerFilterValue(platformOwnerValue);
+  businessOwnerFilterText = normalizeOwnerFilterValue(businessOwnerValue);
+  functionOwnerFilterText = normalizeOwnerFilterValue(functionOwnerValue);
   searchQuery = searchValue.trim().toLowerCase();
   searchType = filterState.searchType || searchType;
   filterMode = filterState.filterMode || filterMode;
