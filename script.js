@@ -6921,11 +6921,9 @@ function renderSystemDataTable() {
 
     if (!terms.length) return true;
 
-    const values = normalizeValues(value)
-      .join(", ")
-      .toLowerCase();
+    const values = normalizeValues(value).map((val) => val.toLowerCase());
 
-    return terms.some((term) => values.includes(term));
+    return terms.some((term) => values.some((val) => val.includes(term)));
   };
 
   const filteredRows = rawRows.filter((row) => {
