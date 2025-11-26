@@ -1213,7 +1213,7 @@ button.ghost {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.38);
   backdrop-filter: blur(12px) saturate(130%);
   z-index: 12;
   padding: 1.5rem;
@@ -1224,7 +1224,7 @@ button.ghost {
 }
 
 .modal-card {
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.82);
   border-radius: 20px;
   padding: 1.25rem;
   width: min(500px, 90vw);
@@ -1245,7 +1245,7 @@ button.ghost {
   max-width: none;
   border-radius: 20px;
   padding: 1rem 1.25rem 1.25rem;
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(18px) saturate(120%);
   border: 1px solid rgba(17, 24, 36, 0.08);
   display: flex;
@@ -1723,7 +1723,7 @@ button.small {
   height: calc(100vh - 1.5rem);
   max-height: none;
   gap: 0.5rem;
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(18px) saturate(120%);
   border: 1px solid rgba(17, 24, 36, 0.08);
   box-shadow: 0 25px 60px rgba(12, 19, 54, 0.2);

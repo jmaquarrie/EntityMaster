@@ -4578,74 +4578,65 @@ function handleSystemContextMenu(event, system) {
   const selectedSystems = multiSelectedIds.size
     ? systems.filter((item) => multiSelectedIds.has(item.id))
     : [system];
-  const menuOptions = multiSelectedIds.size
-    ? readOnly
+  const focusOptions = [
+    { label: "Data Lineage", onClick: () => focusOnSystemRelations(system, "lineage") },
+    { label: "Show children", onClick: () => focusOnSystemRelations(system, "children") },
+    { label: "Show parents", onClick: () => focusOnSystemRelations(system, "parents") },
+    {
+      label: "Show Entity Connections",
+      onClick: () => focusOnSystemRelations(system, "entityConnections"),
+    },
+  ];
+
+  const baseSingleOptions = [
+    ...(readOnly ? [] : [{ label: "Clone", onClick: () => cloneSystem(system) }]),
+    {
+      label: readOnly ? "View" : "Edit",
+      onClick: () => selectSystem(system),
+    },
+    ...focusOptions,
+    ...(owningGroup && !readOnly
       ? [
-          { label: "Data Lineage", onClick: () => focusOnSystemRelations(system, "lineage") },
-          { label: "Show children", onClick: () => focusOnSystemRelations(system, "children") },
-          { label: "Show parents", onClick: () => focusOnSystemRelations(system, "parents") },
-          {
-            label: "Show Entity Connections",
-            onClick: () => focusOnSystemRelations(system, "entityConnections"),
-          },
+          { label: "Edit Group", onClick: () => openGroupEditor(owningGroup) },
+          { label: "Remove Group", onClick: () => removeGroup(owningGroup.id) },
         ]
-      : [
-          {
-            label: "Group",
-            onClick: () => {
-              if (selectedSystems.length) {
-                createGroupFromSelection(selectedSystems);
-              }
-            },
-          },
-          ...(owningGroup
-            ? [
-                { label: "Edit Group", onClick: () => openGroupEditor(owningGroup) },
-                { label: "Remove Group", onClick: () => removeGroup(owningGroup.id) },
-              ]
-            : []),
-          {
-            label: "Bulk edit",
-            onClick: () => {
-              if (selectedSystems.length) {
-                openBulkModal(selectedSystems);
-              }
-            },
-          },
-          {
-            label: "Delete",
-            onClick: () => deleteMultiSelection(),
-          },
-        ]
-    : readOnly
-    ? [
-        { label: "Edit", onClick: () => selectSystem(system) },
-        { label: "Data Lineage", onClick: () => focusOnSystemRelations(system, "lineage") },
-        { label: "Show children", onClick: () => focusOnSystemRelations(system, "children") },
-        { label: "Show parents", onClick: () => focusOnSystemRelations(system, "parents") },
-        {
-          label: "Show Entity Connections",
-          onClick: () => focusOnSystemRelations(system, "entityConnections"),
-        },
-      ]
+      : []),
+    ...(readOnly ? [] : [{ label: "Delete", onClick: () => handleDeleteSystem(system) }]),
+  ];
+
+  const multiOptions = readOnly
+    ? focusOptions
     : [
-        { label: "Clone", onClick: () => cloneSystem(system) },
-        { label: "Edit", onClick: () => selectSystem(system) },
-        { label: "Data Lineage", onClick: () => focusOnSystemRelations(system, "lineage") },
-        { label: "Show children", onClick: () => focusOnSystemRelations(system, "children") },
-        { label: "Show parents", onClick: () => focusOnSystemRelations(system, "parents") },
         {
-          label: "Show Entity Connections",
-          onClick: () => focusOnSystemRelations(system, "entityConnections"),
+          label: "Group",
+          onClick: () => {
+            if (selectedSystems.length) {
+              createGroupFromSelection(selectedSystems);
+            }
+          },
         },
-        ...(owningGroup && !readOnly
+        ...(owningGroup
           ? [
               { label: "Edit Group", onClick: () => openGroupEditor(owningGroup) },
               { label: "Remove Group", onClick: () => removeGroup(owningGroup.id) },
             ]
           : []),
-        { label: "Delete", onClick: () => handleDeleteSystem(system) },
+        {
+          label: "Bulk edit",
+          onClick: () => {
+            if (selectedSystems.length) {
+              openBulkModal(selectedSystems);
+            }
+          },
+        },
+        { label: "Delete", onClick: () => deleteMultiSelection() },
+        ...focusOptions,
       ];
+
+  const menuOptions = multiSelectedIds.size ? multiOptions : baseSingleOptions;
+  if (!menuOptions.length) {
+    menuOptions.push(...focusOptions);
+  }
   openContextMenu(menuOptions, event.pageX, event.pageY);
 }
 
