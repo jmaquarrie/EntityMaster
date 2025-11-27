@@ -3025,9 +3025,11 @@ function handleConnectionLabelKeyDown(event) {
   }
 }
 
-function selectSystem(system, { skipHighlight = false } = {}) {
-  relationFocus = null;
-  selectedSystemId = system.id;
+function selectSystem(system, { skipHighlight = false, skipSelectionState = false } = {}) {
+  if (!skipSelectionState) {
+    relationFocus = null;
+    selectedSystemId = system.id;
+  }
   if (system.isObject) {
     closeAttributesSideModal();
   }
@@ -3038,7 +3040,7 @@ function selectSystem(system, { skipHighlight = false } = {}) {
     activePanelSystem = system;
     openPanel(system);
   }
-  if (!skipHighlight) {
+  if (!skipHighlight && !skipSelectionState) {
     updateHighlights();
   }
 }
@@ -6296,7 +6298,7 @@ function attachVisualNodeBringToFront() {
       if (!id) return;
       const targetSystem = systems.find((system) => system.id === id);
       if (!targetSystem) return;
-      selectSystem(targetSystem, { skipHighlight: true });
+      selectSystem(targetSystem, { skipHighlight: true, skipSelectionState: true });
       panel?.classList.remove("hidden");
     });
   });
@@ -7250,7 +7252,7 @@ function renderSystemDataTable() {
         linkBtn.addEventListener("click", () => {
           const targetSystem = systems.find((sys) => sys.id === entry.systemId);
           if (targetSystem) {
-            selectSystem(targetSystem, { skipHighlight: true });
+            selectSystem(targetSystem, { skipHighlight: true, skipSelectionState: true });
           }
         });
         cell.appendChild(linkBtn);
