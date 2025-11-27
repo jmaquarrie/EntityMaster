@@ -5120,12 +5120,35 @@ function updateHistoryButtons() {
   }
 }
 
+function packHistoryEntry(snapshot) {
+  const signature = JSON.stringify(snapshot);
+  const encoded = encodeStatePayload(snapshot);
+  return { encoded, signature };
+}
+
+function decodeHistoryEntry(entry) {
+  if (!entry) return null;
+  if (typeof entry === "string") {
+    try {
+      return decodeStatePayload(entry);
+    } catch (error) {
+      try {
+        return JSON.parse(entry);
+      } catch {
+        console.warn("Unable to decode history entry", error);
+        return null;
+      }
+    }
+  }
+  return entry;
+}
+
 function captureHistorySnapshot(snapshotOverride) {
   if (suppressHistoryCapture) return;
   const snapshot = snapshotOverride || serializeState();
-  const signature = JSON.stringify(snapshot);
+  const { encoded, signature } = packHistoryEntry(snapshot);
   if (signature === lastHistorySignature) return;
-  historyStack.push(snapshot);
+  historyStack.push(encoded);
   if (historyStack.length > MAX_HISTORY_ENTRIES) {
     historyStack.shift();
   }
@@ -5144,10 +5167,12 @@ function handleUndoAction() {
     return;
   }
   redoStack.push(currentSnapshot);
+  const targetState = decodeHistoryEntry(target);
+  if (!targetState) return;
   suppressHistoryCapture = true;
-  loadSerializedState(target);
+  loadSerializedState(targetState);
   suppressHistoryCapture = false;
-  lastHistorySignature = JSON.stringify(target);
+  lastHistorySignature = JSON.stringify(targetState);
   updateHistoryButtons();
   suppressHistoryCapture = true;
   scheduleShareUrlSync();
@@ -5156,9 +5181,12 @@ function handleUndoAction() {
 
 function handleRedoAction() {
   if (!redoStack.length) return;
-  const snapshot = redoStack.pop();
+  const snapshotEntry = redoStack.pop();
+  const snapshot = decodeHistoryEntry(snapshotEntry);
+  if (!snapshot) return;
   const current = serializeState();
-  historyStack.push(current);
+  const { encoded: encodedCurrent } = packHistoryEntry(current);
+  historyStack.push(encodedCurrent);
   if (historyStack.length > MAX_HISTORY_ENTRIES) {
     historyStack.shift();
   }
@@ -5250,6 +5278,29 @@ function restoreFilterPanelHome() {
   }
 }
 
+function clearVisualCanvas() {
+  if (visualNodesContainer) {
+    visualNodesContainer.innerHTML = "";
+  }
+  if (visualConnectionsSvg) {
+    visualConnectionsSvg.innerHTML = "";
+  }
+}
+
+function resetVisualLayoutContext() {
+  visualNodePositions.clear();
+  if (visualLayoutContext) {
+    visualLayoutContext.width = 0;
+    visualLayoutContext.height = 0;
+    visualLayoutContext.padding = 50;
+    visualLayoutContext.groupMode = "none";
+    visualLayoutContext.clusters?.clear?.();
+    visualLayoutContext.anchors?.clear?.();
+    visualLayoutContext.positions?.clear?.();
+    visualLayoutContext.includedIds?.clear?.();
+  }
+}
+
 function openVisualModal() {
   updateHighlights();
   if (!visualModal) return;
@@ -5282,6 +5333,8 @@ function closeVisualModal() {
     visualConnectorEntitySelect.value = "all";
   }
   updateVisualConnectorVisibility();
+  clearVisualCanvas();
+  resetVisualLayoutContext();
   restoreFilterPanelHome();
 }
 
