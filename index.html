@@ -144,19 +144,23 @@
               />
             </div>
             <div class="sidebar-section">
-              <div class="section-title">Function Owner</div>
-              <input
-                type="text"
-                id="functionOwnerFilter"
-                placeholder="Filter by function owner"
-                list="functionOwnerOptions"
-              />
-            </div>
-            <div class="sidebar-section">
-              <label class="field">
-                <span>System of Record</span>
-                <select id="sorFilter">
-                  <option value="any">Any</option>
+            <div class="section-title">Function Owner</div>
+            <input
+              type="text"
+              id="functionOwnerFilter"
+              placeholder="Filter by function owner"
+              list="functionOwnerOptions"
+            />
+          </div>
+          <div class="sidebar-section">
+            <div class="section-title">Functional Consumers</div>
+            <div id="functionalConsumerFilterChips" class="domain-chips"></div>
+          </div>
+          <div class="sidebar-section">
+            <label class="field">
+              <span>System of Record</span>
+              <select id="sorFilter">
+                <option value="any">Any</option>
                   <option value="yes">Yes</option>
                   <option value="no">No</option>
                 </select>
@@ -259,6 +263,19 @@
             list="functionOwnerOptions"
           />
         </label>
+        <section class="field">
+          <div class="section-title">Functional Consumers</div>
+          <form id="functionalConsumerForm">
+            <input
+              type="text"
+              id="functionalConsumerInput"
+              placeholder="Add functional consumer"
+              list="functionOwnerOptions"
+            />
+            <button type="submit">Add</button>
+          </form>
+          <ul id="functionalConsumerList" class="consumer-list"></ul>
+        </section>
         <label class="field" data-shared-hidden="true">
           <span>File URL</span>
           <input type="text" id="fileUrlInput" placeholder="https://" />

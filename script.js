@@ -476,6 +476,7 @@ const COLOR_POOL = ["#5d8dee", "#c266ff", "#ffa447", "#3fb28a", "#dd5f68", "#2f9
 let platformOwnerFilterText = "";
 let businessOwnerFilterText = "";
 let functionOwnerFilterText = "";
+const functionalConsumerFilters = new Set();
 let searchType = "system";
 let searchQuery = "";
 let currentZoom = 1;
@@ -590,6 +591,9 @@ const systemNameInput = document.getElementById("systemNameInput");
 const platformOwnerInput = document.getElementById("platformOwnerInput");
 const businessOwnerInput = document.getElementById("businessOwnerInput");
 const functionOwnerInput = document.getElementById("functionOwnerInput");
+const functionalConsumerForm = document.getElementById("functionalConsumerForm");
+const functionalConsumerInput = document.getElementById("functionalConsumerInput");
+const functionalConsumerList = document.getElementById("functionalConsumerList");
 const entityForm = document.getElementById("entityForm");
 const entityInput = document.getElementById("entityInput");
 const entityList = document.getElementById("entityList");
@@ -609,6 +613,7 @@ const globalDomainChips = document.getElementById("globalDomainChips");
 const platformOwnerFilterInput = document.getElementById("platformOwnerFilter");
 const businessOwnerFilterInput = document.getElementById("businessOwnerFilter");
 const functionOwnerFilterInput = document.getElementById("functionOwnerFilter");
+const functionalConsumerFilterChips = document.getElementById("functionalConsumerFilterChips");
 const searchInput = document.getElementById("searchInput");
 const searchTypeSelect = document.getElementById("searchType");
 const fileUrlInput = document.getElementById("fileUrlInput");
@@ -762,6 +767,8 @@ function applyAccessMode(mode = "full") {
       platformOwnerInput,
       businessOwnerInput,
       functionOwnerInput,
+      functionalConsumerInput,
+      functionalConsumerForm?.querySelector("button"),
       entityInput,
       fileUrlInput,
       spreadsheetSelect,
@@ -812,6 +819,12 @@ function applyAccessMode(mode = "full") {
 
   if (filterPanel) {
     filterPanel.classList.toggle("locked", filtersBlocked);
+  }
+
+  if (functionalConsumerFilterChips) {
+    functionalConsumerFilterChips.classList.toggle("disabled", filtersBlocked);
+    functionalConsumerFilterChips.style.pointerEvents = filtersBlocked ? "none" : "";
+    functionalConsumerFilterChips.style.opacity = filtersBlocked ? "0.6" : "";
   }
 
   document.querySelectorAll(".direction-adder").forEach((btn) => {
@@ -878,10 +891,12 @@ function init() {
   renderVisualFunctionOptions();
   renderVisualEntityOptions();
   renderVisualBusinessOwnerOptions();
+  renderFunctionalConsumerFilterChips();
 
   refreshDomainOptionsUi();
   panelDomainChoices.addEventListener("change", handleDomainSelection);
   globalDomainChips?.addEventListener("click", handleDomainChipClick);
+  functionalConsumerFilterChips?.addEventListener("click", handleFunctionalConsumerFilterClick);
   canvas.addEventListener("pointerdown", handleCanvasPointerDown);
   createSelectionBox();
   addSystemBtn.addEventListener("click", () => {
@@ -922,6 +937,8 @@ function init() {
     if (isEditingLocked()) return;
     ensureFunctionOwnerOption(functionOwnerInput.value.trim());
   });
+  functionalConsumerForm?.addEventListener("submit", handleFunctionalConsumerSubmit);
+  functionalConsumerList?.addEventListener("click", handleFunctionalConsumerListClick);
   fileUrlInput?.addEventListener("input", handleFileUrlChange);
   platformOwnerFilterInput.addEventListener("input", (event) => {
     if (isFiltersLocked()) return;
@@ -1292,6 +1309,29 @@ function renderGlobalDomainChips() {
   globalDomainChips.innerHTML = chips + noneChip;
 }
 
+function renderFunctionalConsumerFilterChips(sourceSystems = systems) {
+  if (!functionalConsumerFilterChips) return [];
+  const available = new Set();
+  sourceSystems.forEach((system) => {
+    (system.functionalConsumers || new Set()).forEach((consumer) => {
+      const normalized = (consumer || "").trim();
+      if (normalized && normalized.toLowerCase() !== "none") available.add(normalized);
+    });
+  });
+  functionOwnerOptions.forEach((value) => {
+    const normalized = (value || "").trim();
+    if (normalized && normalized.toLowerCase() !== "none") available.add(normalized);
+  });
+  const sorted = Array.from(available).sort((a, b) => a.localeCompare(b));
+  functionalConsumerFilterChips.innerHTML = sorted
+    .map(
+      (value) =>
+        `<button class="domain-chip${functionalConsumerFilters.has(value) ? " active" : ""}" data-consumer="${value}">${value}</button>`
+    )
+    .join("");
+  return sorted;
+}
+
 function getAvailableDomainsForSystems(sourceSystems = systems) {
   const availableKeys = new Set();
   sourceSystems.forEach((system) => {
@@ -1526,6 +1566,22 @@ function updateGlobalDomainChips() {
   });
 }
 
+function handleFunctionalConsumerFilterClick(event) {
+  if (isFiltersLocked()) return;
+  const chip = event.target.closest("[data-consumer]");
+  if (!chip) return;
+  const value = chip.dataset.consumer || "";
+  if (functionalConsumerFilters.has(value)) {
+    functionalConsumerFilters.delete(value);
+  } else {
+    functionalConsumerFilters.add(value);
+  }
+  selectedSystemId = null;
+  renderFunctionalConsumerFilterChips();
+  updateHighlights();
+  syncResetButtonsVisibility();
+}
+
 function renderCustomDomainList() {
   if (!customDomainList) return;
   const customDomains = domainDefinitions.filter((domain) => domain.isCustom);
@@ -1640,6 +1696,7 @@ function addSystem({
   platformOwner = "",
   businessOwner = "",
   functionOwner = "",
+  functionalConsumers = [],
   entities = [],
   icon = DEFAULT_ICON,
   comments = "",
@@ -1672,6 +1729,7 @@ function addSystem({
     platformOwner: platformOwner || "",
     businessOwner: businessOwner || "",
     functionOwner: functionOwner || "",
+    functionalConsumers: new Set(functionalConsumers || []),
     icon: normalizeIconKey(icon),
     comments: comments || "",
     description: description || "",
@@ -1750,6 +1808,7 @@ function addSystem({
     updateSystemMeta(system);
     updateSystemIcon(system);
     ensureFunctionOwnerOption(system.functionOwner);
+    (system.functionalConsumers || new Set()).forEach((consumer) => ensureFunctionOwnerOption(consumer));
     refreshOwnerSuggestionLists();
   } else {
     renderObjectLabel(system);
@@ -3443,6 +3502,7 @@ function openPanel(system) {
   platformOwnerInput.value = system.platformOwner;
   businessOwnerInput.value = system.businessOwner;
   functionOwnerInput.value = system.functionOwner;
+  renderFunctionalConsumers(system);
   if (spreadsheetSelect) {
     spreadsheetSelect.value = system.isSpreadsheet ? "yes" : "no";
   }
@@ -3527,6 +3587,58 @@ function handleFunctionOwnerChange() {
   activePanelSystem.functionOwner = functionOwnerInput.value.trim();
   updateSystemMeta(activePanelSystem);
   updateHighlights();
+}
+
+function renderFunctionalConsumers(system) {
+  if (!functionalConsumerList) return;
+  functionalConsumerList.innerHTML = "";
+  if (!system) return;
+  const consumers = Array.from(system.functionalConsumers || []);
+  consumers.sort((a, b) => a.localeCompare(b));
+  consumers.forEach((name) => {
+    const li = document.createElement("li");
+    const pill = document.createElement("div");
+    pill.className = "consumer-pill";
+    const label = document.createElement("span");
+    label.className = "consumer-name";
+    label.textContent = name;
+    pill.appendChild(label);
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "consumer-remove";
+    removeBtn.dataset.consumer = name;
+    removeBtn.textContent = "×";
+    li.appendChild(pill);
+    li.appendChild(removeBtn);
+    functionalConsumerList.appendChild(li);
+  });
+}
+
+function handleFunctionalConsumerSubmit(event) {
+  event.preventDefault();
+  if (isEditingLocked()) return;
+  if (!activePanelSystem) return;
+  const value = (functionalConsumerInput?.value || "").trim();
+  if (!value) return;
+  ensureFunctionOwnerOption(value);
+  activePanelSystem.functionalConsumers.add(value);
+  functionalConsumerInput.value = "";
+  renderFunctionalConsumers(activePanelSystem);
+  renderFunctionalConsumerFilterChips();
+  updateHighlights();
+  scheduleShareUrlSync();
+}
+
+function handleFunctionalConsumerListClick(event) {
+  if (isEditingLocked()) return;
+  const button = event.target.closest(".consumer-remove");
+  if (!button || !activePanelSystem) return;
+  const value = button.dataset.consumer;
+  activePanelSystem.functionalConsumers.delete(value);
+  renderFunctionalConsumers(activePanelSystem);
+  renderFunctionalConsumerFilterChips();
+  updateHighlights();
+  scheduleShareUrlSync();
 }
 
 function handleFileUrlChange() {
@@ -3987,6 +4099,10 @@ function updateSystemMeta(system) {
     if (system.platformOwner) ownerBits.push({ label: "Platform", value: system.platformOwner });
     if (system.businessOwner) ownerBits.push({ label: "Business", value: system.businessOwner });
     if (system.functionOwner) ownerBits.push({ label: "Function", value: system.functionOwner });
+    const consumers = Array.from(system.functionalConsumers || []);
+    if (consumers.length) {
+      ownerBits.push({ label: "Consumers", value: consumers.join(", ") });
+    }
     ownerBits.forEach((info) => {
       const pill = document.createElement("span");
       pill.className = "owner-pill";
@@ -4464,6 +4580,7 @@ function resetFilters({ alsoClearSelection = false } = {}) {
   platformOwnerFilterText = "";
   businessOwnerFilterText = "";
   functionOwnerFilterText = "";
+  functionalConsumerFilters.clear();
   searchQuery = "";
   sorFilterValue = "any";
   spreadsheetFilterValue = "yes";
@@ -4478,6 +4595,7 @@ function resetFilters({ alsoClearSelection = false } = {}) {
   if (platformOwnerFilterInput) platformOwnerFilterInput.value = "";
   if (businessOwnerFilterInput) businessOwnerFilterInput.value = "";
   if (functionOwnerFilterInput) functionOwnerFilterInput.value = "";
+  renderFunctionalConsumerFilterChips();
   if (searchInput) searchInput.value = "";
   if (sorFilterSelect) {
     sorFilterSelect.value = "any";
@@ -4571,6 +4689,7 @@ function updateHighlights() {
     !!platformOwnerFilterText ||
     !!businessOwnerFilterText ||
     !!functionOwnerFilterText ||
+    functionalConsumerFilters.size > 0 ||
     !!searchQuery ||
     sorFilterValue !== "any" ||
     spreadsheetFilterValue !== "yes" ||
@@ -4800,6 +4919,14 @@ function systemMatchesFilters(system) {
       return false;
     }
   }
+  if (functionalConsumerFilters.size) {
+    const consumers =
+      system.functionalConsumers instanceof Set
+        ? system.functionalConsumers
+        : new Set(system.functionalConsumers || []);
+    const hasAll = Array.from(functionalConsumerFilters).every((consumer) => consumers.has(consumer));
+    if (!hasAll) return false;
+  }
   if (sorFilterValue === "yes" && !systemHasSor(system)) {
     return false;
   }
@@ -4829,6 +4956,7 @@ function hasActiveFilters() {
     !!platformOwnerFilterText ||
     !!businessOwnerFilterText ||
     !!functionOwnerFilterText ||
+    functionalConsumerFilters.size > 0 ||
     !!searchQuery ||
     sorFilterValue !== "any" ||
     spreadsheetFilterValue !== "yes" ||
@@ -4923,6 +5051,7 @@ function populateFunctionOwnerOptions() {
     .map((value) => `<option value="${value}"></option>`);
   baseOptions.push('<option value="None"></option>');
   functionOwnerOptionsList.innerHTML = baseOptions.join("");
+  renderFunctionalConsumerFilterChips();
 }
 
 function ensureFunctionOwnerOption(value) {
@@ -4931,6 +5060,7 @@ function ensureFunctionOwnerOption(value) {
     functionOwnerOptions.add(value);
     populateFunctionOwnerOptions();
     renderVisualFunctionOptions();
+    renderFunctionalConsumerFilterChips();
   }
 }
 
@@ -7142,6 +7272,7 @@ function serializeState(accessModeOverride, options = {}) {
       platformOwner: system.platformOwner,
       businessOwner: system.businessOwner,
       functionOwner: system.functionOwner,
+      functionalConsumers: Array.from(system.functionalConsumers || []),
       icon: system.icon,
       comments: system.comments,
       description: system.description,
@@ -7192,6 +7323,7 @@ function serializeState(accessModeOverride, options = {}) {
       platformOwner: platformOwnerFilterInput?.value || "",
       businessOwner: businessOwnerFilterInput?.value || "",
       functionOwner: functionOwnerFilterInput?.value || "",
+      functionalConsumers: Array.from(functionalConsumerFilters),
       search: searchInput?.value || "",
       searchType,
       filterMode,
@@ -7258,6 +7390,7 @@ function loadSerializedState(snapshot) {
       platformOwner: systemData.platformOwner,
       businessOwner: systemData.businessOwner,
       functionOwner: systemData.functionOwner,
+      functionalConsumers: systemData.functionalConsumers,
       entities: systemData.entities,
       icon: systemData.icon,
       comments: systemData.comments,
@@ -7312,6 +7445,7 @@ function loadSerializedState(snapshot) {
     colorBySelect.value = currentColorBy;
   }
   refreshOwnerSuggestionLists();
+  renderFunctionalConsumerFilterChips();
   Object.values(ownerColorMaps).forEach((map) => map.clear());
   updateHighlights();
   applyColorCoding();
@@ -7335,6 +7469,9 @@ function applyFilterState(filterState = {}) {
   const platformOwnerValue = filterState.platformOwner || "";
   const businessOwnerValue = filterState.businessOwner || "";
   const functionOwnerValue = filterState.functionOwner || "";
+  const functionalConsumerValues = Array.isArray(filterState.functionalConsumers)
+    ? filterState.functionalConsumers
+    : [];
   const searchValue = filterState.search || "";
   const spreadsheetFilter = filterState.spreadsheets || "yes";
   const filePresenceFilter = filterState.filePresence || "any";
@@ -7345,6 +7482,8 @@ function applyFilterState(filterState = {}) {
   platformOwnerFilterText = normalizeOwnerFilterValue(platformOwnerValue);
   businessOwnerFilterText = normalizeOwnerFilterValue(businessOwnerValue);
   functionOwnerFilterText = normalizeOwnerFilterValue(functionOwnerValue);
+  functionalConsumerFilters.clear();
+  functionalConsumerValues.forEach((value) => functionalConsumerFilters.add(value));
   searchQuery = searchValue.trim().toLowerCase();
   searchType = filterState.searchType || searchType;
   filterMode = filterState.filterMode || filterMode;
@@ -7358,6 +7497,7 @@ function applyFilterState(filterState = {}) {
   if (platformOwnerFilterInput) platformOwnerFilterInput.value = platformOwnerValue;
   if (businessOwnerFilterInput) businessOwnerFilterInput.value = businessOwnerValue;
   if (functionOwnerFilterInput) functionOwnerFilterInput.value = functionOwnerValue;
+  renderFunctionalConsumerFilterChips();
   if (searchInput) searchInput.value = searchValue;
   if (searchTypeSelect) searchTypeSelect.value = searchType;
   if (filterModeSelect) filterModeSelect.value = filterMode;
