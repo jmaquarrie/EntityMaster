@@ -2240,7 +2240,7 @@ button.small {
   position: absolute;
   top: -42px;
   left: 0;
-  display: inline-flex;
+  display: none;
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
@@ -2251,6 +2251,10 @@ button.small {
   color: #0f1424;
   font-size: 12px;
   line-height: 1.2;
+}
+
+.text-box.selected .text-toolbar {
+  display: inline-flex;
 }
 
 .text-box .text-toolbar label {
@@ -2275,7 +2279,7 @@ button.small {
   padding: 12px 14px;
   border-radius: 12px;
   border: 1px solid rgba(15, 20, 36, 0.16);
-  background: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.35);
   backdrop-filter: blur(6px);
   box-shadow: 0 6px 18px rgba(15, 20, 36, 0.08);
   color: #0f1424;

@@ -447,6 +447,7 @@ const OWNER_NONE_FILTER = "__none__";
 
 const systems = [];
 const textBoxes = [];
+let activeTextBoxId = null;
 const OBJECT_TYPES = {
   gateway: { label: "Gateway", className: "shape-gateway" },
   event: { label: "Event", className: "shape-event" },
@@ -895,6 +896,11 @@ function init() {
   resetAttributeFilterBtn?.addEventListener("click", handleResetAttributesFilter);
   processAttributesCsvBtn?.addEventListener("click", handleProcessAttributesCsv);
   canvas.addEventListener("click", handleCanvasClick);
+  document.addEventListener("pointerdown", (event) => {
+    if (!event.target.closest(".text-box")) {
+      setActiveTextBox(null);
+    }
+  });
   connectionLayer.addEventListener("click", handleConnectionLayerClick);
   connectionLayer.addEventListener("dblclick", handleConnectionLayerDoubleClick);
   saveObjectBtn?.addEventListener("click", commitObjectChanges);
@@ -1752,6 +1758,14 @@ function positionTextBox(textBox) {
   textBox.element.style.transform = `translate(${textBox.x}px, ${textBox.y}px)`;
 }
 
+function setActiveTextBox(target) {
+  activeTextBoxId = target?.id || null;
+  textBoxes.forEach((box) => {
+    if (!box?.element) return;
+    box.element.classList.toggle("selected", !!target && box.id === target.id);
+  });
+}
+
 function syncTextBoxDimensions(textBox, textarea) {
   if (!textBox || !textarea) return;
   const width = Math.max(180, textarea.offsetWidth || textBox.width || 0);
@@ -1787,6 +1801,7 @@ function addTextBox({
   color = "#0f1424",
   width = 240,
   height = 140,
+  selectOnCreate = false,
 } = {}) {
   const resolvedId = id || `text-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
   const defaultPosition = getNewSystemPosition();
@@ -1864,8 +1879,11 @@ function addTextBox({
   }
 
   textBox.element.addEventListener("pointerdown", (event) => {
+    setActiveTextBox(textBox);
     if (event.button !== 0) return;
-    if (event.target.closest(".text-toolbar") || event.target.classList.contains("text-content")) return;
+    const toolbarTarget = event.target.closest(".text-toolbar");
+    if (toolbarTarget && event.target.closest("select, input, option")) return;
+    if (event.target.classList.contains("text-content")) return;
     if (isEditingLocked()) return;
     event.preventDefault();
     const startX = event.clientX;
@@ -1896,10 +1914,15 @@ function addTextBox({
     window.addEventListener("pointerup", onUp);
   });
 
+  textarea?.addEventListener("focus", () => setActiveTextBox(textBox));
+
   canvas.appendChild(textBox.element);
   positionTextBox(textBox);
   syncTextBoxDimensions(textBox, textarea);
   textBoxes.push(textBox);
+  if (selectOnCreate) {
+    setActiveTextBox(textBox);
+  }
   refreshTextBoxAccess();
   scheduleShareUrlSync();
   return textBox;
@@ -3006,7 +3029,12 @@ function renderGroups() {
       label.setAttribute("x", bounds.width + labelOffset);
       label.setAttribute("y", 12);
       label.setAttribute("dominant-baseline", "hanging");
-      label.style.pointerEvents = "none";
+      label.style.pointerEvents = "auto";
+      label.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openGroupContextMenu(group, event.pageX, event.pageY);
+      });
       svg.appendChild(label);
     }
     groupLayer.appendChild(svg);
@@ -3145,7 +3173,7 @@ function handleAddObjectClick() {
 
 function handleAddTextClick() {
   if (isEditingLocked()) return;
-  const textBox = addTextBox({ text: "Text" });
+  const textBox = addTextBox({ text: "Text", selectOnCreate: true });
   if (textBox?.element) {
     const textarea = textBox.element.querySelector(".text-content");
     textarea?.focus();
@@ -6956,6 +6984,7 @@ function loadSerializedState(snapshot) {
   systems.length = 0;
   textBoxes.forEach((box) => box.element?.remove());
   textBoxes.length = 0;
+  setActiveTextBox(null);
   connections.length = 0;
   groups.length = 0;
   visualNodePositions.clear();
