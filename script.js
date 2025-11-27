@@ -1093,6 +1093,7 @@ function init() {
   systemDescriptionInput?.addEventListener("input", () => {
     if (!activePanelSystem) return;
     activePanelSystem.description = systemDescriptionInput.value;
+    updateSystemMeta(activePanelSystem);
   });
   connectionLabelField?.addEventListener("keydown", handleConnectionLabelKeyDown);
   connectionLabelField?.addEventListener("blur", commitConnectionLabel);
@@ -3622,12 +3623,44 @@ function updateSystemMeta(system) {
   updateSystemIcon(system);
   renderInlineEntities(system);
   renderFileLinkIndicator(system);
+  ensureSystemDescriptionTooltip(system);
 }
 
 function updateSystemIcon(system) {
   const iconElement = system.element.querySelector(".system-icon span");
   if (!iconElement) return;
   iconElement.textContent = getSystemIconSymbol(system);
+}
+
+function ensureSystemDescriptionTooltip(system) {
+  if (!system || system.isObject) return;
+  const iconWrapper = system.element.querySelector(".system-icon");
+  if (!iconWrapper) return;
+
+  const description = (system.description || "").trim();
+  let tooltip = system.element.querySelector(".system-description-tooltip");
+
+  if (!description) {
+    tooltip?.remove();
+    return;
+  }
+
+  if (!tooltip) {
+    tooltip = document.createElement("div");
+    tooltip.className = "system-description-tooltip";
+    system.element.appendChild(tooltip);
+
+    const showTooltip = () => tooltip.classList.add("visible");
+    const hideTooltip = () => tooltip.classList.remove("visible");
+    iconWrapper.addEventListener("mouseenter", showTooltip);
+    iconWrapper.addEventListener("mouseleave", hideTooltip);
+    iconWrapper.addEventListener("focus", showTooltip);
+    iconWrapper.addEventListener("blur", hideTooltip);
+  }
+
+  tooltip.textContent = description;
+  tooltip.style.left = `${iconWrapper.offsetLeft}px`;
+  tooltip.style.top = `${iconWrapper.offsetTop}px`;
 }
 
 function renderFileLinkIndicator(system) {
