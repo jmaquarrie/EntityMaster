@@ -854,6 +854,7 @@ function setFilterMode(nextMode) {
   }
   filterMode = normalized;
   syncFilterModeControls();
+  applyGroupVisibility();
   updateHighlights();
 }
 
@@ -3027,15 +3028,20 @@ function positionGroupPanel() {
 
 function applyGroupVisibility() {
   const hiddenIds = new Set();
+  const fadedIds = new Set();
   groups.forEach((group) => {
     if (!group.hidden) return;
-    (group.systemIds || []).forEach((id) => hiddenIds.add(id));
+    const target = filterMode === "hide" ? hiddenIds : fadedIds;
+    (group.systemIds || []).forEach((id) => target.add(id));
   });
 
   systems.forEach((system) => {
     const hidden = hiddenIds.has(system.id);
+    const faded = fadedIds.has(system.id);
     system.isHiddenByGroup = hidden;
+    system.isDimmedByGroup = faded;
     system.element.classList.toggle("group-hidden", hidden);
+    system.element.classList.toggle("group-dimmed", faded && !hidden);
   });
 }
 
@@ -3136,6 +3142,7 @@ function renderGroups() {
   groups.forEach((group) => {
     const shape = getGroupHull(group);
     if (!shape) return;
+    if (group.hidden && filterMode === "hide") return;
     const { bounds, hull } = shape;
     const labelOffset = 14;
     const svg = document.createElementNS(SVG_NS, "svg");
@@ -3203,6 +3210,31 @@ function removeGroup(groupId) {
   groups.splice(index, 1);
   refreshGroupsUi();
   scheduleShareUrlSync();
+}
+
+function removeSystemsFromGroups(systemsToRemove = []) {
+  if (!systemsToRemove.length) return;
+  const idsToRemove = new Set(systemsToRemove.map((item) => item.id));
+  let changed = false;
+  for (let i = groups.length - 1; i >= 0; i -= 1) {
+    const group = groups[i];
+    const before = (group.systemIds || []).length;
+    group.systemIds = (group.systemIds || []).filter((id) => !idsToRemove.has(id));
+    if (group.systemIds.length === 0) {
+      groups.splice(i, 1);
+      changed = true;
+      continue;
+    }
+    if (group.systemIds.length !== before) {
+      changed = true;
+    }
+  }
+  if (changed) {
+    refreshGroupsUi();
+    updateHighlights();
+    scheduleShareUrlSync();
+    requestVisualRender();
+  }
 }
 
 function setGroupVisibility(group, hidden) {
@@ -4550,7 +4582,13 @@ function updateHighlights() {
   systems.forEach((system) => {
     if (system.isHiddenByGroup) {
       system.element.classList.add("group-hidden");
-      system.element.classList.remove("highlighted", "dimmed", "hidden-filter", "selected");
+      system.element.classList.remove(
+        "highlighted",
+        "dimmed",
+        "hidden-filter",
+        "selected",
+        "group-dimmed"
+      );
       nextHighlightState.set(system.id, { highlight: false });
       return;
     }
@@ -5105,6 +5143,7 @@ function handleSystemContextMenu(event, system) {
   const multiActive = multiSelectedIds.size > 0;
   const readOnly = isEditingLocked();
   const owningGroup = groups.find((group) => group.systemIds?.includes(system.id));
+  const systemGroups = groups.filter((group) => group.systemIds?.includes(system.id));
   if (multiActive && !multiSelectedIds.has(system.id)) {
     addSystemToMultiSelect(system);
   }
@@ -5142,6 +5181,14 @@ function handleSystemContextMenu(event, system) {
           { label: "Remove Group", onClick: () => removeGroup(owningGroup.id) },
         ]
       : []),
+    ...(!readOnly && systemGroups.length
+      ? [
+          {
+            label: "Remove from Groups",
+            onClick: () => removeSystemsFromGroups([system]),
+          },
+        ]
+      : []),
     ...(readOnly ? [] : [{ label: "Delete", onClick: () => handleDeleteSystem(system) }]),
   ];
 
@@ -5165,6 +5212,14 @@ function handleSystemContextMenu(event, system) {
                     createGroupFromSelection(selectedSystems, { alwaysNew: true });
                   }
                 },
+              },
+            ]
+          : []),
+        ...(!readOnly && selectionHasGroup
+          ? [
+              {
+                label: "Remove from Groups",
+                onClick: () => removeSystemsFromGroups(selectedSystems),
               },
             ]
           : []),

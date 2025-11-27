@@ -927,6 +927,10 @@ button.ghost {
   display: none !important;
 }
 
+.system-node.group-dimmed {
+  opacity: 0.25;
+}
+
 .sidebar {
   position: absolute;
   top: 1.5rem;
