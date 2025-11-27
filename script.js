@@ -2857,7 +2857,8 @@ function openGroupContextMenu(group, x, y) {
       { label: "Remove Group", onClick: () => removeGroup(group.id) },
     ],
     x,
-    y
+    y,
+    () => requestVisualRender()
   );
 }
 
@@ -4588,7 +4589,7 @@ function findGroupAtPoint(pageX, pageY) {
   return null;
 }
 
-function openContextMenu(options, x, y) {
+function openContextMenu(options, x, y, afterAction) {
   if (!contextMenu) return;
   closeContextMenu();
   options.forEach((option) => {
@@ -4597,6 +4598,7 @@ function openContextMenu(options, x, y) {
     button.textContent = option.label;
     button.addEventListener("click", () => {
       option.onClick?.();
+      afterAction?.();
       closeContextMenu();
     });
     contextMenu.appendChild(button);
@@ -4730,7 +4732,7 @@ function handleSystemContextMenu(event, system) {
   if (!menuOptions.length) {
     menuOptions.push(...focusOptions);
   }
-  openContextMenu(menuOptions, event.pageX, event.pageY);
+  openContextMenu(menuOptions, event.pageX, event.pageY, () => requestVisualRender());
 }
 
 function applyColorCoding() {
@@ -6220,6 +6222,15 @@ function attachVisualNodeBringToFront() {
       visualNodeZIndex += 1;
       node.style.zIndex = `${visualNodeZIndex}`;
       node.parentElement?.appendChild(node);
+    });
+
+    node.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!id) return;
+      const targetSystem = systems.find((system) => system.id === id);
+      if (!targetSystem) return;
+      handleSystemContextMenu(event, targetSystem);
     });
 
     node.addEventListener("dblclick", (event) => {
