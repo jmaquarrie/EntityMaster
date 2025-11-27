@@ -446,6 +446,7 @@ const DOMAIN_NONE_KEY = "__none__";
 const OWNER_NONE_FILTER = "__none__";
 
 const systems = [];
+const textBoxes = [];
 const OBJECT_TYPES = {
   gateway: { label: "Gateway", className: "shape-gateway" },
   event: { label: "Event", className: "shape-event" },
@@ -575,6 +576,7 @@ const groupLayer = document.getElementById("groupLayer");
 const connectionHandleLayer = document.getElementById("connectionHandleLayer");
 const addSystemBtn = document.getElementById("addSystemBtn");
 const addObjectBtn = document.getElementById("addObjectBtn");
+const addTextBtn = document.getElementById("addTextBtn");
 const objectMenu = document.getElementById("objectMenu");
 const shareMenu = document.getElementById("shareMenu");
 const filterModeToggleBtn = document.getElementById("filterModeToggle");
@@ -739,7 +741,7 @@ function applyAccessMode(mode = "full") {
   const filtersBlocked = isFiltersLocked();
 
   toggleElementsDisabled(
-    [addSystemBtn, addObjectBtn, newDiagramBtn, saveDiagramBtn, loadDiagramBtn, settingsBtn],
+    [addSystemBtn, addObjectBtn, addTextBtn, newDiagramBtn, saveDiagramBtn, loadDiagramBtn, settingsBtn],
     readOnly
   );
 
@@ -822,6 +824,8 @@ function applyAccessMode(mode = "full") {
       accessBadge.classList.add("hidden");
     }
   }
+
+  refreshTextBoxAccess();
 }
 
 function syncFilterModeControls() {
@@ -876,6 +880,7 @@ function init() {
     addSystem();
   });
   addObjectBtn?.addEventListener("click", handleAddObjectClick);
+  addTextBtn?.addEventListener("click", handleAddTextClick);
   fileNameDisplay?.addEventListener("click", beginFileNameEdit);
   fileNameDisplay?.addEventListener("keydown", handleFileNameKeyDown);
   fileNameDisplay?.addEventListener("blur", commitFileNameEdit);
@@ -1741,6 +1746,163 @@ function addSystem({
 
 function positionSystemElement(system) {
   system.element.style.transform = `translate(${system.x}px, ${system.y}px)`;
+}
+
+function positionTextBox(textBox) {
+  textBox.element.style.transform = `translate(${textBox.x}px, ${textBox.y}px)`;
+}
+
+function syncTextBoxDimensions(textBox, textarea) {
+  if (!textBox || !textarea) return;
+  const width = Math.max(180, textarea.offsetWidth || textBox.width || 0);
+  const height = Math.max(100, textarea.offsetHeight || textBox.height || 0);
+  textBox.width = width;
+  textBox.height = height;
+  textBox.element.style.width = `${width}px`;
+}
+
+function refreshTextBoxAccess() {
+  const locked = isEditingLocked();
+  textBoxes.forEach((textBox) => {
+    if (!textBox?.element) return;
+    textBox.element.classList.toggle("locked", locked);
+    const sizeSelect = textBox.element.querySelector(".text-size-select");
+    const colorInput = textBox.element.querySelector(".text-color-input");
+    const textarea = textBox.element.querySelector(".text-content");
+    [sizeSelect, colorInput, textarea].forEach((control) => {
+      if (control) {
+        control.disabled = locked;
+        control.setAttribute("aria-disabled", locked ? "true" : "false");
+      }
+    });
+  });
+}
+
+function addTextBox({
+  id,
+  x,
+  y,
+  text = "New text",
+  fontSize = 16,
+  color = "#0f1424",
+  width = 240,
+  height = 140,
+} = {}) {
+  const resolvedId = id || `text-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+  const defaultPosition = getNewSystemPosition();
+  const resolvedX = snapCoordinate(typeof x === "number" ? x : defaultPosition.x);
+  const resolvedY = snapCoordinate(typeof y === "number" ? y : defaultPosition.y);
+  const textBox = {
+    id: resolvedId,
+    x: resolvedX,
+    y: resolvedY,
+    text: text ?? "New text",
+    fontSize: fontSize || 16,
+    color: color || "#0f1424",
+    width: width || 240,
+    height: height || 140,
+    element: document.createElement("div"),
+  };
+
+  textBox.element.className = "text-box";
+  textBox.element.dataset.id = resolvedId;
+  textBox.element.innerHTML = `
+    <div class="text-toolbar">
+      <label>Size
+        <select class="text-size-select" aria-label="Text size">
+          ${[12, 14, 16, 18, 20, 24, 28, 32]
+            .map((size) => `<option value="${size}">${size}px</option>`)
+            .join("")}
+        </select>
+      </label>
+      <label>Colour
+        <input class="text-color-input" type="color" aria-label="Text colour" />
+      </label>
+    </div>
+    <textarea class="text-content" spellcheck="false"></textarea>
+  `;
+
+  const textarea = textBox.element.querySelector(".text-content");
+  const sizeSelect = textBox.element.querySelector(".text-size-select");
+  const colorInput = textBox.element.querySelector(".text-color-input");
+  if (textarea) {
+    textarea.value = textBox.text;
+    textarea.style.fontSize = `${textBox.fontSize}px`;
+    textarea.style.color = textBox.color;
+    textarea.style.width = `${textBox.width}px`;
+    textarea.style.height = `${textBox.height}px`;
+  }
+  if (sizeSelect) {
+    sizeSelect.value = `${textBox.fontSize}`;
+    sizeSelect.addEventListener("change", (event) => {
+      const value = parseInt(event.target.value, 10);
+      textBox.fontSize = Number.isFinite(value) ? value : textBox.fontSize;
+      if (textarea) {
+        textarea.style.fontSize = `${textBox.fontSize}px`;
+      }
+      scheduleShareUrlSync();
+    });
+  }
+  if (colorInput) {
+    colorInput.value = textBox.color;
+    colorInput.addEventListener("input", (event) => {
+      textBox.color = event.target.value || textBox.color;
+      if (textarea) {
+        textarea.style.color = textBox.color;
+      }
+      scheduleShareUrlSync();
+    });
+  }
+  if (textarea) {
+    textarea.addEventListener("input", () => {
+      textBox.text = textarea.value;
+      scheduleShareUrlSync();
+    });
+    const syncSize = () => syncTextBoxDimensions(textBox, textarea);
+    textarea.addEventListener("mouseup", syncSize);
+    textarea.addEventListener("keyup", syncSize);
+  }
+
+  textBox.element.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    if (event.target.closest(".text-toolbar") || event.target.classList.contains("text-content")) return;
+    if (isEditingLocked()) return;
+    event.preventDefault();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const start = { x: textBox.x, y: textBox.y };
+    let moved = false;
+    textBox.element.classList.add("dragging");
+
+    function onMove(moveEvent) {
+      moved = true;
+      const deltaX = (moveEvent.clientX - startX) / currentZoom;
+      const deltaY = (moveEvent.clientY - startY) / currentZoom;
+      textBox.x = snapCoordinate(start.x + deltaX);
+      textBox.y = snapCoordinate(start.y + deltaY);
+      positionTextBox(textBox);
+    }
+
+    function onUp() {
+      textBox.element.classList.remove("dragging");
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      if (moved) {
+        scheduleShareUrlSync();
+      }
+    }
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  });
+
+  canvas.appendChild(textBox.element);
+  positionTextBox(textBox);
+  syncTextBoxDimensions(textBox, textarea);
+  textBoxes.push(textBox);
+  refreshTextBoxAccess();
+  scheduleShareUrlSync();
+  return textBox;
 }
 
 function createAdjacentSystem(system, direction) {
@@ -2872,9 +3034,12 @@ function removeGroup(groupId) {
   scheduleShareUrlSync();
 }
 
-function createGroupFromSelection(selectedSystems = []) {
+function createGroupFromSelection(selectedSystems = [], options = {}) {
+  const { alwaysNew = false } = options;
   if (!selectedSystems.length) return;
-  const existing = groups.filter((entry) => selectedSystems.some((sys) => entry.systemIds?.includes(sys.id)));
+  const existing = alwaysNew
+    ? []
+    : groups.filter((entry) => selectedSystems.some((sys) => entry.systemIds?.includes(sys.id)));
   if (existing.length) {
     const primary = existing[0];
     const mergedIds = new Set(primary.systemIds || []);
@@ -2975,6 +3140,15 @@ function handleAddObjectClick() {
   });
   if (node) {
     selectSystem(node);
+  }
+}
+
+function handleAddTextClick() {
+  if (isEditingLocked()) return;
+  const textBox = addTextBox({ text: "Text" });
+  if (textBox?.element) {
+    const textarea = textBox.element.querySelector(".text-content");
+    textarea?.focus();
   }
 }
 
@@ -4737,6 +4911,9 @@ function handleSystemContextMenu(event, system) {
   const selectedSystems = multiSelectedIds.size
     ? systems.filter((item) => multiSelectedIds.has(item.id))
     : [system];
+  const selectionHasGroup = selectedSystems.some((item) =>
+    groups.some((group) => group.systemIds?.includes(item.id))
+  );
   const focusOptions = [
     { label: "Data Lineage", onClick: () => focusOnSystemRelations(system, "lineage") },
     { label: "Show children", onClick: () => focusOnSystemRelations(system, "children") },
@@ -4774,6 +4951,18 @@ function handleSystemContextMenu(event, system) {
             }
           },
         },
+        ...(selectionHasGroup
+          ? [
+              {
+                label: "Add new Group",
+                onClick: () => {
+                  if (selectedSystems.length) {
+                    createGroupFromSelection(selectedSystems, { alwaysNew: true });
+                  }
+                },
+              },
+            ]
+          : []),
         ...(owningGroup
           ? [
               { label: "Edit Group", onClick: () => openGroupEditor(owningGroup) },
@@ -6712,6 +6901,16 @@ function serializeState(accessModeOverride, options = {}) {
               : [],
           }),
     })),
+    textBoxes: textBoxes.map((box) => ({
+      id: box.id,
+      x: box.x,
+      y: box.y,
+      text: box.text,
+      fontSize: box.fontSize,
+      color: box.color,
+      width: box.width,
+      height: box.height,
+    })),
     connections: connections.map((connection) => ({ ...connection })),
     groups: groups.map((group) => ({
       id: group.id,
@@ -6755,6 +6954,8 @@ function loadSerializedState(snapshot) {
   currentSaveId = null;
   systems.forEach((system) => system.element.remove());
   systems.length = 0;
+  textBoxes.forEach((box) => box.element?.remove());
+  textBoxes.length = 0;
   connections.length = 0;
   groups.length = 0;
   visualNodePositions.clear();
@@ -6807,6 +7008,18 @@ function loadSerializedState(snapshot) {
       shapeColor: systemData.shapeColor,
       shapeComments: systemData.shapeComments,
       attributes: systemData.attributes,
+    });
+  });
+  (snapshot.textBoxes || []).forEach((box) => {
+    addTextBox({
+      id: box.id,
+      x: box.x,
+      y: box.y,
+      text: box.text,
+      fontSize: box.fontSize,
+      color: box.color,
+      width: box.width,
+      height: box.height,
     });
   });
   connections.push(
