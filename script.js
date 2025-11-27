@@ -484,6 +484,7 @@ let linkingState = null;
 let systemCounter = 1;
 let currentColorBy = "none";
 let isSidebarCollapsed = true;
+let isGroupPanelCollapsed = true;
 let sidebarCollapsedBeforeVisual = null;
 let isPanning = false;
 let panStart = null;
@@ -620,6 +621,10 @@ const filterToggleIcon = filterPanelToggle?.querySelector(".toggle-icon");
 const collapsedResetFiltersBtn = document.getElementById("collapsedResetFiltersBtn");
 const filterPanelPlaceholder = document.getElementById("filterPanelPlaceholder");
 const visualFilterHost = document.getElementById("visualFilterHost");
+const groupPanel = document.getElementById("groupPanel");
+const groupPanelToggle = document.getElementById("groupPanelToggle");
+const groupToggleIcon = groupPanelToggle?.querySelector(".toggle-icon");
+const groupListContainer = document.getElementById("groupList");
 const sharedSensitiveElements = document.querySelectorAll("[data-shared-hidden]");
 const platformOwnerSuggestionsList = document.getElementById("platformOwnerSuggestions");
 const businessOwnerSuggestionsList = document.getElementById("businessOwnerSuggestions");
@@ -864,6 +869,8 @@ function init() {
   expandEntitiesGlobally = !!expandEntitiesToggle?.checked;
   showParentsFilter = !!showParentsToggle?.checked;
   showFullParentLineage = !!fullParentLineageToggle?.checked;
+  setGroupPanelCollapsedState(true);
+  renderGroupList();
   syncFilterModeControls();
   setFileName(currentFileName);
   populateFunctionOwnerOptions();
@@ -1015,6 +1022,7 @@ function init() {
     resetFilters({ alsoClearSelection: true });
   });
   filterPanelToggle.addEventListener("click", toggleFilterPanel);
+  groupPanelToggle?.addEventListener("click", toggleGroupPanel);
   newDiagramBtn?.addEventListener("click", handleNewDiagramClick);
   undoActionBtn?.addEventListener("click", handleUndoAction);
   redoActionBtn?.addEventListener("click", handleRedoAction);
@@ -1182,6 +1190,7 @@ function init() {
     if (!attributesModal?.classList.contains("hidden")) {
       positionAttributesModal();
     }
+    positionGroupPanel();
   });
     applyAccessMode(currentAccessMode);
     setSidebarCollapsedState(isSidebarCollapsed);
@@ -1745,7 +1754,7 @@ function addSystem({
     renderObjectLabel(system);
   }
   updateHighlights();
-  renderGroups();
+  refreshGroupsUi({ overlayOnly: true });
   refreshDataTableIfVisible();
   return system;
 }
@@ -1834,7 +1843,7 @@ function addTextBox({
   textBox.element.className = "text-box";
   textBox.element.dataset.id = resolvedId;
   textBox.element.innerHTML = `
-    <button class="text-delete-btn" aria-label="Delete text box" title="Delete text box">×</button>
+    <button class="text-delete-btn" aria-label="Delete text box" title="Delete text box">🗑️</button>
     <div class="text-toolbar">
       <label>Size
         <select class="text-size-select" aria-label="Text size">
@@ -2347,7 +2356,7 @@ function drawConnections() {
 
 function updateConnectionPositions() {
   drawConnections();
-  renderGroups();
+  refreshGroupsUi({ overlayOnly: true });
 }
 
 function applyConnectionFilterClasses(shouldApplyState) {
@@ -3008,6 +3017,86 @@ function isPointInPolygon(point, polygon) {
   return inside;
 }
 
+function positionGroupPanel() {
+  if (!groupPanel || !filterPanel) return;
+  const offsetTop = filterPanel.offsetTop + filterPanel.offsetHeight + 12;
+  groupPanel.style.top = `${offsetTop}px`;
+}
+
+function renderGroupList() {
+  if (!groupListContainer) return;
+  groupListContainer.innerHTML = "";
+
+  if (!groups.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = "No groups yet";
+    groupListContainer.appendChild(empty);
+    return;
+  }
+
+  const locked = isEditingLocked();
+
+  groups.forEach((group) => {
+    const row = document.createElement("div");
+    row.className = "group-row";
+
+    const left = document.createElement("div");
+    left.className = "group-row-left";
+    const colorDot = document.createElement("span");
+    colorDot.className = "group-color-dot";
+    colorDot.style.background = group.color || "#ffffff";
+    const name = document.createElement("span");
+    name.className = "group-name";
+    name.textContent = group.name || "Untitled group";
+
+    left.append(colorDot, name);
+    row.appendChild(left);
+
+    const actions = document.createElement("div");
+    actions.className = "group-actions";
+
+    const renameBtn = document.createElement("button");
+    renameBtn.className = "group-action-btn";
+    renameBtn.type = "button";
+    renameBtn.title = "Rename group";
+    renameBtn.setAttribute("aria-label", "Rename group");
+    renameBtn.textContent = "✏️";
+    renameBtn.disabled = locked;
+    renameBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (isEditingLocked()) return;
+      openGroupEditor(group);
+    });
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.className = "group-action-btn";
+    deleteBtn.type = "button";
+    deleteBtn.title = "Delete group";
+    deleteBtn.setAttribute("aria-label", "Delete group");
+    deleteBtn.textContent = "×";
+    deleteBtn.disabled = locked;
+    deleteBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (isEditingLocked()) return;
+      removeGroup(group.id);
+    });
+
+    actions.append(renameBtn, deleteBtn);
+    row.appendChild(actions);
+    groupListContainer.appendChild(row);
+  });
+}
+
+function refreshGroupsUi(options = {}) {
+  const { overlayOnly = false } = options;
+  renderGroups();
+  if (!overlayOnly) {
+    renderGroupList();
+  }
+  positionGroupPanel();
+}
+
 function renderGroups() {
   if (!groupLayer) return;
   groupLayer.innerHTML = "";
@@ -3079,7 +3168,7 @@ function removeGroup(groupId) {
   const index = groups.findIndex((entry) => entry.id === groupId);
   if (index === -1) return;
   groups.splice(index, 1);
-  renderGroups();
+  refreshGroupsUi();
   scheduleShareUrlSync();
 }
 
@@ -3111,7 +3200,7 @@ function createGroupFromSelection(selectedSystems = [], options = {}) {
     };
     groups.push(group);
   }
-  renderGroups();
+  refreshGroupsUi();
   scheduleShareUrlSync();
 }
 
@@ -3160,7 +3249,7 @@ function applyGroupColor() {
   } else if (!group.name) {
     group.name = getDefaultGroupName();
   }
-  renderGroups();
+  refreshGroupsUi();
   scheduleShareUrlSync();
   closeGroupColorPicker();
 }
@@ -4127,7 +4216,7 @@ function handleDeleteSystem(system) {
   }
   refreshOwnerSuggestionLists();
   drawConnections();
-  renderGroups();
+  refreshGroupsUi();
   updateHighlights();
   scheduleShareUrlSync();
   if (activeEntitySourceId === system.id) {
@@ -4780,6 +4869,20 @@ function toggleFilterPanel() {
   scheduleShareUrlSync();
 }
 
+function toggleGroupPanel() {
+  setGroupPanelCollapsedState(!isGroupPanelCollapsed);
+}
+
+function setGroupPanelCollapsedState(collapsed) {
+  isGroupPanelCollapsed = !!collapsed;
+  groupPanel?.classList.toggle("collapsed", isGroupPanelCollapsed);
+  groupPanelToggle?.setAttribute("aria-expanded", String(!isGroupPanelCollapsed));
+  if (groupToggleIcon) {
+    groupToggleIcon.textContent = isGroupPanelCollapsed ? "+" : "–";
+  }
+  positionGroupPanel();
+}
+
 function setSidebarCollapsedState(collapsed) {
   isSidebarCollapsed = !!collapsed;
   if (!isSidebarCollapsed) {
@@ -4789,6 +4892,7 @@ function setSidebarCollapsedState(collapsed) {
   filterPanelToggle.setAttribute("aria-expanded", String(!isSidebarCollapsed));
   updateSidebarToggleIcon();
   syncResetButtonsVisibility();
+  positionGroupPanel();
 }
 
 function setupPanning() {
@@ -7092,7 +7196,7 @@ function loadSerializedState(snapshot) {
     });
   });
   drawConnections();
-  renderGroups();
+  refreshGroupsUi();
   systemCounter = snapshot.counter || systems.length + 1;
   currentColorBy = snapshot.colorBy || "none";
   if (colorBySelect) {
