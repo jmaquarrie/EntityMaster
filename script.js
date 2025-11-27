@@ -3638,29 +3638,53 @@ function ensureSystemDescriptionTooltip(system) {
   if (!iconWrapper) return;
 
   const description = (system.description || "").trim();
-  let tooltip = system.element.querySelector(".system-description-tooltip");
+  let tooltip = system.descriptionTooltipEl;
 
   if (!description) {
-    tooltip?.remove();
+    if (tooltip) {
+      const { showTooltip, hideTooltip } = system.descriptionTooltipHandlers || {};
+      if (showTooltip) iconWrapper.removeEventListener("mouseenter", showTooltip);
+      if (hideTooltip) iconWrapper.removeEventListener("mouseleave", hideTooltip);
+      if (showTooltip) iconWrapper.removeEventListener("focus", showTooltip);
+      if (hideTooltip) iconWrapper.removeEventListener("blur", hideTooltip);
+      tooltip.remove();
+    }
+    system.descriptionTooltipEl = null;
+    system.descriptionTooltipHandlers = null;
     return;
   }
 
   if (!tooltip) {
     tooltip = document.createElement("div");
     tooltip.className = "system-description-tooltip";
-    system.element.appendChild(tooltip);
+    document.body.appendChild(tooltip);
 
-    const showTooltip = () => tooltip.classList.add("visible");
+    const positionTooltip = () => {
+      const rect = iconWrapper.getBoundingClientRect();
+      const x = rect.left + window.scrollX + rect.width / 2;
+      const y = rect.top + window.scrollY;
+      tooltip.style.left = `${x}px`;
+      tooltip.style.top = `${y}px`;
+    };
+
+    const showTooltip = () => {
+      positionTooltip();
+      tooltip.classList.add("visible");
+    };
     const hideTooltip = () => tooltip.classList.remove("visible");
+
     iconWrapper.addEventListener("mouseenter", showTooltip);
     iconWrapper.addEventListener("mouseleave", hideTooltip);
     iconWrapper.addEventListener("focus", showTooltip);
     iconWrapper.addEventListener("blur", hideTooltip);
+
+    system.descriptionTooltipEl = tooltip;
+    system.descriptionTooltipHandlers = { showTooltip, hideTooltip, positionTooltip };
   }
 
   tooltip.textContent = description;
-  tooltip.style.left = `${iconWrapper.offsetLeft}px`;
-  tooltip.style.top = `${iconWrapper.offsetTop}px`;
+  const { positionTooltip } = system.descriptionTooltipHandlers || {};
+  positionTooltip?.();
 }
 
 function renderFileLinkIndicator(system) {
