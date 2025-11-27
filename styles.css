@@ -923,6 +923,10 @@ button.ghost {
   display: none !important;
 }
 
+.system-node.group-hidden {
+  display: none !important;
+}
+
 .sidebar {
   position: absolute;
   top: 1.5rem;
@@ -1071,6 +1075,11 @@ button.ghost {
   opacity: 0.6;
   cursor: not-allowed;
   box-shadow: none;
+}
+
+.group-action-btn.toggle-visibility.active {
+  background: rgba(15, 20, 36, 0.12);
+  color: #0f1424;
 }
 
 .visual-filter-host {
@@ -2338,8 +2347,8 @@ button.small {
 
 .text-box .text-delete-btn {
   position: absolute;
-  top: -12px;
-  right: -12px;
+  top: -18px;
+  left: 50%;
   width: 30px;
   height: 30px;
   border-radius: 50%;
@@ -2355,6 +2364,8 @@ button.small {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.15s ease;
+  transform: translate(-50%, -50%);
+  aspect-ratio: 1 / 1;
 }
 
 .text-box:hover .text-delete-btn,
@@ -2390,9 +2401,9 @@ button.small {
 
 .text-box .text-content {
   resize: both;
-  min-width: 180px;
-  min-height: 100px;
-  padding: 12px 14px;
+  min-width: 1px;
+  min-height: 1px;
+  padding: 0;
   border-radius: 12px;
   border: 1px solid rgba(15, 20, 36, 0.16);
   background: rgba(255, 255, 255, 0.35);

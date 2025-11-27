@@ -1788,8 +1788,8 @@ function removeTextBox(textBoxId) {
 
 function syncTextBoxDimensions(textBox, textarea) {
   if (!textBox || !textarea) return;
-  const width = Math.max(180, textarea.offsetWidth || textBox.width || 0);
-  const height = Math.max(100, textarea.offsetHeight || textBox.height || 0);
+  const width = Math.max(1, textarea.offsetWidth || textBox.width || 0);
+  const height = Math.max(1, textarea.offsetHeight || textBox.height || 0);
   textBox.width = width;
   textBox.height = height;
   textBox.element.style.width = `${width}px`;
@@ -2283,6 +2283,7 @@ function drawConnections() {
     const fromSystem = systems.find((s) => s.id === connection.from);
     const toSystem = systems.find((s) => s.id === connection.to);
     if (!fromSystem || !toSystem) return;
+    if (fromSystem.isHiddenByGroup || toSystem.isHiddenByGroup) return;
     const { from: fromPos, to: toPos, fromSide, toSide } = getConnectionPoints(fromSystem, toSystem);
     const route = getConnectionRoute(fromSystem, toSystem, fromPos, toPos, fromSide, toSide);
     const group = document.createElementNS(SVG_NS, "g");
@@ -2887,6 +2888,7 @@ function getGroupHull(group) {
     filterMode === "hide"
       ? members.filter((system) => !system.element.classList.contains("hidden-filter"))
       : members;
+  if (group.hidden) return null;
   if (!renderableMembers.length && filterMode === "hide") return null;
   if (!members.length) return null;
   const padding = GROUP_OVERLAY_PADDING;
@@ -3023,6 +3025,20 @@ function positionGroupPanel() {
   groupPanel.style.top = `${offsetTop}px`;
 }
 
+function applyGroupVisibility() {
+  const hiddenIds = new Set();
+  groups.forEach((group) => {
+    if (!group.hidden) return;
+    (group.systemIds || []).forEach((id) => hiddenIds.add(id));
+  });
+
+  systems.forEach((system) => {
+    const hidden = hiddenIds.has(system.id);
+    system.isHiddenByGroup = hidden;
+    system.element.classList.toggle("group-hidden", hidden);
+  });
+}
+
 function renderGroupList() {
   if (!groupListContainer) return;
   groupListContainer.innerHTML = "";
@@ -3069,6 +3085,22 @@ function renderGroupList() {
       openGroupEditor(group);
     });
 
+    const visibilityBtn = document.createElement("button");
+    visibilityBtn.className = "group-action-btn toggle-visibility";
+    visibilityBtn.type = "button";
+    visibilityBtn.title = group.hidden ? "Show group systems" : "Hide group systems";
+    visibilityBtn.setAttribute("aria-label", visibilityBtn.title);
+    visibilityBtn.textContent = group.hidden ? "🙈" : "👁️";
+    visibilityBtn.disabled = locked;
+    if (group.hidden) {
+      visibilityBtn.classList.add("active");
+    }
+    visibilityBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (isEditingLocked()) return;
+      setGroupVisibility(group, !group.hidden);
+    });
+
     const deleteBtn = document.createElement("button");
     deleteBtn.className = "group-action-btn";
     deleteBtn.type = "button";
@@ -3082,7 +3114,7 @@ function renderGroupList() {
       removeGroup(group.id);
     });
 
-    actions.append(renameBtn, deleteBtn);
+    actions.append(renameBtn, visibilityBtn, deleteBtn);
     row.appendChild(actions);
     groupListContainer.appendChild(row);
   });
@@ -3090,6 +3122,7 @@ function renderGroupList() {
 
 function refreshGroupsUi(options = {}) {
   const { overlayOnly = false } = options;
+  applyGroupVisibility();
   renderGroups();
   if (!overlayOnly) {
     renderGroupList();
@@ -3172,6 +3205,15 @@ function removeGroup(groupId) {
   scheduleShareUrlSync();
 }
 
+function setGroupVisibility(group, hidden) {
+  if (!group) return;
+  group.hidden = !!hidden;
+  applyGroupVisibility();
+  refreshGroupsUi();
+  updateHighlights();
+  scheduleShareUrlSync();
+}
+
 function createGroupFromSelection(selectedSystems = [], options = {}) {
   const { alwaysNew = false } = options;
   if (!selectedSystems.length) return;
@@ -3196,6 +3238,7 @@ function createGroupFromSelection(selectedSystems = [], options = {}) {
       id: `group-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       name: getDefaultGroupName(),
       color: "#ffffff",
+      hidden: false,
       systemIds: selectedSystems.map((item) => item.id),
     };
     groups.push(group);
@@ -4433,6 +4476,8 @@ function updateHighlights() {
 
   const nextHighlightState = new Map();
 
+  applyGroupVisibility();
+
   const baseFilteredIds = new Set();
   systems.forEach((system) => {
     if (systemMatchesFilters(system)) {
@@ -4503,6 +4548,13 @@ function updateHighlights() {
   const shouldApplyState = !!selectedSystemId || filtersActive || hasEntitySelection;
 
   systems.forEach((system) => {
+    if (system.isHiddenByGroup) {
+      system.element.classList.add("group-hidden");
+      system.element.classList.remove("highlighted", "dimmed", "hidden-filter", "selected");
+      nextHighlightState.set(system.id, { highlight: false });
+      return;
+    }
+
     let highlight = true;
     const includeParentLineage = parentBoostIds.has(system.id);
 
@@ -7069,6 +7121,7 @@ function serializeState(accessModeOverride, options = {}) {
       id: group.id,
       name: group.name,
       color: group.color,
+      hidden: !!group.hidden,
       systemIds: Array.isArray(group.systemIds) ? group.systemIds : Array.from(group.systemIds || []),
     })),
     functionOwners: Array.from(functionOwnerOptions),
@@ -7192,6 +7245,7 @@ function loadSerializedState(snapshot) {
       id: group.id || `group-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       name: group.name || getDefaultGroupName(),
       color: group.color || "#ffffff",
+      hidden: !!group.hidden,
       systemIds: [...group.systemIds],
     });
   });
