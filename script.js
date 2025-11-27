@@ -1766,6 +1766,17 @@ function setActiveTextBox(target) {
   });
 }
 
+function removeTextBox(textBoxId) {
+  const index = textBoxes.findIndex((entry) => entry.id === textBoxId);
+  if (index === -1) return;
+  const [box] = textBoxes.splice(index, 1);
+  box?.element?.remove();
+  if (activeTextBoxId === textBoxId) {
+    setActiveTextBox(null);
+  }
+  scheduleShareUrlSync();
+}
+
 function syncTextBoxDimensions(textBox, textarea) {
   if (!textBox || !textarea) return;
   const width = Math.max(180, textarea.offsetWidth || textBox.width || 0);
@@ -1783,7 +1794,8 @@ function refreshTextBoxAccess() {
     const sizeSelect = textBox.element.querySelector(".text-size-select");
     const colorInput = textBox.element.querySelector(".text-color-input");
     const textarea = textBox.element.querySelector(".text-content");
-    [sizeSelect, colorInput, textarea].forEach((control) => {
+    const deleteBtn = textBox.element.querySelector(".text-delete-btn");
+    [sizeSelect, colorInput, textarea, deleteBtn].forEach((control) => {
       if (control) {
         control.disabled = locked;
         control.setAttribute("aria-disabled", locked ? "true" : "false");
@@ -1822,6 +1834,7 @@ function addTextBox({
   textBox.element.className = "text-box";
   textBox.element.dataset.id = resolvedId;
   textBox.element.innerHTML = `
+    <button class="text-delete-btn" aria-label="Delete text box" title="Delete text box">×</button>
     <div class="text-toolbar">
       <label>Size
         <select class="text-size-select" aria-label="Text size">
@@ -1840,6 +1853,7 @@ function addTextBox({
   const textarea = textBox.element.querySelector(".text-content");
   const sizeSelect = textBox.element.querySelector(".text-size-select");
   const colorInput = textBox.element.querySelector(".text-color-input");
+  const deleteBtn = textBox.element.querySelector(".text-delete-btn");
   if (textarea) {
     textarea.value = textBox.text;
     textarea.style.fontSize = `${textBox.fontSize}px`;
@@ -1866,6 +1880,13 @@ function addTextBox({
         textarea.style.color = textBox.color;
       }
       scheduleShareUrlSync();
+    });
+  }
+  if (deleteBtn) {
+    deleteBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (isEditingLocked()) return;
+      removeTextBox(textBox.id);
     });
   }
   if (textarea) {

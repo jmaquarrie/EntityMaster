@@ -355,7 +355,7 @@ button.ghost {
   fill: #0f1424;
   font-weight: 600;
   font-size: 14px;
-  pointer-events: none;
+  pointer-events: auto;
   text-shadow: none;
 }
 
@@ -2251,6 +2251,36 @@ button.small {
   color: #0f1424;
   font-size: 12px;
   line-height: 1.2;
+}
+
+.text-box .text-delete-btn {
+  position: absolute;
+  top: -14px;
+  right: -14px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid rgba(15, 20, 36, 0.18);
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(10px);
+  color: #0f1424;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  box-shadow: 0 6px 14px rgba(15, 20, 36, 0.12);
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.text-box .text-delete-btn:hover:not(:disabled) {
+  transform: scale(1.04);
+  box-shadow: 0 10px 18px rgba(15, 20, 36, 0.14);
+}
+
+.text-box .text-delete-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 
 .text-box.selected .text-toolbar {
