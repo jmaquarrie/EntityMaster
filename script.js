@@ -1734,6 +1734,7 @@ function addSystem({
   }
   updateHighlights();
   renderGroups();
+  refreshDataTableIfVisible();
   return system;
 }
 
@@ -4167,14 +4168,18 @@ function updateHighlights() {
   applyColorCoding();
   drawConnections();
   applyConnectionFilterClasses(shouldApplyState);
-  if (dataTableModal && !dataTableModal.classList.contains("hidden")) {
-    renderSystemDataTable();
-  }
+  refreshDataTableIfVisible();
   if (visualModal && !visualModal.classList.contains("hidden")) {
     requestVisualRender();
   }
   scheduleShareUrlSync();
   syncResetButtonsVisibility();
+}
+
+function refreshDataTableIfVisible() {
+  if (dataTableModal && !dataTableModal.classList.contains("hidden")) {
+    renderSystemDataTable();
+  }
 }
 
 function syncResetButtonsVisibility() {
