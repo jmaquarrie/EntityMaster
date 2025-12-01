@@ -14,6 +14,7 @@
           <div id="canvasContent">
             <svg id="connectionLayer"></svg>
             <svg id="entityLinkLayer"></svg>
+            <div id="groupLayer"></div>
             <div id="canvas" tabindex="0"></div>
             <div id="connectionHandleLayer" aria-hidden="true"></div>
           </div>
@@ -28,17 +29,44 @@
           <button data-shape="start" role="menuitem">Start shape</button>
           <button data-shape="end" role="menuitem">End shape</button>
         </div>
-        <div class="canvas-toolbar" aria-label="Canvas controls">
-          <div class="toolbar-actions">
-            <button id="addSystemBtn">Add System</button>
-            <button id="addObjectBtn" class="secondary">Add Object</button>
-            <span id="fileNameDisplay" class="file-name" title="Click to rename">Untitled</span>
+        <div id="shareMenu" class="flyout-menu hidden" role="menu" aria-label="Share options">
+          <button data-share-mode="full" role="menuitem">Share full</button>
+          <button data-share-mode="view" role="menuitem">Share view-only</button>
+          <button data-share-mode="locked" role="menuitem">Share locked</button>
+        </div>
+        <div class="floating-controls" aria-label="Floating mode controls">
+          <div class="floating-control">
+            <button id="filterModeToggle" class="floating-btn" aria-label="Toggle filter mode">Fade</button>
           </div>
-          <div class="zoom-controls" aria-label="Zoom">
-            <div class="storage-controls" aria-label="Diagram storage">
+          <div class="floating-control">
+            <div class="floating-label" aria-hidden="true">Table Mode</div>
+            <button id="dataTableToggle" class="floating-btn" aria-label="Open system data table">📊</button>
+          </div>
+          <div class="floating-control">
+            <div class="floating-label" aria-hidden="true">Visualise</div>
+            <button id="visualToggle" class="floating-btn" aria-label="Open condensed visual">🗺️</button>
+          </div>
+        </div>
+        <div class="canvas-toolbar" aria-label="Canvas controls">
+              <div class="toolbar-actions">
+                <button id="addSystemBtn">Add System</button>
+                <button id="addObjectBtn" class="secondary">Add Object</button>
+                <button id="addTextBtn" class="secondary">Add Text</button>
+                <span id="fileNameDisplay" class="file-name" title="Click to rename">Untitled</span>
+              </div>
+            <div class="zoom-controls" aria-label="Zoom">
+              <div class="storage-controls" aria-label="Diagram storage">
                 <div class="icon-block">
                   <button id="newDiagramBtn" class="icon-btn" title="Start new diagram" aria-label="Start new diagram">🆕</button>
                   <div class="icon-label">New</div>
+                </div>
+                <div class="icon-block">
+                  <button id="undoActionBtn" class="icon-btn" title="Undo" aria-label="Undo last action">↩️</button>
+                  <div class="icon-label">Undo</div>
+                </div>
+                <div class="icon-block">
+                  <button id="redoActionBtn" class="icon-btn" title="Redo" aria-label="Redo last action">↪️</button>
+                  <div class="icon-label">Redo</div>
                 </div>
                 <div class="icon-block">
                   <div class="save-control">
@@ -71,68 +99,111 @@
             <span class="toggle-label">Filters &amp; Search</span>
             <span class="toggle-icon" aria-hidden="true">+</span>
           </button>
+          <button id="collapsedResetFiltersBtn" class="sidebar-reset-collapsed hidden" type="button">
+            Reset
+          </button>
           <div class="sidebar-content">
-            <div class="sidebar-section">
-              <label class="field">
-                <span>Search Type</span>
-                <select id="searchType">
-                  <option value="system">System</option>
+          <div class="sidebar-section">
+            <label class="field">
+              <span>Search Type</span>
+              <select id="searchType">
+                <option value="system">System</option>
                   <option value="domain">Domain</option>
                   <option value="platformOwner">Platform Owner</option>
                   <option value="businessOwner">Business Owner</option>
                   <option value="functionOwner">Function Owner</option>
                   <option value="entity">Entity</option>
+                  <option value="attributes">Attributes</option>
                 </select>
-              </label>
-              <label class="field">
-                <span>Search</span>
-                <input type="text" id="searchInput" placeholder="Search…" />
-              </label>
-            </div>
-            <div class="sidebar-section">
-              <div class="section-title">Domains</div>
-              <div id="globalDomainChips" class="domain-chips"></div>
-            </div>
-            <div class="sidebar-section">
-              <div class="section-title">Platform Owner</div>
+            </label>
+            <label class="field">
+              <span>Search</span>
+              <input type="text" id="searchInput" placeholder="Search…" />
+            </label>
+          </div>
+          <div class="sidebar-section">
+            <div class="section-title">Domains</div>
+            <div id="globalDomainChips" class="domain-chips"></div>
+          </div>
+          <div class="sidebar-section sidebar-grid compact-section">
+            <label class="field compact">
+              <span>Platform Owner</span>
               <input
                 type="text"
                 id="platformOwnerFilter"
                 placeholder="Filter by platform owner"
                 list="platformOwnerSuggestions"
               />
-            </div>
-            <div class="sidebar-section">
-              <div class="section-title">Business Owner</div>
+            </label>
+            <label class="field compact">
+              <span>Business Owner</span>
               <input
                 type="text"
                 id="businessOwnerFilter"
                 placeholder="Filter by business owner"
                 list="businessOwnerSuggestions"
               />
-            </div>
-            <div class="sidebar-section">
-              <div class="section-title">Function Owner</div>
+            </label>
+            <label class="field compact">
+              <span>Function Owner</span>
               <input
                 type="text"
                 id="functionOwnerFilter"
                 placeholder="Filter by function owner"
                 list="functionOwnerOptions"
               />
-            </div>
+            </label>
+          </div>
+          <div class="sidebar-section">
+            <div class="section-title">Functional Consumers</div>
+            <div id="functionalConsumerFilterChips" class="domain-chips"></div>
+          </div>
+          <div class="sidebar-section sidebar-grid compact-section">
+            <label class="field compact">
+              <span>System of Record</span>
+              <select id="sorFilter">
+                <option value="any">Any</option>
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+            </label>
+            <label class="field compact">
+              <span>Include spreadsheets?</span>
+              <select id="spreadsheetFilter">
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+            </label>
+            <label class="field compact">
+              <span>Has file?</span>
+              <select id="filePresenceFilter">
+                <option value="any">Any</option>
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+            </label>
+            <label class="field compact">
+              <span>Waiting on Info</span>
+              <select id="waitingOnInfoFilter">
+                <option value="any">Any</option>
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+            </label>
+          </div>
+          <div class="sidebar-actions">
+            <button id="resetFiltersBtn" type="button">Reset</button>
+          </div>
+        </div>
+      </aside>
+        <aside id="groupPanel" class="sidebar collapsed group-sidebar" aria-label="Groups">
+          <button id="groupPanelToggle" class="sidebar-toggle" aria-expanded="false">
+            <span class="toggle-label">Groups</span>
+            <span class="toggle-icon" aria-hidden="true">+</span>
+          </button>
+          <div class="sidebar-content">
             <div class="sidebar-section">
-              <label class="field">
-                <span>System of Record</span>
-                <select id="sorFilter">
-                  <option value="any">Any</option>
-                  <option value="yes">Yes</option>
-                  <option value="no">No</option>
-                </select>
-              </label>
-            </div>
-            <div class="sidebar-actions">
-              <button id="resetFiltersBtn" type="button">Reset</button>
-              <button id="visualizeBtn" type="button" class="ghost">Visual</button>
+              <div id="groupList" class="group-list"></div>
             </div>
           </div>
         </aside>
@@ -198,7 +269,20 @@
             list="functionOwnerOptions"
           />
         </label>
-        <label class="field">
+        <section class="field">
+          <div class="section-title">Functional Consumers</div>
+          <form id="functionalConsumerForm">
+            <input
+              type="text"
+              id="functionalConsumerInput"
+              placeholder="Add functional consumer"
+              list="functionOwnerOptions"
+            />
+            <button type="submit">Add</button>
+          </form>
+          <ul id="functionalConsumerList" class="consumer-list"></ul>
+        </section>
+        <label class="field" data-shared-hidden="true">
           <span>File URL</span>
           <input type="text" id="fileUrlInput" placeholder="https://" />
         </label>
@@ -209,6 +293,7 @@
             <button type="submit">Add</button>
           </form>
           <ul id="entityList" class="entity-list"></ul>
+          <button id="openAttributesModal" type="button" class="inline-link" data-shared-hidden="true">Attributes</button>
         </section>
         <section class="field">
           <div class="section-title">Domains</div>
@@ -226,7 +311,58 @@
           <span>Comments</span>
           <textarea id="systemCommentsInput" rows="3" placeholder="Add notes or context"></textarea>
         </label>
+        <label class="field inline-toggle">
+          <input type="checkbox" id="waitingOnInfoCheckbox" />
+          <span>Waiting on Info</span>
+        </label>
       </aside>
+      <div
+        id="attributesModal"
+        class="side-modal hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="attributesModalTitle"
+        data-shared-hidden="true"
+      >
+        <div class="modal-card">
+          <div class="modal-header">
+            <div class="modal-title-stack">
+              <h3 id="attributesModalTitle">Attributes</h3>
+              <button id="resetAttributeFilterBtn" type="button" class="ghost small hidden">Reset</button>
+            </div>
+            <button id="closeAttributesModal" aria-label="Close attributes">×</button>
+          </div>
+          <div class="table-scroll">
+            <table class="attributes-table">
+              <colgroup>
+                <col />
+                <col />
+                <col class="actions-col" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>Attribute</th>
+                  <th>Entity</th>
+                  <th class="actions-col" aria-label="Delete column"></th>
+                </tr>
+              </thead>
+              <tbody id="attributesTableBody"></tbody>
+            </table>
+          </div>
+          <div class="attributes-actions">
+            <button id="addAttributeRowBtn" type="button" class="secondary">Add row</button>
+          </div>
+          <label class="field">
+            <span>Add CSV attributes</span>
+            <textarea id="attributesCsvInput" rows="3" placeholder="attribute1, attribute2"></textarea>
+          </label>
+          <label class="checkbox field inline attributes-csv-toggle">
+            <input type="checkbox" id="includeEntityCsvToggle" />
+            <span>Include entity in CSV</span>
+          </label>
+          <button id="processAttributesCsvBtn" type="button">Process CSV data</button>
+        </div>
+      </div>
       <div id="objectModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="objectModalTitle">
         <div class="modal-card">
           <div class="modal-header">
@@ -246,8 +382,77 @@
               <option value="end">End</option>
             </select>
           </label>
+          <label class="field">
+            <span>Colour</span>
+            <input type="color" id="objectColorInput" value="#d1d5db" />
+          </label>
+          <label class="field">
+            <span>Comments</span>
+            <textarea id="objectCommentsInput" rows="3" placeholder="Add context for this object"></textarea>
+          </label>
           <div class="modal-actions">
             <button id="saveObjectBtn" type="button">Save</button>
+          </div>
+        </div>
+      </div>
+      <div id="dataTableModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="dataTableTitle">
+        <div class="modal-card table-modal-card">
+          <div class="modal-header table-modal-header">
+            <h3 id="dataTableTitle">System Data</h3>
+            <div class="table-header-actions">
+              <label class="field compact">
+                <span>Group by</span>
+                <select id="dataTableGroupSelect" aria-label="Group table rows">
+                  <option value="none">None</option>
+                  <option value="domain">Domain</option>
+                  <option value="entity">Entity</option>
+                  <option value="attributes">Attributes</option>
+                  <option value="system">System</option>
+                  <option value="functionOwner">Function Owner</option>
+                  <option value="businessOwner">Business Owner</option>
+                  <option value="platformOwner">Platform Owner</option>
+                </select>
+              </label>
+              <label id="dataTableHideEmptyWrapper" class="field compact inline-toggle hidden">
+                <input type="checkbox" id="dataTableHideEmptyToggle" />
+                <span>Hide empty fields</span>
+              </label>
+              <label class="field compact inline-toggle">
+                <input type="checkbox" id="dataTableAttributesToggle" />
+                <span>Show attributes</span>
+              </label>
+              <label class="field compact inline-toggle">
+                <input type="checkbox" id="dataTableMultiSystemToggle" />
+                <span>Show multi-system only</span>
+              </label>
+              <button id="saveTableCsvBtn" type="button" class="secondary">Save to CSV</button>
+              <button id="closeDataTableBtn" aria-label="Close system data table">Close</button>
+            </div>
+          </div>
+          <div class="table-body-wrapper">
+            <table class="system-data-table">
+              <thead>
+                <tr>
+                  <th>Domain</th>
+                  <th>Entity</th>
+                  <th>Attributes</th>
+                  <th>System</th>
+                  <th>Function Owner</th>
+                  <th>Business Owner</th>
+                  <th>Platform Owner</th>
+                </tr>
+                <tr class="table-filter-row">
+                  <th><input type="text" id="dataTableFilterDomain" class="column-filter-input" placeholder="Filter" /></th>
+                  <th><input type="text" id="dataTableFilterEntity" class="column-filter-input" placeholder="Filter" /></th>
+                  <th><input type="text" id="dataTableFilterAttributes" class="column-filter-input" placeholder="Filter" /></th>
+                  <th><input type="text" id="dataTableFilterSystem" class="column-filter-input" placeholder="Filter" /></th>
+                  <th><input type="text" id="dataTableFilterFunctionOwner" class="column-filter-input" placeholder="Filter" /></th>
+                  <th><input type="text" id="dataTableFilterBusinessOwner" class="column-filter-input" placeholder="Filter" /></th>
+                  <th><input type="text" id="dataTableFilterPlatformOwner" class="column-filter-input" placeholder="Filter" /></th>
+                </tr>
+              </thead>
+              <tbody id="systemDataTableBody"></tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -312,6 +517,16 @@
             <button id="closeSaveModal" class="icon-btn" type="button" aria-label="Close saved diagrams">×</button>
           </div>
           <p class="modal-description">Load, rename, or delete any saved snapshot.</p>
+          <div class="save-import">
+            <div class="save-import-text">
+              <div class="section-title">Load from file</div>
+              <p class="modal-hint">Upload a previously downloaded save to restore it.</p>
+            </div>
+            <div class="save-import-actions">
+              <input type="file" id="loadSaveFileInput" accept="application/json" class="visually-hidden" />
+              <button id="loadSaveFileBtn" type="button">Upload Save File</button>
+            </div>
+          </div>
           <div id="saveList" class="save-list"></div>
         </div>
       </div>
@@ -338,6 +553,20 @@
               <option value="platformOwner">Platform Owner</option>
             </select>
           </label>
+          <div class="settings-inline-toggles">
+            <label class="inline-toggle">
+              <input type="checkbox" id="expandEntitiesToggle" />
+              <span>Expand Entities</span>
+            </label>
+            <label class="inline-toggle">
+              <input type="checkbox" id="showParentsToggle" />
+              <span>Show Parents</span>
+            </label>
+            <label class="inline-toggle">
+              <input type="checkbox" id="fullParentLineageToggle" />
+              <span>Show full Parent Lineage</span>
+            </label>
+          </div>
           <section class="settings-section">
             <div class="section-title">Custom Domains</div>
             <form id="customDomainForm" class="settings-inline-form">
@@ -353,16 +582,107 @@
           </section>
         </div>
       </div>
+      <div
+        id="groupColorModal"
+        class="modal hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="groupColorModalTitle"
+      >
+        <div class="modal-card">
+          <div class="modal-header">
+            <h3 id="groupColorModalTitle">Edit Group</h3>
+            <button id="closeGroupColorModal" aria-label="Close group modal">×</button>
+          </div>
+          <label class="field">
+            <span>Group Name</span>
+            <input type="text" id="groupNameInput" placeholder="Group name" />
+          </label>
+          <label class="field">
+            <span>Colour</span>
+            <input type="color" id="groupColorInput" value="#ffffff" />
+          </label>
+          <div class="modal-actions">
+            <button id="saveGroupColorBtn" type="button">Save</button>
+          </div>
+        </div>
+      </div>
       <div id="visualModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="visualModalTitle">
         <div class="modal-card visual-modal-card">
-          <div class="modal-header">
-            <h3 id="visualModalTitle">Condensed Visual</h3>
-            <button id="closeVisualModal" class="icon-btn" type="button" aria-label="Close condensed visual">×</button>
+          <div class="modal-header visual-header">
+              <div class="visual-header-main">
+                <h3 id="visualModalTitle">Visualise</h3>
+                <div class="visual-header-controls">
+                  <label class="field compact visual-group-select">
+                    <span>Group by</span>
+                  <select id="visualGroupBySelect" aria-label="Visual grouping choice">
+                    <option value="none">None</option>
+                    <option value="domain">Domain</option>
+                    <option value="function">Function</option>
+                    <option value="entity">Entity</option>
+                    <option value="businessOwner">Business Owner</option>
+                    <option value="attribute">Attribute</option>
+                  </select>
+                </label>
+                <label class="field compact visual-connector-select">
+                  <span>Connector type</span>
+                  <select id="visualConnectorTypeSelect" aria-label="Visual connector choice">
+                    <option value="system">System</option>
+                    <option value="entity">Entity</option>
+                  </select>
+                </label>
+                <label class="field compact visual-entity-connector-controls hidden">
+                  <span>Entity filter</span>
+                  <select id="visualConnectorEntitySelect" aria-label="Visual connector entity choice"></select>
+                </label>
+                <div class="visual-control-group visual-secondary-controls">
+                  <div id="visualDomainControls" class="domain-controls hidden">
+                    <label class="field compact">
+                      <span>Domain</span>
+                      <select id="visualDomainSelect" aria-label="Visual domain choice"></select>
+                    </label>
+                  </div>
+                  <div id="visualFunctionControls" class="domain-controls hidden">
+                    <label class="field compact">
+                      <span>Function Owner</span>
+                      <select id="visualFunctionSelect" aria-label="Visual function choice"></select>
+                    </label>
+                  </div>
+                  <div id="visualEntityControls" class="domain-controls hidden">
+                    <label class="field compact">
+                      <span>Entity</span>
+                      <select id="visualEntitySelect" aria-label="Visual entity choice"></select>
+                    </label>
+                  </div>
+                  <div id="visualAttributeControls" class="domain-controls hidden">
+                    <label class="field compact">
+                      <span>Attribute</span>
+                      <select id="visualAttributeSelect" aria-label="Visual attribute choice"></select>
+                    </label>
+                  </div>
+                  <div id="visualBusinessOwnerControls" class="domain-controls hidden">
+                    <label class="field compact">
+                      <span>Business Owner</span>
+                      <select id="visualBusinessOwnerSelect" aria-label="Visual business owner choice"></select>
+                    </label>
+                  </div>
+                </div>
+                <label class="field compact inline-toggle visual-description-toggle">
+                  <input type="checkbox" id="visualShowDescriptionToggle" />
+                  <span>Show Description</span>
+                </label>
+              </div>
+            </div>
+            <button id="closeVisualModal" class="icon-btn" type="button" aria-label="Close visualise">×</button>
           </div>
-          <p class="modal-description">Systems that match your current filters, pulled closer together for a single-screen view.</p>
-          <div id="visualContainer" class="visual-container">
-            <svg id="visualConnections" class="visual-connections" aria-hidden="true"></svg>
-            <div id="visualNodes" class="visual-nodes"></div>
+          <div class="visual-body">
+            <div class="visual-main">
+              <div id="visualContainer" class="visual-container">
+                <svg id="visualConnections" class="visual-connections" aria-hidden="true"></svg>
+                <div id="visualNodes" class="visual-nodes"></div>
+              </div>
+            </div>
+            <aside id="visualFilterHost" class="visual-filter-host"></aside>
           </div>
         </div>
       </div>
@@ -374,6 +694,7 @@
           list="connectionLabelOptions"
         />
       </div>
+      <div id="filterPanelPlaceholder" aria-hidden="true"></div>
       <div id="newDiagramModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="newDiagramModalTitle">
         <div class="modal-card">
           <div class="modal-header">
@@ -396,6 +717,7 @@
       </datalist>
       <button id="undoDeleteBtn" class="undo-button hidden" type="button">Undo delete</button>
       <div id="contextMenu" class="context-menu hidden" role="menu"></div>
+      <div id="accessBadge" class="access-badge hidden" aria-live="polite"></div>
     </div>
     <script src="script.js"></script>
   </body>
