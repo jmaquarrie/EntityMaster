@@ -2190,6 +2190,12 @@ button.small {
   gap: 0.6rem;
 }
 
+.recover-section {
+  margin-top: 1rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(15, 20, 36, 0.08);
+}
+
 .save-import {
   display: flex;
   align-items: center;

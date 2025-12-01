@@ -8,6 +8,7 @@ const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 1.5;
 const ZOOM_STEP = 0.05;
 const STORAGE_KEY = "entityMasterSaves";
+const DELETED_STORAGE_KEY = "entityMasterDeletedSaves";
 const DEFAULT_ICON = "cube";
 const DEFAULT_OBJECT_COLOR = "#d1d5db";
 const ICON_LIBRARY = {
@@ -651,6 +652,7 @@ const cancelBulkBtn = document.getElementById("cancelBulkBtn");
 const saveManagerModal = document.getElementById("saveManagerModal");
 const closeSaveModalBtn = document.getElementById("closeSaveModal");
 const saveListContainer = document.getElementById("saveList");
+const recoverListContainer = document.getElementById("recoverList");
 const loadSaveFileInput = document.getElementById("loadSaveFileInput");
 const loadSaveFileBtn = document.getElementById("loadSaveFileBtn");
 const filterModeSelect = document.getElementById("filterModeSelect");
@@ -1121,6 +1123,7 @@ function init() {
   newDiagramCancelBtn?.addEventListener("click", closeNewDiagramModal);
   bulkDomainControls.addEventListener("click", handleBulkDomainControlClick);
   saveListContainer.addEventListener("click", handleSaveListClick);
+  recoverListContainer?.addEventListener("click", handleRecoverListClick);
   closeSaveModalBtn.addEventListener("click", closeSaveManager);
   zoomButtons.forEach((button) =>
     button.addEventListener("click", () => adjustZoom(button.dataset.direction))
@@ -5920,6 +5923,7 @@ function openSharePrompt(url) {
 
 function openSaveManager() {
   renderSaveList();
+  renderRecoverList();
   saveManagerModal.classList.remove("hidden");
 }
 
@@ -7139,6 +7143,41 @@ function renderSaveList() {
   saveListContainer.appendChild(fragment);
 }
 
+function renderRecoverList() {
+  if (!recoverListContainer) return;
+  const deleted = getDeletedDiagrams();
+  if (!deleted.length) {
+    recoverListContainer.innerHTML = '<div class="empty-message">No deleted diagrams to recover.</div>';
+    return;
+  }
+  recoverListContainer.innerHTML = "";
+  const fragment = document.createDocumentFragment();
+  deleted
+    .slice()
+    .sort((a, b) => (b.deletedAt || 0) - (a.deletedAt || 0))
+    .forEach((save) => {
+      const row = document.createElement("div");
+      row.className = "save-row";
+      row.dataset.id = save.id;
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "save-name";
+      nameSpan.textContent = save.name || save.fileName || "Deleted diagram";
+
+      const actions = document.createElement("div");
+      actions.className = "save-actions";
+
+      const recoverBtn = document.createElement("button");
+      recoverBtn.className = "load";
+      recoverBtn.dataset.action = "recover";
+      recoverBtn.textContent = "Recover";
+
+      actions.append(recoverBtn);
+      row.append(nameSpan, actions);
+      fragment.appendChild(row);
+    });
+  recoverListContainer.appendChild(fragment);
+}
+
 function handleSaveListClick(event) {
   const button = event.target.closest("button[data-action]");
   if (!button) return;
@@ -7157,6 +7196,17 @@ function handleSaveListClick(event) {
   }
 }
 
+function handleRecoverListClick(event) {
+  const button = event.target.closest("button[data-action]");
+  if (!button) return;
+  const row = button.closest(".save-row");
+  const id = row?.dataset.id;
+  if (!id) return;
+  if (button.dataset.action === "recover") {
+    recoverDeletedDiagram(id);
+  }
+}
+
 function getStoredDiagrams() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -7169,11 +7219,31 @@ function getStoredDiagrams() {
   }
 }
 
+function getDeletedDiagrams() {
+  try {
+    const raw = localStorage.getItem(DELETED_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.warn("Unable to read deleted diagrams", error);
+    return [];
+  }
+}
+
 function persistStoredDiagrams(entries) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
   } catch (error) {
     console.warn("Unable to persist diagrams", error);
+  }
+}
+
+function persistDeletedDiagrams(entries) {
+  try {
+    localStorage.setItem(DELETED_STORAGE_KEY, JSON.stringify(entries));
+  } catch (error) {
+    console.warn("Unable to persist deleted diagrams", error);
   }
 }
 
@@ -7291,9 +7361,34 @@ function renameSavedDiagram(id) {
 
 function deleteSavedDiagram(id) {
   let saves = getStoredDiagrams();
+  const deletedEntry = saves.find((save) => save.id === id);
   saves = saves.filter((save) => save.id !== id);
   persistStoredDiagrams(saves);
+  if (deletedEntry) {
+    const deleted = getDeletedDiagrams().filter((entry) => entry.id !== deletedEntry.id);
+    deleted.unshift({ ...deletedEntry, deletedAt: Date.now() });
+    persistDeletedDiagrams(deleted);
+  }
   renderSaveList();
+  renderRecoverList();
+}
+
+function recoverDeletedDiagram(id) {
+  const deleted = getDeletedDiagrams();
+  const entry = deleted.find((save) => save.id === id);
+  if (!entry) return;
+  const remaining = deleted.filter((save) => save.id !== id);
+  persistDeletedDiagrams(remaining);
+  const saves = getStoredDiagrams();
+  let restoredId = entry.id;
+  if (saves.some((save) => save.id === restoredId)) {
+    restoredId = `${restoredId}-recovered-${Date.now()}`;
+  }
+  const restored = { ...entry, id: restoredId };
+  delete restored.deletedAt;
+  persistStoredDiagrams([...saves, restored]);
+  renderSaveList();
+  renderRecoverList();
 }
 
 function serializeState(accessModeOverride, options = {}) {
