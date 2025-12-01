@@ -980,6 +980,10 @@ button.ghost {
   padding-right: 0.35rem;
 }
 
+#filterPanel .sidebar-content {
+  gap: 0.6rem;
+}
+
 .sidebar-reset-collapsed {
   align-self: flex-end;
   margin: 0.35rem 0;
@@ -1126,6 +1130,10 @@ button.ghost {
   gap: 0.5rem;
 }
 
+#filterPanel .sidebar-section {
+  gap: 0.35rem;
+}
+
 .sidebar-actions {
   display: flex;
   gap: 0.5rem;
@@ -1149,6 +1157,10 @@ button.ghost {
   font-size: 0.85rem;
 }
 
+#filterPanel .field {
+  gap: 0.25rem;
+}
+
 .field input,
 .field select,
 .field textarea {
@@ -1158,6 +1170,28 @@ button.ghost {
   font-size: 0.9rem;
   background: #fff;
   font-family: inherit;
+}
+
+#filterPanel .field input,
+#filterPanel .field select,
+#filterPanel .field textarea {
+  padding: 0.35rem 0.55rem;
+}
+
+.sidebar-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0.5rem 0.75rem;
+}
+
+.field.compact span {
+  font-size: 0.8rem;
+}
+
+.field.compact input,
+.field.compact select,
+.field.compact textarea {
+  padding: 0.35rem 0.55rem;
 }
 
 .field textarea {

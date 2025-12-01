@@ -497,6 +497,7 @@ let filterMode = "fade";
 let sorFilterValue = "any";
 let spreadsheetFilterValue = "yes";
 let filePresenceFilterValue = "any";
+let waitingOnInfoFilterValue = "any";
 let collapsedResetRecentlyUsed = false;
 let expandEntitiesGlobally = false;
 let showParentsFilter = false;
@@ -661,6 +662,7 @@ const fullParentLineageToggle = document.getElementById("fullParentLineageToggle
 const systemIconSelect = document.getElementById("systemIconSelect");
 const systemCommentsInput = document.getElementById("systemCommentsInput");
 const systemDescriptionInput = document.getElementById("systemDescriptionInput");
+const waitingOnInfoCheckbox = document.getElementById("waitingOnInfoCheckbox");
 const saveStatusLabel = document.getElementById("saveStatus");
 const spreadsheetSelect = document.getElementById("spreadsheetSelect");
 const newDiagramBtn = document.getElementById("newDiagramBtn");
@@ -691,6 +693,7 @@ const dataTableAttributesToggle = document.getElementById("dataTableAttributesTo
 const dataTableMultiSystemToggle = document.getElementById("dataTableMultiSystemToggle");
 const systemDataTableBody = document.getElementById("systemDataTableBody");
 const filePresenceFilterSelect = document.getElementById("filePresenceFilter");
+const waitingOnInfoFilterSelect = document.getElementById("waitingOnInfoFilter");
 const dataTableFilterInputs = {
   domain: document.getElementById("dataTableFilterDomain"),
   entity: document.getElementById("dataTableFilterEntity"),
@@ -775,6 +778,7 @@ function applyAccessMode(mode = "full") {
       systemIconSelect,
       systemCommentsInput,
       systemDescriptionInput,
+      waitingOnInfoCheckbox,
       customDomainInput,
       objectLabelInput,
       objectTypeSelect,
@@ -807,6 +811,7 @@ function applyAccessMode(mode = "full") {
       filterModeToggleBtn,
       sorFilterSelect,
       spreadsheetFilterSelect,
+      waitingOnInfoFilterSelect,
       expandEntitiesToggle,
       showParentsToggle,
       fullParentLineageToggle,
@@ -1000,6 +1005,12 @@ function init() {
     selectedSystemId = null;
     updateHighlights();
   });
+  waitingOnInfoFilterSelect?.addEventListener("change", (event) => {
+    if (isFiltersLocked()) return;
+    waitingOnInfoFilterValue = event.target.value;
+    selectedSystemId = null;
+    updateHighlights();
+  });
   expandEntitiesToggle?.addEventListener("change", (event) => {
     if (isFiltersLocked()) {
       event.target.checked = expandEntitiesGlobally;
@@ -1126,6 +1137,13 @@ function init() {
   systemCommentsInput?.addEventListener("input", () => {
     if (!activePanelSystem) return;
     activePanelSystem.comments = systemCommentsInput.value;
+  });
+  waitingOnInfoCheckbox?.addEventListener("change", (event) => {
+    if (!activePanelSystem) return;
+    activePanelSystem.waitingOnInfo = !!event.target.checked;
+    updateSystemMeta(activePanelSystem);
+    updateHighlights();
+    scheduleShareUrlSync();
   });
   systemDescriptionInput?.addEventListener("input", () => {
     if (!activePanelSystem) return;
@@ -1701,6 +1719,7 @@ function addSystem({
   icon = DEFAULT_ICON,
   comments = "",
   description = "",
+  waitingOnInfo = false,
   fileUrl = "",
   isSpreadsheet = false,
   isObject = false,
@@ -1733,6 +1752,7 @@ function addSystem({
     icon: normalizeIconKey(icon),
     comments: comments || "",
     description: description || "",
+    waitingOnInfo: !!waitingOnInfo,
     fileUrl: fileUrl || "",
     isSpreadsheet: !!isSpreadsheet,
     isObject: !!isObject,
@@ -3513,6 +3533,9 @@ function openPanel(system) {
   if (systemDescriptionInput) {
     systemDescriptionInput.value = system.description || "";
   }
+  if (waitingOnInfoCheckbox) {
+    waitingOnInfoCheckbox.checked = !!system.waitingOnInfo;
+  }
   if (fileUrlInput) {
     fileUrlInput.value = system.fileUrl || "";
   }
@@ -4546,6 +4569,7 @@ function cloneSystemData(system) {
     icon: system.icon,
     comments: system.comments,
     description: system.description,
+    waitingOnInfo: system.waitingOnInfo,
     fileUrl: system.fileUrl,
     isSpreadsheet: system.isSpreadsheet,
     isObject: system.isObject,
@@ -4585,6 +4609,7 @@ function resetFilters({ alsoClearSelection = false } = {}) {
   sorFilterValue = "any";
   spreadsheetFilterValue = "yes";
   filePresenceFilterValue = "any";
+  waitingOnInfoFilterValue = "any";
   relationFocus = null;
   clearEntityLinkHighlight(false);
   if (alsoClearSelection) {
@@ -4605,6 +4630,9 @@ function resetFilters({ alsoClearSelection = false } = {}) {
   }
   if (filePresenceFilterSelect) {
     filePresenceFilterSelect.value = "any";
+  }
+  if (waitingOnInfoFilterSelect) {
+    waitingOnInfoFilterSelect.value = "any";
   }
   updateGlobalDomainChips();
   applyGlobalEntityExpansion();
@@ -4693,7 +4721,8 @@ function updateHighlights() {
     !!searchQuery ||
     sorFilterValue !== "any" ||
     spreadsheetFilterValue !== "yes" ||
-    filePresenceFilterValue !== "any";
+    filePresenceFilterValue !== "any" ||
+    waitingOnInfoFilterValue !== "any";
 
   const filtersActive = baseFiltersActive || ((showParentsFilter || showFullParentLineage) && lineageSeedIds.size > 0);
   const shouldApplyState = !!selectedSystemId || filtersActive || hasEntitySelection;
@@ -4769,10 +4798,12 @@ function syncResetButtonsVisibility() {
     !!platformOwnerFilterText ||
     !!businessOwnerFilterText ||
     !!functionOwnerFilterText ||
+    functionalConsumerFilters.size > 0 ||
     !!searchQuery ||
     sorFilterValue !== "any" ||
     spreadsheetFilterValue !== "yes" ||
     filePresenceFilterValue !== "any" ||
+    waitingOnInfoFilterValue !== "any" ||
     showParentsFilter ||
     showFullParentLineage;
   if (!isSidebarCollapsed) {
@@ -4942,6 +4973,12 @@ function systemMatchesFilters(system) {
   if (filePresenceFilterValue === "no" && system.fileUrl && system.fileUrl.trim()) {
     return false;
   }
+  if (waitingOnInfoFilterValue === "yes" && !system.waitingOnInfo) {
+    return false;
+  }
+  if (waitingOnInfoFilterValue === "no" && system.waitingOnInfo) {
+    return false;
+  }
   if (searchQuery) {
     return doesSystemMatchSearch(system);
   }
@@ -4961,6 +4998,7 @@ function hasActiveFilters() {
     sorFilterValue !== "any" ||
     spreadsheetFilterValue !== "yes" ||
     filePresenceFilterValue !== "any" ||
+    waitingOnInfoFilterValue !== "any" ||
     showParentsFilter ||
     showFullParentLineage
   );
@@ -7276,6 +7314,7 @@ function serializeState(accessModeOverride, options = {}) {
       icon: system.icon,
       comments: system.comments,
       description: system.description,
+      waitingOnInfo: !!system.waitingOnInfo,
       isSpreadsheet: system.isSpreadsheet,
       isObject: system.isObject,
       shapeType: system.shapeType,
@@ -7330,6 +7369,7 @@ function serializeState(accessModeOverride, options = {}) {
       sor: sorFilterValue,
       spreadsheets: spreadsheetFilterValue,
       filePresence: filePresenceFilterValue,
+      waitingOnInfo: waitingOnInfoFilterValue,
       expandEntities: expandEntitiesGlobally,
       showParents: showParentsFilter,
       fullParentLineage: showFullParentLineage,
@@ -7395,6 +7435,7 @@ function loadSerializedState(snapshot) {
       icon: systemData.icon,
       comments: systemData.comments,
       description: systemData.description,
+      waitingOnInfo: !!systemData.waitingOnInfo,
       fileUrl: systemData.fileUrl,
       isSpreadsheet: !!systemData.isSpreadsheet,
       isObject: !!systemData.isObject,
@@ -7475,6 +7516,7 @@ function applyFilterState(filterState = {}) {
   const searchValue = filterState.search || "";
   const spreadsheetFilter = filterState.spreadsheets || "yes";
   const filePresenceFilter = filterState.filePresence || "any";
+  const waitingFilter = filterState.waitingOnInfo || "any";
   const expandEntities = !!filterState.expandEntities;
   const showParents = !!filterState.showParents;
   const fullParentLineage = !!filterState.fullParentLineage;
@@ -7490,6 +7532,7 @@ function applyFilterState(filterState = {}) {
   sorFilterValue = filterState.sor || sorFilterValue;
   spreadsheetFilterValue = spreadsheetFilter;
   filePresenceFilterValue = filePresenceFilter;
+  waitingOnInfoFilterValue = waitingFilter;
   expandEntitiesGlobally = expandEntities;
   showParentsFilter = showParents;
   showFullParentLineage = fullParentLineage;
@@ -7504,6 +7547,7 @@ function applyFilterState(filterState = {}) {
   if (sorFilterSelect) sorFilterSelect.value = sorFilterValue;
   if (spreadsheetFilterSelect) spreadsheetFilterSelect.value = spreadsheetFilterValue;
   if (filePresenceFilterSelect) filePresenceFilterSelect.value = filePresenceFilterValue;
+  if (waitingOnInfoFilterSelect) waitingOnInfoFilterSelect.value = waitingOnInfoFilterValue;
   if (expandEntitiesToggle) expandEntitiesToggle.checked = expandEntitiesGlobally;
   if (showParentsToggle) showParentsToggle.checked = showParentsFilter;
   if (fullParentLineageToggle) fullParentLineageToggle.checked = showFullParentLineage;

@@ -103,11 +103,11 @@
             Reset
           </button>
           <div class="sidebar-content">
-            <div class="sidebar-section">
-              <label class="field">
-                <span>Search Type</span>
-                <select id="searchType">
-                  <option value="system">System</option>
+          <div class="sidebar-section">
+            <label class="field">
+              <span>Search Type</span>
+              <select id="searchType">
+                <option value="system">System</option>
                   <option value="domain">Domain</option>
                   <option value="platformOwner">Platform Owner</option>
                   <option value="businessOwner">Business Owner</option>
@@ -115,81 +115,87 @@
                   <option value="entity">Entity</option>
                   <option value="attributes">Attributes</option>
                 </select>
-              </label>
-              <label class="field">
-                <span>Search</span>
-                <input type="text" id="searchInput" placeholder="Search…" />
-              </label>
-            </div>
-            <div class="sidebar-section">
-              <div class="section-title">Domains</div>
-              <div id="globalDomainChips" class="domain-chips"></div>
-            </div>
-            <div class="sidebar-section">
-              <div class="section-title">Platform Owner</div>
+            </label>
+            <label class="field">
+              <span>Search</span>
+              <input type="text" id="searchInput" placeholder="Search…" />
+            </label>
+          </div>
+          <div class="sidebar-section">
+            <div class="section-title">Domains</div>
+            <div id="globalDomainChips" class="domain-chips"></div>
+          </div>
+          <div class="sidebar-section sidebar-grid compact-section">
+            <label class="field compact">
+              <span>Platform Owner</span>
               <input
                 type="text"
                 id="platformOwnerFilter"
                 placeholder="Filter by platform owner"
                 list="platformOwnerSuggestions"
               />
-            </div>
-            <div class="sidebar-section">
-              <div class="section-title">Business Owner</div>
+            </label>
+            <label class="field compact">
+              <span>Business Owner</span>
               <input
                 type="text"
                 id="businessOwnerFilter"
                 placeholder="Filter by business owner"
                 list="businessOwnerSuggestions"
               />
-            </div>
-            <div class="sidebar-section">
-            <div class="section-title">Function Owner</div>
-            <input
-              type="text"
-              id="functionOwnerFilter"
-              placeholder="Filter by function owner"
-              list="functionOwnerOptions"
-            />
+            </label>
+            <label class="field compact">
+              <span>Function Owner</span>
+              <input
+                type="text"
+                id="functionOwnerFilter"
+                placeholder="Filter by function owner"
+                list="functionOwnerOptions"
+              />
+            </label>
           </div>
           <div class="sidebar-section">
             <div class="section-title">Functional Consumers</div>
             <div id="functionalConsumerFilterChips" class="domain-chips"></div>
           </div>
-          <div class="sidebar-section">
-            <label class="field">
+          <div class="sidebar-section sidebar-grid compact-section">
+            <label class="field compact">
               <span>System of Record</span>
               <select id="sorFilter">
                 <option value="any">Any</option>
-                  <option value="yes">Yes</option>
-                  <option value="no">No</option>
-                </select>
-              </label>
-            </div>
-            <div class="sidebar-section">
-              <label class="field">
-                <span>Include spreadsheets?</span>
-                <select id="spreadsheetFilter">
-                  <option value="yes">Yes</option>
-                  <option value="no">No</option>
-                </select>
-              </label>
-            </div>
-            <div class="sidebar-section">
-              <label class="field">
-                <span>Has file?</span>
-                <select id="filePresenceFilter">
-                  <option value="any">Any</option>
-                  <option value="yes">Yes</option>
-                  <option value="no">No</option>
-                </select>
-              </label>
-            </div>
-            <div class="sidebar-actions">
-              <button id="resetFiltersBtn" type="button">Reset</button>
-            </div>
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+            </label>
+            <label class="field compact">
+              <span>Include spreadsheets?</span>
+              <select id="spreadsheetFilter">
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+            </label>
+            <label class="field compact">
+              <span>Has file?</span>
+              <select id="filePresenceFilter">
+                <option value="any">Any</option>
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+            </label>
+            <label class="field compact">
+              <span>Waiting on Info</span>
+              <select id="waitingOnInfoFilter">
+                <option value="any">Any</option>
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+            </label>
           </div>
-        </aside>
+          <div class="sidebar-actions">
+            <button id="resetFiltersBtn" type="button">Reset</button>
+          </div>
+        </div>
+      </aside>
         <aside id="groupPanel" class="sidebar collapsed group-sidebar" aria-label="Groups">
           <button id="groupPanelToggle" class="sidebar-toggle" aria-expanded="false">
             <span class="toggle-label">Groups</span>
@@ -304,6 +310,10 @@
         <label class="field">
           <span>Comments</span>
           <textarea id="systemCommentsInput" rows="3" placeholder="Add notes or context"></textarea>
+        </label>
+        <label class="field inline-toggle">
+          <input type="checkbox" id="waitingOnInfoCheckbox" />
+          <span>Waiting on Info</span>
         </label>
       </aside>
       <div
