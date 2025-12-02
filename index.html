@@ -183,6 +183,14 @@
               </select>
             </label>
             <label class="field compact">
+              <span>Has API?</span>
+              <select id="apiAvailabilityFilter">
+                <option value="any">Any</option>
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+            </label>
+            <label class="field compact">
               <span>Waiting on Info</span>
               <select id="waitingOnInfoFilter">
                 <option value="any">Any</option>
@@ -299,6 +307,14 @@
           <div class="section-title">Domains</div>
           <div id="panelDomainChoices" class="domain-choices"></div>
         </section>
+        <button
+          id="openApiModal"
+          type="button"
+          class="inline-link"
+          data-shared-hidden="true"
+        >
+          Add API
+        </button>
         <label class="field">
           <span>System Description</span>
           <textarea
@@ -328,11 +344,11 @@
           <div class="modal-header">
             <div class="modal-title-stack">
               <h3 id="attributesModalTitle">Attributes</h3>
-              <button id="resetAttributeFilterBtn" type="button" class="ghost small hidden">Reset</button>
-            </div>
-            <button id="closeAttributesModal" aria-label="Close attributes">×</button>
-          </div>
-          <label class="field compact attributes-search">
+        <button id="resetAttributeFilterBtn" type="button" class="ghost small hidden">Reset</button>
+      </div>
+      <button id="closeAttributesModal" aria-label="Close attributes">×</button>
+    </div>
+    <label class="field compact attributes-search">
             <span class="sr-only">Search attributes</span>
             <input
               type="search"
@@ -368,8 +384,123 @@
           <label class="checkbox field inline attributes-csv-toggle">
             <input type="checkbox" id="includeEntityCsvToggle" />
             <span>Include entity in CSV</span>
-          </label>
-          <button id="processAttributesCsvBtn" type="button">Process CSV data</button>
+    </label>
+    <button id="processAttributesCsvBtn" type="button">Process CSV data</button>
+  </div>
+</div>
+      <div
+        id="apiModal"
+        class="side-modal hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="apiModalTitle"
+        data-shared-hidden="true"
+      >
+        <div class="modal-card">
+          <div class="modal-header">
+            <h3 id="apiModalTitle">API Details</h3>
+            <button id="closeApiModal" aria-label="Close API details">×</button>
+          </div>
+          <div class="side-modal-body">
+            <div class="sidebar-section sidebar-grid compact-section">
+              <label class="field compact">
+                <span>API Available</span>
+                <select id="apiAvailableSelect">
+                  <option value="unknown">Unknown</option>
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              </label>
+              <label class="field compact">
+                <span>API Type</span>
+                <select id="apiTypeSelect">
+                  <option value="none">None</option>
+                  <option value="rest">REST</option>
+                  <option value="graphql">GraphQL</option>
+                  <option value="soap">SOAP</option>
+                  <option value="proprietary">Proprietary</option>
+                  <option value="csv">CSV Export Only</option>
+                  <option value="webhooks">Webhooks Only</option>
+                </select>
+              </label>
+              <label class="field compact">
+                <span>Authentication Method</span>
+                <select id="apiAuthSelect">
+                  <option value="unknown">Unknown</option>
+                  <option value="oauth2">OAuth2</option>
+                  <option value="apiKey">API Key</option>
+                  <option value="basic">Basic Auth</option>
+                  <option value="sso">SSO required</option>
+                </select>
+              </label>
+              <label class="field compact">
+                <span>Data Access Level</span>
+                <select id="apiAccessSelect">
+                  <option value="">Select access level</option>
+                  <option value="read">Read-only</option>
+                  <option value="write">Write-only</option>
+                  <option value="readwrite">Read/Write</option>
+                  <option value="events">Events/Webhooks only</option>
+                  <option value="batch">Batch export only</option>
+                </select>
+              </label>
+            </div>
+            <section class="field">
+              <div class="section-title">Supported Entities</div>
+              <div class="inline-field-group">
+                <select id="apiSupportedEntitySelect"></select>
+                <button id="addApiSupportedEntityBtn" type="button" class="secondary">Add</button>
+              </div>
+              <ul id="apiSupportedEntityList" class="tag-list"></ul>
+            </section>
+            <label class="field">
+              <span>Rate Limits / Usage Restrictions</span>
+              <textarea id="apiRateLimitInput" rows="2" placeholder="Describe any limits"></textarea>
+            </label>
+            <label class="field compact">
+              <span>API Documentation Available</span>
+              <select id="apiDocsSelect">
+                <option value="unknown">Unknown</option>
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+                <option value="link">Link</option>
+              </select>
+            </label>
+            <label class="field compact api-docs-link hidden">
+              <span>Documentation Link</span>
+              <input type="url" id="apiDocsLinkInput" placeholder="https://" />
+            </label>
+            <label class="field">
+              <span>API Versioning</span>
+              <input type="text" id="apiVersioningInput" placeholder="Version details" />
+            </label>
+            <label class="field compact">
+              <span>Webhooks / Event Notifications</span>
+              <select id="apiWebhooksSelect">
+                <option value="unknown">Unknown</option>
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+            </label>
+            <label class="field compact">
+              <span>Integration Method Already in Use</span>
+              <select id="apiIntegrationSelect">
+                <option value="notIntegrated">Not integrated</option>
+                <option value="workato">Connected to Workato</option>
+                <option value="dataPlatform">Connected to Data Platform</option>
+                <option value="custom">Custom integration</option>
+                <option value="manual">Manual export only</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Vendor Constraints</span>
+              <textarea id="apiVendorConstraintsInput" rows="2" placeholder="Vendor limitations"></textarea>
+            </label>
+            <label class="field">
+              <span>Notes</span>
+              <textarea id="apiNotesInput" rows="3" placeholder="Additional details"></textarea>
+            </label>
+          </div>
         </div>
       </div>
       <div id="objectModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="objectModalTitle">

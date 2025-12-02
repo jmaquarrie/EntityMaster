@@ -25,6 +25,21 @@ const ICON_LIBRARY = {
   spreadsheet: "📗",
 };
 const GRID_SIZE = 40;
+const DEFAULT_API_DETAILS = {
+  available: "unknown",
+  type: "none",
+  authMethod: "unknown",
+  accessLevel: "",
+  supportedEntities: [],
+  rateLimits: "",
+  docsStatus: "unknown",
+  docsLink: "",
+  versioning: "",
+  webhooks: "unknown",
+  integration: "notIntegrated",
+  vendorConstraints: "",
+  notes: "",
+};
 
 // Lightweight LZ-based compression adapted from LZ-String (MIT License)
 // Only the URI-safe helpers are included to keep share URLs compact.
@@ -498,6 +513,7 @@ let filterMode = "fade";
 let sorFilterValue = "any";
 let spreadsheetFilterValue = "yes";
 let filePresenceFilterValue = "any";
+let apiAvailabilityFilterValue = "any";
 let waitingOnInfoFilterValue = "any";
 let collapsedResetRecentlyUsed = false;
 let expandEntitiesGlobally = false;
@@ -600,6 +616,7 @@ const entityForm = document.getElementById("entityForm");
 const entityInput = document.getElementById("entityInput");
 const entityList = document.getElementById("entityList");
 const attributesModalTrigger = document.getElementById("openAttributesModal");
+const apiModalTrigger = document.getElementById("openApiModal");
 const attributesModal = document.getElementById("attributesModal");
 const closeAttributesModalBtn = document.getElementById("closeAttributesModal");
 const attributesModalTitle = document.getElementById("attributesModalTitle");
@@ -610,6 +627,23 @@ const resetAttributeFilterBtn = document.getElementById("resetAttributeFilterBtn
 const attributesCsvInput = document.getElementById("attributesCsvInput");
 const includeEntityCsvToggle = document.getElementById("includeEntityCsvToggle");
 const processAttributesCsvBtn = document.getElementById("processAttributesCsvBtn");
+const apiModal = document.getElementById("apiModal");
+const closeApiModalBtn = document.getElementById("closeApiModal");
+const apiAvailableSelect = document.getElementById("apiAvailableSelect");
+const apiTypeSelect = document.getElementById("apiTypeSelect");
+const apiAuthSelect = document.getElementById("apiAuthSelect");
+const apiAccessSelect = document.getElementById("apiAccessSelect");
+const apiSupportedEntitySelect = document.getElementById("apiSupportedEntitySelect");
+const apiSupportedEntityList = document.getElementById("apiSupportedEntityList");
+const addApiSupportedEntityBtn = document.getElementById("addApiSupportedEntityBtn");
+const apiRateLimitInput = document.getElementById("apiRateLimitInput");
+const apiDocsSelect = document.getElementById("apiDocsSelect");
+const apiDocsLinkInput = document.getElementById("apiDocsLinkInput");
+const apiVersioningInput = document.getElementById("apiVersioningInput");
+const apiWebhooksSelect = document.getElementById("apiWebhooksSelect");
+const apiIntegrationSelect = document.getElementById("apiIntegrationSelect");
+const apiVendorConstraintsInput = document.getElementById("apiVendorConstraintsInput");
+const apiNotesInput = document.getElementById("apiNotesInput");
 const closePanelBtn = document.getElementById("closePanelBtn");
 const panelDomainChoices = document.getElementById("panelDomainChoices");
 const globalDomainChips = document.getElementById("globalDomainChips");
@@ -619,6 +653,7 @@ const functionOwnerFilterInput = document.getElementById("functionOwnerFilter");
 const functionalConsumerFilterChips = document.getElementById("functionalConsumerFilterChips");
 const searchInput = document.getElementById("searchInput");
 const searchTypeSelect = document.getElementById("searchType");
+const apiAvailabilityFilterSelect = document.getElementById("apiAvailabilityFilter");
 const fileUrlInput = document.getElementById("fileUrlInput");
 const zoomLabel = document.getElementById("zoomLabel");
 const zoomButtons = document.querySelectorAll(".zoom-btn");
@@ -783,6 +818,21 @@ function applyAccessMode(mode = "full") {
       systemCommentsInput,
       systemDescriptionInput,
       waitingOnInfoCheckbox,
+      apiModalTrigger,
+      apiAvailableSelect,
+      apiTypeSelect,
+      apiAuthSelect,
+      apiAccessSelect,
+      apiSupportedEntitySelect,
+      addApiSupportedEntityBtn,
+      apiRateLimitInput,
+      apiDocsSelect,
+      apiDocsLinkInput,
+      apiVersioningInput,
+      apiWebhooksSelect,
+      apiIntegrationSelect,
+      apiVendorConstraintsInput,
+      apiNotesInput,
       customDomainInput,
       objectLabelInput,
       objectTypeSelect,
@@ -802,6 +852,7 @@ function applyAccessMode(mode = "full") {
   });
   if (readOnly) {
     closeAttributesSideModal();
+    closeApiSideModal();
   }
 
   toggleElementsDisabled(
@@ -815,6 +866,7 @@ function applyAccessMode(mode = "full") {
       filterModeToggleBtn,
       sorFilterSelect,
       spreadsheetFilterSelect,
+      apiAvailabilityFilterSelect,
       waitingOnInfoFilterSelect,
       expandEntitiesToggle,
       showParentsToggle,
@@ -920,7 +972,9 @@ function init() {
   closePanelBtn.addEventListener("click", closePanel);
   entityForm.addEventListener("submit", handleAddEntity);
   attributesModalTrigger?.addEventListener("click", () => openAttributesSideModal(""));
+  apiModalTrigger?.addEventListener("click", openApiSideModal);
   closeAttributesModalBtn?.addEventListener("click", closeAttributesSideModal);
+  closeApiModalBtn?.addEventListener("click", closeApiSideModal);
   attributesSearchInput?.addEventListener("input", handleAttributesSearchInput);
   addAttributeRowBtn?.addEventListener("click", handleAddAttributeRow);
   attributesTableBody?.addEventListener("input", handleAttributeTableInput);
@@ -928,6 +982,21 @@ function init() {
   attributesTableBody?.addEventListener("click", handleAttributeTableClick);
   resetAttributeFilterBtn?.addEventListener("click", handleResetAttributesFilter);
   processAttributesCsvBtn?.addEventListener("click", handleProcessAttributesCsv);
+  apiAvailableSelect?.addEventListener("change", handleApiFieldChange);
+  apiTypeSelect?.addEventListener("change", handleApiFieldChange);
+  apiAuthSelect?.addEventListener("change", handleApiFieldChange);
+  apiAccessSelect?.addEventListener("change", handleApiFieldChange);
+  apiDocsSelect?.addEventListener("change", handleApiDocsChange);
+  apiDocsLinkInput?.addEventListener("input", handleApiFieldChange);
+  apiRateLimitInput?.addEventListener("input", handleApiFieldChange);
+  apiVersioningInput?.addEventListener("input", handleApiFieldChange);
+  apiWebhooksSelect?.addEventListener("change", handleApiFieldChange);
+  apiIntegrationSelect?.addEventListener("change", handleApiFieldChange);
+  apiVendorConstraintsInput?.addEventListener("input", handleApiFieldChange);
+  apiNotesInput?.addEventListener("input", handleApiFieldChange);
+  apiSupportedEntitySelect?.addEventListener("change", () => apiSupportedEntitySelect?.blur());
+  addApiSupportedEntityBtn?.addEventListener("click", handleAddApiSupportedEntity);
+  apiSupportedEntityList?.addEventListener("click", handleApiSupportedEntityListClick);
   canvas.addEventListener("click", handleCanvasClick);
   document.addEventListener("pointerdown", (event) => {
     if (!event.target.closest(".text-box")) {
@@ -1007,6 +1076,12 @@ function init() {
   filePresenceFilterSelect?.addEventListener("change", (event) => {
     if (isFiltersLocked()) return;
     filePresenceFilterValue = event.target.value;
+    selectedSystemId = null;
+    updateHighlights();
+  });
+  apiAvailabilityFilterSelect?.addEventListener("change", (event) => {
+    if (isFiltersLocked()) return;
+    apiAvailabilityFilterValue = event.target.value;
     selectedSystemId = null;
     updateHighlights();
   });
@@ -1711,6 +1786,42 @@ function buildDomainDefinitions(customDomains = []) {
   return merged;
 }
 
+function normalizeApiDetails(details = {}) {
+  const merged = { ...DEFAULT_API_DETAILS };
+  if (details && typeof details === "object") {
+    merged.available = ["yes", "no", "unknown"].includes(details.available)
+      ? details.available
+      : merged.available;
+    merged.type =
+      ["rest", "graphql", "soap", "proprietary", "csv", "webhooks", "none"].find(
+        (option) => option === details.type
+      ) || merged.type;
+    merged.authMethod = ["oauth2", "apiKey", "basic", "sso", "unknown"].includes(details.authMethod)
+      ? details.authMethod
+      : merged.authMethod;
+    merged.accessLevel =
+      ["read", "write", "readwrite", "events", "batch", ""].find((option) => option === details.accessLevel) ||
+      merged.accessLevel;
+    merged.supportedEntities = Array.isArray(details.supportedEntities)
+      ? Array.from(new Set(details.supportedEntities.map((value) => (value || "").trim()).filter(Boolean)))
+      : merged.supportedEntities;
+    merged.rateLimits = details.rateLimits || "";
+    merged.docsStatus = ["yes", "no", "unknown", "link"].includes(details.docsStatus)
+      ? details.docsStatus
+      : merged.docsStatus;
+    merged.docsLink = details.docsLink || "";
+    merged.versioning = details.versioning || "";
+    merged.webhooks = ["yes", "no", "unknown"].includes(details.webhooks) ? details.webhooks : merged.webhooks;
+    merged.integration =
+      ["workato", "dataPlatform", "custom", "notIntegrated", "manual"].includes(details.integration)
+        ? details.integration
+        : merged.integration;
+    merged.vendorConstraints = details.vendorConstraints || "";
+    merged.notes = details.notes || "";
+  }
+  return merged;
+}
+
 function addSystem({
   id,
   name,
@@ -1734,6 +1845,7 @@ function addSystem({
   shapeColor = DEFAULT_OBJECT_COLOR,
   shapeComments = "",
   attributes = [],
+  apiDetails = {},
 } = {}) {
   const resolvedId = id || `sys-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
   const defaultPosition = getNewSystemPosition();
@@ -1769,6 +1881,7 @@ function addSystem({
     attributes: Array.isArray(attributes)
       ? attributes.map((entry) => ({ attribute: entry.attribute || entry.name || "", entity: entry.entity || "" }))
       : [],
+    api: normalizeApiDetails(apiDetails),
     element: document.createElement("div"),
     isEntityExpanded: false,
     forceEntityExpand: false,
@@ -3528,6 +3641,7 @@ function openPanel(system) {
   platformOwnerInput.value = system.platformOwner;
   businessOwnerInput.value = system.businessOwner;
   functionOwnerInput.value = system.functionOwner;
+  ensureApiDetailsOnSystem(system);
   renderFunctionalConsumers(system);
   if (spreadsheetSelect) {
     spreadsheetSelect.value = system.isSpreadsheet ? "yes" : "no";
@@ -3589,6 +3703,7 @@ function commitObjectChanges() {
 function closePanel() {
   panel.classList.add("hidden");
   closeAttributesSideModal();
+  closeApiSideModal();
   activePanelSystem = null;
 }
 
@@ -3714,6 +3829,8 @@ function renameEntityName(system, index) {
       entry.entity = trimmed;
     }
   });
+  const api = ensureApiDetailsOnSystem(system);
+  api.supportedEntities = api.supportedEntities.map((name) => (name === oldName ? trimmed : name));
   if (attributesModalEntityFilter === oldName) {
     attributesModalEntityFilter = trimmed;
     updateAttributesModalTitle();
@@ -3781,6 +3898,8 @@ function renderEntityList(system, { skipAttributesRefresh = false } = {}) {
     removeBtn.addEventListener("click", () => {
       if (isEditingLocked()) return;
       system.entities.splice(index, 1);
+      const api = ensureApiDetailsOnSystem(system);
+      api.supportedEntities = api.supportedEntities.filter((name) => name !== entity.name);
       renderEntityList(system);
       updateSystemMeta(system);
       updateHighlights();
@@ -3794,6 +3913,10 @@ function renderEntityList(system, { skipAttributesRefresh = false } = {}) {
   updateSystemMeta(system);
   refreshEntityLinkIfActive();
   updateAttributesLinkLabel(system);
+  renderApiSupportedEntityOptions(system);
+  if (apiModal && !apiModal.classList.contains("hidden")) {
+    renderApiModal(system);
+  }
   if (attributesModal && !attributesModal.classList.contains("hidden") && !skipAttributesRefresh) {
     renderAttributesModal(system);
   }
@@ -3805,6 +3928,12 @@ function ensureAttributesArray(system) {
     system.attributes = [];
   }
   return system.attributes;
+}
+
+function ensureApiDetailsOnSystem(system) {
+  if (!system) return { ...DEFAULT_API_DETAILS };
+  system.api = normalizeApiDetails(system.api || {});
+  return system.api;
 }
 
 function countAttributesByEntity(system) {
@@ -3940,11 +4069,11 @@ function renderAttributesModal(system) {
   positionAttributesModal();
 }
 
-function positionAttributesModal() {
-  if (!attributesModal || !panel) return;
+function positionSideModal(modal) {
+  if (!modal || !panel) return;
   const gap = 16;
   const panelRect = panel.getBoundingClientRect();
-  const modalWidth = attributesModal.offsetWidth || 380;
+  const modalWidth = modal.offsetWidth || 380;
   let left = panelRect.right + gap;
   const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
 
@@ -3952,8 +4081,12 @@ function positionAttributesModal() {
     left = Math.max(gap, viewportWidth - modalWidth - gap);
   }
 
-  attributesModal.style.top = `${panelRect.top}px`;
-  attributesModal.style.left = `${left}px`;
+  modal.style.top = `${panelRect.top}px`;
+  modal.style.left = `${left}px`;
+}
+
+function positionAttributesModal() {
+  positionSideModal(attributesModal);
 }
 
 function openAttributesSideModal(entityFilter = "") {
@@ -3978,8 +4111,152 @@ function closeAttributesSideModal() {
 function handleResetAttributesFilter() {
   if (!activePanelSystem) return;
   attributesModalEntityFilter = "";
+  attributesSearchTerm = "";
+  if (attributesSearchInput) {
+    attributesSearchInput.value = "";
+  }
   updateAttributesModalTitle();
+  toggleAttributesResetButton();
   renderAttributesModal(activePanelSystem);
+}
+
+function syncApiDocsLinkVisibility() {
+  if (!apiDocsSelect || !apiDocsLinkInput) return;
+  const wrapper = apiDocsLinkInput.closest(".api-docs-link");
+  if (!wrapper) return;
+  if (apiDocsSelect.value === "link") {
+    wrapper.classList.remove("hidden");
+  } else {
+    wrapper.classList.add("hidden");
+  }
+}
+
+function renderApiSupportedEntityOptions(system = activePanelSystem) {
+  if (!apiSupportedEntitySelect) return;
+  const target = system || activePanelSystem;
+  const options = (target?.entities || []).map((entity) => entity.name).filter(Boolean);
+  const previous = apiSupportedEntitySelect.value;
+  apiSupportedEntitySelect.innerHTML = "";
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = options.length ? "Select entity" : "No entities";
+  apiSupportedEntitySelect.appendChild(placeholder);
+  options.forEach((name) => {
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = name;
+    apiSupportedEntitySelect.appendChild(option);
+  });
+  if (options.includes(previous)) {
+    apiSupportedEntitySelect.value = previous;
+  }
+}
+
+function renderApiSupportedEntityList(system = activePanelSystem) {
+  if (!apiSupportedEntityList || !system) return;
+  const api = ensureApiDetailsOnSystem(system);
+  apiSupportedEntityList.innerHTML = "";
+  api.supportedEntities.forEach((name) => {
+    const li = document.createElement("li");
+    const label = document.createElement("span");
+    label.textContent = name;
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "tag-remove";
+    removeBtn.dataset.name = name;
+    removeBtn.textContent = "×";
+    li.append(label, removeBtn);
+    apiSupportedEntityList.appendChild(li);
+  });
+}
+
+function renderApiModal(system) {
+  if (!apiModal || !system) return;
+  const api = ensureApiDetailsOnSystem(system);
+  if (apiAvailableSelect) apiAvailableSelect.value = api.available;
+  if (apiTypeSelect) apiTypeSelect.value = api.type;
+  if (apiAuthSelect) apiAuthSelect.value = api.authMethod;
+  if (apiAccessSelect) apiAccessSelect.value = api.accessLevel || "";
+  renderApiSupportedEntityOptions(system);
+  renderApiSupportedEntityList(system);
+  if (apiRateLimitInput) apiRateLimitInput.value = api.rateLimits || "";
+  if (apiDocsSelect) apiDocsSelect.value = api.docsStatus;
+  if (apiDocsLinkInput) apiDocsLinkInput.value = api.docsLink || "";
+  syncApiDocsLinkVisibility();
+  if (apiVersioningInput) apiVersioningInput.value = api.versioning || "";
+  if (apiWebhooksSelect) apiWebhooksSelect.value = api.webhooks;
+  if (apiIntegrationSelect) apiIntegrationSelect.value = api.integration;
+  if (apiVendorConstraintsInput) apiVendorConstraintsInput.value = api.vendorConstraints || "";
+  if (apiNotesInput) apiNotesInput.value = api.notes || "";
+  positionSideModal(apiModal);
+}
+
+function openApiSideModal() {
+  if (!apiModal || !activePanelSystem || isEditingLocked()) return;
+  renderApiModal(activePanelSystem);
+  apiModal.classList.remove("hidden");
+  positionSideModal(apiModal);
+}
+
+function closeApiSideModal() {
+  if (!apiModal) return;
+  apiModal.classList.add("hidden");
+}
+
+function handleApiFieldChange() {
+  if (isEditingLocked()) return;
+  if (!activePanelSystem) return;
+  const api = ensureApiDetailsOnSystem(activePanelSystem);
+  api.available = apiAvailableSelect?.value || api.available;
+  api.type = apiTypeSelect?.value || api.type;
+  api.authMethod = apiAuthSelect?.value || api.authMethod;
+  api.accessLevel = apiAccessSelect?.value || api.accessLevel;
+  api.rateLimits = apiRateLimitInput?.value || "";
+  api.docsStatus = apiDocsSelect?.value || api.docsStatus;
+  api.docsLink = api.docsStatus === "link" ? apiDocsLinkInput?.value?.trim() || "" : "";
+  if (api.docsStatus !== "link" && apiDocsLinkInput) {
+    apiDocsLinkInput.value = "";
+  }
+  api.versioning = apiVersioningInput?.value || "";
+  api.webhooks = apiWebhooksSelect?.value || api.webhooks;
+  api.integration = apiIntegrationSelect?.value || api.integration;
+  api.vendorConstraints = apiVendorConstraintsInput?.value || "";
+  api.notes = apiNotesInput?.value || "";
+  renderApiSupportedEntityList(activePanelSystem);
+  syncApiDocsLinkVisibility();
+  updateHighlights();
+  scheduleShareUrlSync();
+}
+
+function handleApiDocsChange() {
+  syncApiDocsLinkVisibility();
+  handleApiFieldChange();
+}
+
+function handleAddApiSupportedEntity() {
+  if (isEditingLocked()) return;
+  if (!activePanelSystem) return;
+  const value = (apiSupportedEntitySelect?.value || "").trim();
+  if (!value) return;
+  const api = ensureApiDetailsOnSystem(activePanelSystem);
+  if (!api.supportedEntities.includes(value)) {
+    api.supportedEntities.push(value);
+  }
+  renderApiSupportedEntityList(activePanelSystem);
+  apiSupportedEntitySelect.value = "";
+  scheduleShareUrlSync();
+}
+
+function handleApiSupportedEntityListClick(event) {
+  if (isEditingLocked()) return;
+  if (!activePanelSystem) return;
+  const button = event.target.closest(".tag-remove");
+  if (!button) return;
+  const name = button.dataset.name;
+  const api = ensureApiDetailsOnSystem(activePanelSystem);
+  api.supportedEntities = api.supportedEntities.filter((entry) => entry !== name);
+  renderApiSupportedEntityList(activePanelSystem);
+  scheduleShareUrlSync();
 }
 
 function handleAttributeTableInput(event) {
@@ -4605,6 +4882,7 @@ function cloneSystemData(system) {
     shapeLabel: system.shapeLabel,
     shapeColor: system.shapeColor,
     shapeComments: system.shapeComments,
+    apiDetails: normalizeApiDetails(system.api || {}),
     entities: system.entities.map((entity) => ({ name: entity.name, isSor: !!entity.isSor })),
   };
 }
@@ -4637,6 +4915,7 @@ function resetFilters({ alsoClearSelection = false } = {}) {
   sorFilterValue = "any";
   spreadsheetFilterValue = "yes";
   filePresenceFilterValue = "any";
+  apiAvailabilityFilterValue = "any";
   waitingOnInfoFilterValue = "any";
   relationFocus = null;
   clearEntityLinkHighlight(false);
@@ -4658,6 +4937,9 @@ function resetFilters({ alsoClearSelection = false } = {}) {
   }
   if (filePresenceFilterSelect) {
     filePresenceFilterSelect.value = "any";
+  }
+  if (apiAvailabilityFilterSelect) {
+    apiAvailabilityFilterSelect.value = "any";
   }
   if (waitingOnInfoFilterSelect) {
     waitingOnInfoFilterSelect.value = "any";
@@ -4831,6 +5113,7 @@ function syncResetButtonsVisibility() {
     sorFilterValue !== "any" ||
     spreadsheetFilterValue !== "yes" ||
     filePresenceFilterValue !== "any" ||
+    apiAvailabilityFilterValue !== "any" ||
     waitingOnInfoFilterValue !== "any" ||
     showParentsFilter ||
     showFullParentLineage;
@@ -5001,6 +5284,13 @@ function systemMatchesFilters(system) {
   if (filePresenceFilterValue === "no" && system.fileUrl && system.fileUrl.trim()) {
     return false;
   }
+  const apiDetails = ensureApiDetailsOnSystem(system);
+  if (apiAvailabilityFilterValue === "yes" && apiDetails.available !== "yes") {
+    return false;
+  }
+  if (apiAvailabilityFilterValue === "no" && apiDetails.available !== "no") {
+    return false;
+  }
   if (waitingOnInfoFilterValue === "yes" && !system.waitingOnInfo) {
     return false;
   }
@@ -5026,6 +5316,7 @@ function hasActiveFilters() {
     sorFilterValue !== "any" ||
     spreadsheetFilterValue !== "yes" ||
     filePresenceFilterValue !== "any" ||
+    apiAvailabilityFilterValue !== "any" ||
     waitingOnInfoFilterValue !== "any" ||
     showParentsFilter ||
     showFullParentLineage
@@ -7450,6 +7741,7 @@ function serializeState(accessModeOverride, options = {}) {
               ? system.attributes.map((entry) => ({ attribute: entry.attribute || "", entity: entry.entity || "" }))
               : [],
           }),
+      api: normalizeApiDetails(system.api || {}),
     })),
     textBoxes: textBoxes.map((box) => ({
       id: box.id,
@@ -7489,6 +7781,7 @@ function serializeState(accessModeOverride, options = {}) {
       sor: sorFilterValue,
       spreadsheets: spreadsheetFilterValue,
       filePresence: filePresenceFilterValue,
+      apiAvailability: apiAvailabilityFilterValue,
       waitingOnInfo: waitingOnInfoFilterValue,
       expandEntities: expandEntitiesGlobally,
       showParents: showParentsFilter,
@@ -7564,6 +7857,7 @@ function loadSerializedState(snapshot) {
       shapeColor: systemData.shapeColor,
       shapeComments: systemData.shapeComments,
       attributes: systemData.attributes,
+      apiDetails: systemData.api,
     });
   });
   (snapshot.textBoxes || []).forEach((box) => {
@@ -7636,6 +7930,7 @@ function applyFilterState(filterState = {}) {
   const searchValue = filterState.search || "";
   const spreadsheetFilter = filterState.spreadsheets || "yes";
   const filePresenceFilter = filterState.filePresence || "any";
+  const apiAvailabilityFilter = filterState.apiAvailability || "any";
   const waitingFilter = filterState.waitingOnInfo || "any";
   const expandEntities = !!filterState.expandEntities;
   const showParents = !!filterState.showParents;
@@ -7652,6 +7947,7 @@ function applyFilterState(filterState = {}) {
   sorFilterValue = filterState.sor || sorFilterValue;
   spreadsheetFilterValue = spreadsheetFilter;
   filePresenceFilterValue = filePresenceFilter;
+  apiAvailabilityFilterValue = apiAvailabilityFilter;
   waitingOnInfoFilterValue = waitingFilter;
   expandEntitiesGlobally = expandEntities;
   showParentsFilter = showParents;
@@ -7667,6 +7963,7 @@ function applyFilterState(filterState = {}) {
   if (sorFilterSelect) sorFilterSelect.value = sorFilterValue;
   if (spreadsheetFilterSelect) spreadsheetFilterSelect.value = spreadsheetFilterValue;
   if (filePresenceFilterSelect) filePresenceFilterSelect.value = filePresenceFilterValue;
+  if (apiAvailabilityFilterSelect) apiAvailabilityFilterSelect.value = apiAvailabilityFilterValue;
   if (waitingOnInfoFilterSelect) waitingOnInfoFilterSelect.value = waitingOnInfoFilterValue;
   if (expandEntitiesToggle) expandEntitiesToggle.checked = expandEntitiesGlobally;
   if (showParentsToggle) showParentsToggle.checked = showParentsFilter;

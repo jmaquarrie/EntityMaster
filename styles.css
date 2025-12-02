@@ -1584,10 +1584,11 @@ button.ghost {
   border: 1px solid rgba(17, 24, 36, 0.08);
 }
 
-#attributesModal {
+#attributesModal,
+#apiModal {
   position: fixed;
-  width: min(500px, 90vw);
-  max-width: min(500px, 90vw);
+  width: min(720px, calc(83vw - var(--panel-width) - 2rem));
+  max-width: min(720px, calc(83vw - var(--panel-width) - 2rem));
   height: calc(100vh - 3rem);
   top: 1.5rem;
   z-index: 20;
@@ -1599,6 +1600,12 @@ button.ghost {
 
 .side-modal.hidden {
   display: none;
+}
+
+.side-modal .side-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
 }
 
 .side-modal .modal-card {
@@ -1613,6 +1620,53 @@ button.ghost {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+.inline-field-group {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.inline-field-group select {
+  flex: 1;
+}
+
+.tag-list {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.25rem 0 0;
+  padding: 0;
+}
+
+.tag-list li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(15, 20, 36, 0.08);
+  font-size: 0.9rem;
+}
+
+.tag-remove {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.95rem;
+  line-height: 1;
+  color: #4b5563;
+}
+
+.tag-remove:hover,
+.tag-remove:focus-visible {
+  color: #0f1424;
+}
+
+.api-docs-link.hidden {
+  display: none;
 }
 
 .table-scroll {
