@@ -6023,20 +6023,22 @@ function getBulkDomainActions() {
   return { add, remove };
 }
 
-function handleSaveDiagram() {
-  try {
-    const saves = getStoredDiagrams();
-    const now = new Date();
-    const snapshot = serializeState();
-    const entry = {
-      id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `save-${Date.now()}`,
-      name: formatSaveEntryName(currentFileName, now),
-      fileName: currentFileName,
-      createdAt: now.getTime(),
-      data: snapshot,
-    };
-    saves.push(entry);
-    const persisted = persistStoredDiagrams(saves);
+  function handleSaveDiagram() {
+    try {
+      const saves = getStoredDiagrams();
+      const now = new Date();
+      const snapshot = serializeState();
+      const encodedSnapshot = encodeSaveData(snapshot);
+      const entry = {
+        id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `save-${Date.now()}`,
+        name: formatSaveEntryName(currentFileName, now),
+        fileName: currentFileName,
+        createdAt: now.getTime(),
+        data: encodedSnapshot.data,
+        encoding: encodedSnapshot.encoding,
+      };
+      saves.push(entry);
+      const persisted = persistStoredDiagrams(saves);
     if (!persisted) {
       showSaveStatus("Save failed");
       alert("Unable to save the diagram. Try exporting or clearing older saves.");
@@ -7526,165 +7528,208 @@ function handleSaveListClick(event) {
   }
 }
 
-function handleRecoverListClick(event) {
-  const button = event.target.closest("button[data-action]");
-  if (!button) return;
-  const row = button.closest(".save-row");
-  const id = row?.dataset.id;
-  if (!id) return;
-  if (button.dataset.action === "recover") {
-    recoverDeletedDiagram(id);
-  }
-}
-
-function getStoredDiagrams() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (error) {
-    console.warn("Unable to read stored diagrams", error);
-    return [];
-  }
-}
-
-function getDeletedDiagrams() {
-  try {
-    const raw = localStorage.getItem(DELETED_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (error) {
-    console.warn("Unable to read deleted diagrams", error);
-    return [];
-  }
-}
-
-function persistStoredDiagrams(entries) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
-    return true;
-  } catch (error) {
-    console.warn("Unable to persist diagrams", error);
-    return false;
-  }
-}
-
-function persistDeletedDiagrams(entries) {
-  try {
-    localStorage.setItem(DELETED_STORAGE_KEY, JSON.stringify(entries));
-  } catch (error) {
-    console.warn("Unable to persist deleted diagrams", error);
-  }
-}
-
-function loadSavedDiagram(id, skipUrlUpdate = false) {
-  const saves = getStoredDiagrams();
-  const entry = saves.find((save) => save.id === id);
-  if (!entry) return false;
-  if (entry.fileName && entry.data && !entry.data.fileName) {
-    entry.data.fileName = entry.fileName;
-  }
-  loadSerializedState(entry.data);
-  closeSaveManager();
-  currentSaveId = id;
-  if (!skipUrlUpdate && window.history?.replaceState) {
-    window.history.replaceState({}, document.title, buildSaveIdUrl(id));
-  }
-  scheduleShareUrlSync();
-  return true;
-}
-
-function downloadSnapshotPayload(payload, baseName, suffix = "") {
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  const safeName = slugify(baseName || "diagram") || "diagram";
-  anchor.href = url;
-  anchor.download = `${safeName}${suffix || ""}.json`;
-  anchor.click();
-  URL.revokeObjectURL(url);
-}
-
-function downloadSavedDiagram(id) {
-  const saves = getStoredDiagrams();
-  const entry = saves.find((save) => save.id === id);
-  if (!entry || !entry.data) return;
-  const payload = {
-    name: entry.name,
-    createdAt: entry.createdAt,
-    fileName: entry.fileName,
-    data: entry.data,
-  };
-  downloadSnapshotPayload(payload, entry.name || entry.fileName || "diagram");
-}
-
-function exportCurrentDiagram() {
-  try {
-    const snapshot = serializeState();
-    const now = new Date();
-    const payload = {
-      name: formatSaveEntryName(currentFileName, now),
-      createdAt: now.getTime(),
-      fileName: currentFileName,
-      data: snapshot,
-    };
-    downloadSnapshotPayload(payload, currentFileName || "diagram", "-export");
-    showSaveStatus("Exported");
-  } catch (error) {
-    console.warn("Unable to export current diagram", error);
-    alert("Export failed. Please try again.");
-  }
-}
-
-function handleLoadSaveFileInputChange(event) {
-  const input = event.target;
-  const file = input?.files?.[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    try {
-      const text = typeof reader.result === "string" ? reader.result : "";
-      const parsed = JSON.parse(text);
-      importSaveFromPayload(parsed, file.name);
-    } catch (error) {
-      console.warn("Unable to load save file", error);
-      alert("Unable to load the selected save file. Please ensure it is a valid export.");
-    } finally {
-      input.value = "";
+  function handleRecoverListClick(event) {
+    const button = event.target.closest("button[data-action]");
+    if (!button) return;
+    const row = button.closest(".save-row");
+    const id = row?.dataset.id;
+    if (!id) return;
+    if (button.dataset.action === "recover") {
+      recoverDeletedDiagram(id);
     }
-  };
-  reader.readAsText(file);
-}
-
-function importSaveFromPayload(payload, sourceFileName = "") {
-  const state = extractStateFromPayload(payload);
-  if (!state) {
-    throw new Error("Invalid save payload");
   }
-  const saves = getStoredDiagrams();
-  const now = Date.now();
-  const baseName = sourceFileName.replace(/\.json$/i, "");
-  const name =
-    (payload && payload.name) ||
-    state.fileName ||
-    baseName ||
-    (typeof currentFileName === "string" && currentFileName) ||
-    "Imported Diagram";
-  const entry = {
-    id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `import-${now}`,
-    name,
-    fileName: state.fileName || name,
-    createdAt: payload && payload.createdAt ? payload.createdAt : now,
-    data: state,
-  };
-  saves.push(entry);
-  persistStoredDiagrams(saves);
-  renderSaveList();
-  loadSerializedState(state);
-  closeSaveManager();
-}
+
+  function getStoredDiagrams() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      console.warn("Unable to read stored diagrams", error);
+      return [];
+    }
+  }
+
+  function getDeletedDiagrams() {
+    try {
+      const raw = localStorage.getItem(DELETED_STORAGE_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      console.warn("Unable to read deleted diagrams", error);
+      return [];
+    }
+  }
+
+  function persistStoredDiagrams(entries) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+      return true;
+    } catch (error) {
+      if (isQuotaExceeded(error)) {
+        try {
+          localStorage.removeItem(DELETED_STORAGE_KEY);
+        } catch (cleanupError) {
+          console.warn("Unable to clear deleted saves during quota recovery", cleanupError);
+        }
+        const trimmed = [...entries];
+        for (let i = 0; i <= trimmed.length; i++) {
+          const attempt = trimmed.slice(i);
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(attempt));
+            if (i > 0) {
+              console.warn("Persisted diagrams after trimming older entries");
+            }
+            return true;
+          } catch (retryError) {
+            if (!isQuotaExceeded(retryError)) {
+              console.warn("Unable to persist diagrams", retryError);
+              return false;
+            }
+          }
+        }
+      }
+      console.warn("Unable to persist diagrams", error);
+      return false;
+    }
+  }
+
+  function persistDeletedDiagrams(entries) {
+    try {
+      localStorage.setItem(DELETED_STORAGE_KEY, JSON.stringify(entries));
+      return true;
+    } catch (error) {
+      if (isQuotaExceeded(error)) {
+        const trimmed = [...entries];
+        for (let i = 0; i <= trimmed.length; i++) {
+          const attempt = trimmed.slice(0, Math.max(0, trimmed.length - i));
+          try {
+            localStorage.setItem(DELETED_STORAGE_KEY, JSON.stringify(attempt));
+            if (i > 0) {
+              console.warn("Persisted deleted diagrams after trimming");
+            }
+            return true;
+          } catch (retryError) {
+            if (!isQuotaExceeded(retryError)) break;
+          }
+        }
+      }
+      console.warn("Unable to persist deleted diagrams", error);
+      return false;
+    }
+  }
+
+  function loadSavedDiagram(id, skipUrlUpdate = false) {
+    const saves = getStoredDiagrams();
+    const entry = saves.find((save) => save.id === id);
+    if (!entry) return false;
+    const state = decodeSaveData(entry);
+    if (!state) return false;
+    if (entry.fileName && state && !state.fileName) {
+      state.fileName = entry.fileName;
+    }
+    loadSerializedState(state);
+    closeSaveManager();
+    currentSaveId = id;
+    if (!skipUrlUpdate && window.history?.replaceState) {
+      window.history.replaceState({}, document.title, buildSaveIdUrl(id));
+    }
+    scheduleShareUrlSync();
+    return true;
+  }
+
+  function downloadSnapshotPayload(payload, baseName, suffix = "") {
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    const safeName = slugify(baseName || "diagram") || "diagram";
+    anchor.href = url;
+    anchor.download = `${safeName}${suffix || ""}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function downloadSavedDiagram(id) {
+    const saves = getStoredDiagrams();
+    const entry = saves.find((save) => save.id === id);
+    const state = decodeSaveData(entry);
+    if (!entry || !state) return;
+    const payload = {
+      name: entry.name,
+      createdAt: entry.createdAt,
+      fileName: entry.fileName,
+      data: state,
+    };
+    downloadSnapshotPayload(payload, entry.name || entry.fileName || "diagram");
+  }
+
+  function exportCurrentDiagram() {
+    try {
+      const snapshot = serializeState();
+      const now = new Date();
+      const payload = {
+        name: formatSaveEntryName(currentFileName, now),
+        createdAt: now.getTime(),
+        fileName: currentFileName,
+        data: snapshot,
+      };
+      downloadSnapshotPayload(payload, currentFileName || "diagram", "-export");
+      showSaveStatus("Exported");
+    } catch (error) {
+      console.warn("Unable to export current diagram", error);
+      alert("Export failed. Please try again.");
+    }
+  }
+
+  function handleLoadSaveFileInputChange(event) {
+    const input = event.target;
+    const file = input?.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const text = typeof reader.result === "string" ? reader.result : "";
+        const parsed = JSON.parse(text);
+        importSaveFromPayload(parsed, file.name);
+      } catch (error) {
+        console.warn("Unable to load save file", error);
+        alert("Unable to load the selected save file. Please ensure it is a valid export.");
+      } finally {
+        input.value = "";
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  function importSaveFromPayload(payload, sourceFileName = "") {
+    const state = extractStateFromPayload(payload);
+    if (!state) {
+      throw new Error("Invalid save payload");
+    }
+    const saves = getStoredDiagrams();
+    const now = Date.now();
+    const baseName = sourceFileName.replace(/\.json$/i, "");
+    const name =
+      (payload && payload.name) ||
+      state.fileName ||
+      baseName ||
+      (typeof currentFileName === "string" && currentFileName) ||
+      "Imported Diagram";
+    const entry = {
+      id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `import-${now}`,
+      name,
+      fileName: state.fileName || name,
+      createdAt: payload && payload.createdAt ? payload.createdAt : now,
+      ...encodeSaveData(state),
+    };
+    saves.push(entry);
+    persistStoredDiagrams(saves);
+    renderSaveList();
+    loadSerializedState(state);
+    closeSaveManager();
+  }
 
 function extractStateFromPayload(payload) {
   if (!payload || typeof payload !== "object") return null;
@@ -7713,19 +7758,22 @@ function renameSavedDiagram(id) {
   renderSaveList();
 }
 
-function deleteSavedDiagram(id) {
-  let saves = getStoredDiagrams();
-  const deletedEntry = saves.find((save) => save.id === id);
-  saves = saves.filter((save) => save.id !== id);
-  persistStoredDiagrams(saves);
-  if (deletedEntry) {
-    const deleted = getDeletedDiagrams().filter((entry) => entry.id !== deletedEntry.id);
-    deleted.unshift({ ...deletedEntry, deletedAt: Date.now() });
-    persistDeletedDiagrams(deleted);
+  function deleteSavedDiagram(id) {
+    let saves = getStoredDiagrams();
+    const deletedEntry = saves.find((save) => save.id === id);
+    saves = saves.filter((save) => save.id !== id);
+    persistStoredDiagrams(saves);
+    if (deletedEntry) {
+      const decoded = decodeSaveData(deletedEntry);
+      const encoded = decoded ? encodeSaveData(decoded) : null;
+      const storedDeletedEntry = encoded ? { ...deletedEntry, ...encoded } : deletedEntry;
+      const deleted = getDeletedDiagrams().filter((entry) => entry.id !== deletedEntry.id);
+      deleted.unshift({ ...storedDeletedEntry, deletedAt: Date.now() });
+      persistDeletedDiagrams(deleted);
+    }
+    renderSaveList();
+    renderRecoverList();
   }
-  renderSaveList();
-  renderRecoverList();
-}
 
 function recoverDeletedDiagram(id) {
   const deleted = getDeletedDiagrams();
@@ -8019,16 +8067,65 @@ function formatSaveEntryName(fileName, date) {
   return `${label} — ${formatSnapshotName(date)}`;
 }
 
-function formatSnapshotName(date) {
-  const pad = (value) => String(value).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}.${pad(date.getMinutes())}`;
-}
+  function formatSnapshotName(date) {
+    const pad = (value) => String(value).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}.${pad(date.getMinutes())}`;
+  }
 
-function encodeStatePayload(state) {
-  const json = JSON.stringify(state);
-  if (window.LZString?.compressToEncodedURIComponent) {
-    const compressed = window.LZString.compressToEncodedURIComponent(json);
-    if (compressed) return compressed;
+  function encodeSaveData(state) {
+    const json = JSON.stringify(state);
+    if (window.LZString?.compressToUTF16) {
+      const compressed = window.LZString.compressToUTF16(json);
+      if (compressed && compressed.length < json.length) {
+        return { data: compressed, encoding: "lz" };
+      }
+    }
+    return { data: json, encoding: "json" };
+  }
+
+  function decodeSaveData(entry) {
+    if (!entry) return null;
+    const { data, encoding } = entry;
+    try {
+      if (encoding === "lz" && typeof data === "string") {
+        const decompressed = window.LZString?.decompressFromUTF16
+          ? window.LZString.decompressFromUTF16(data)
+          : null;
+        if (decompressed) {
+          return JSON.parse(decompressed);
+        }
+      }
+      if (encoding === "json" && typeof data === "string") {
+        return JSON.parse(data);
+      }
+      if (data && typeof data === "object") {
+        return data;
+      }
+      if (typeof data === "string") {
+        return JSON.parse(data);
+      }
+    } catch (error) {
+      console.warn("Unable to decode saved diagram", error);
+      return null;
+    }
+    return null;
+  }
+
+  function isQuotaExceeded(error) {
+    return (
+      error &&
+      (error.name === "QuotaExceededError" ||
+        error.name === "NS_ERROR_DOM_QUOTA_REACHED" ||
+        error.code === 22 ||
+        error.code === 1014)
+    );
+  }
+
+  function encodeStatePayload(state) {
+    const json = JSON.stringify(state);
+    if (window.LZString?.compressToEncodedURIComponent) {
+      const compressed = window.LZString.compressToEncodedURIComponent(json);
+      if (compressed) return compressed;
   }
   if (typeof TextEncoder === "undefined") {
     return btoa(unescape(encodeURIComponent(json)));
