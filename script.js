@@ -691,6 +691,7 @@ const saveListContainer = document.getElementById("saveList");
 const recoverListContainer = document.getElementById("recoverList");
 const loadSaveFileInput = document.getElementById("loadSaveFileInput");
 const loadSaveFileBtn = document.getElementById("loadSaveFileBtn");
+const exportCurrentDiagramBtn = document.getElementById("exportCurrentDiagramBtn");
 const filterModeSelect = document.getElementById("filterModeSelect");
 const sorFilterSelect = document.getElementById("sorFilter");
 const spreadsheetFilterSelect = document.getElementById("spreadsheetFilter");
@@ -1137,6 +1138,7 @@ function init() {
   redoActionBtn?.addEventListener("click", handleRedoAction);
   saveDiagramBtn.addEventListener("click", handleSaveDiagram);
   loadDiagramBtn.addEventListener("click", openSaveManager);
+  exportCurrentDiagramBtn?.addEventListener("click", exportCurrentDiagram);
   shareDiagramBtn?.addEventListener("click", toggleShareMenu);
   shareMenu?.addEventListener("click", handleShareMenuClick);
   dataTableToggle?.addEventListener("click", openDataTableModal);
@@ -6022,25 +6024,37 @@ function getBulkDomainActions() {
 }
 
 function handleSaveDiagram() {
-  const saves = getStoredDiagrams();
-  const now = new Date();
-  const entry = {
-    id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `save-${Date.now()}`,
-    name: formatSaveEntryName(currentFileName, now),
-    fileName: currentFileName,
-    createdAt: now.getTime(),
-    data: serializeState(),
-  };
-  saves.push(entry);
-  persistStoredDiagrams(saves);
-  currentSaveId = entry.id;
-  if (window.history?.replaceState) {
-    window.history.replaceState({}, document.title, buildSaveIdUrl(entry.id));
+  try {
+    const saves = getStoredDiagrams();
+    const now = new Date();
+    const snapshot = serializeState();
+    const entry = {
+      id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `save-${Date.now()}`,
+      name: formatSaveEntryName(currentFileName, now),
+      fileName: currentFileName,
+      createdAt: now.getTime(),
+      data: snapshot,
+    };
+    saves.push(entry);
+    const persisted = persistStoredDiagrams(saves);
+    if (!persisted) {
+      showSaveStatus("Save failed");
+      alert("Unable to save the diagram. Try exporting or clearing older saves.");
+      return;
+    }
+    currentSaveId = entry.id;
+    if (window.history?.replaceState) {
+      window.history.replaceState({}, document.title, buildSaveIdUrl(entry.id));
+    }
+    if (!saveManagerModal.classList.contains("hidden")) {
+      renderSaveList();
+    }
+    showSaveStatus();
+  } catch (error) {
+    console.warn("Unable to save diagram", error);
+    showSaveStatus("Save failed");
+    alert("Unable to save the diagram. Try exporting it instead.");
   }
-  if (!saveManagerModal.classList.contains("hidden")) {
-    renderSaveList();
-  }
-  showSaveStatus();
 }
 
 function handleShareDiagram() {
@@ -7550,8 +7564,10 @@ function getDeletedDiagrams() {
 function persistStoredDiagrams(entries) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+    return true;
   } catch (error) {
     console.warn("Unable to persist diagrams", error);
+    return false;
   }
 }
 
@@ -7580,6 +7596,17 @@ function loadSavedDiagram(id, skipUrlUpdate = false) {
   return true;
 }
 
+function downloadSnapshotPayload(payload, baseName, suffix = "") {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  const safeName = slugify(baseName || "diagram") || "diagram";
+  anchor.href = url;
+  anchor.download = `${safeName}${suffix || ""}.json`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 function downloadSavedDiagram(id) {
   const saves = getStoredDiagrams();
   const entry = saves.find((save) => save.id === id);
@@ -7590,14 +7617,25 @@ function downloadSavedDiagram(id) {
     fileName: entry.fileName,
     data: entry.data,
   };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  const safeName = slugify(entry.name || entry.fileName || "diagram") || "diagram";
-  anchor.href = url;
-  anchor.download = `${safeName}.json`;
-  anchor.click();
-  URL.revokeObjectURL(url);
+  downloadSnapshotPayload(payload, entry.name || entry.fileName || "diagram");
+}
+
+function exportCurrentDiagram() {
+  try {
+    const snapshot = serializeState();
+    const now = new Date();
+    const payload = {
+      name: formatSaveEntryName(currentFileName, now),
+      createdAt: now.getTime(),
+      fileName: currentFileName,
+      data: snapshot,
+    };
+    downloadSnapshotPayload(payload, currentFileName || "diagram", "-export");
+    showSaveStatus("Exported");
+  } catch (error) {
+    console.warn("Unable to export current diagram", error);
+    alert("Export failed. Please try again.");
+  }
 }
 
 function handleLoadSaveFileInputChange(event) {
