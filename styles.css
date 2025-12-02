@@ -1650,6 +1650,25 @@ button.ghost {
   top: 0;
 }
 
+.attributes-search {
+  margin: 0;
+}
+
+.attributes-search input {
+  width: 100%;
+  padding: 0.6rem 0.65rem;
+  border-radius: 10px;
+  border: 1px solid #d5d8e2;
+  background: #f9faff;
+  font-size: 0.95rem;
+  color: #0f1424;
+}
+
+.attributes-search input:focus {
+  outline: 2px solid #9db6ff;
+  background: #fff;
+}
+
 .attributes-table .actions-col,
 .attributes-table th.actions-col,
 .attributes-table td.actions-col {

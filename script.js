@@ -604,6 +604,7 @@ const attributesModal = document.getElementById("attributesModal");
 const closeAttributesModalBtn = document.getElementById("closeAttributesModal");
 const attributesModalTitle = document.getElementById("attributesModalTitle");
 const attributesTableBody = document.getElementById("attributesTableBody");
+const attributesSearchInput = document.getElementById("attributesSearchInput");
 const addAttributeRowBtn = document.getElementById("addAttributeRowBtn");
 const resetAttributeFilterBtn = document.getElementById("resetAttributeFilterBtn");
 const attributesCsvInput = document.getElementById("attributesCsvInput");
@@ -743,6 +744,7 @@ let activePanelSystem = null;
 let activeObjectNode = null;
 let visualNodeZIndex = 10;
 let attributesModalEntityFilter = "";
+let attributesSearchTerm = "";
 const selectedAttributeRows = new Set();
 let lastAttributeSelectedIndex = null;
 let visualConnectorMode = visualConnectorTypeSelect?.value || "system";
@@ -919,6 +921,7 @@ function init() {
   entityForm.addEventListener("submit", handleAddEntity);
   attributesModalTrigger?.addEventListener("click", () => openAttributesSideModal(""));
   closeAttributesModalBtn?.addEventListener("click", closeAttributesSideModal);
+  attributesSearchInput?.addEventListener("input", handleAttributesSearchInput);
   addAttributeRowBtn?.addEventListener("click", handleAddAttributeRow);
   attributesTableBody?.addEventListener("input", handleAttributeTableInput);
   attributesTableBody?.addEventListener("change", handleAttributeTableInput);
@@ -3842,6 +3845,21 @@ function toggleAttributesResetButton() {
   resetAttributeFilterBtn.classList.toggle("hidden", !attributesModalEntityFilter);
 }
 
+function getAttributeSearchTokens() {
+  return attributesSearchTerm
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function handleAttributesSearchInput(event) {
+  attributesSearchTerm = (event.target.value || "").toLowerCase();
+  if (activePanelSystem) {
+    renderAttributesModal(activePanelSystem);
+  }
+}
+
 function buildAttributeEntitySelect(system, currentValue = "") {
   const select = document.createElement("select");
   select.className = "attribute-entity-select";
@@ -3867,9 +3885,12 @@ function renderAttributesModal(system) {
   attributesTableBody.innerHTML = "";
   const fragment = document.createDocumentFragment();
   const visibleIndices = [];
+  const searchTokens = getAttributeSearchTokens();
 
   system.attributes.forEach((entry, index) => {
     if (attributesModalEntityFilter && (entry.entity || "") !== attributesModalEntityFilter) return;
+    const haystack = `${entry.attribute || ""} ${entry.entity || ""}`.toLowerCase();
+    if (searchTokens.length && !searchTokens.some((token) => haystack.includes(token))) return;
     visibleIndices.push(index);
 
     const row = document.createElement("tr");
@@ -3938,6 +3959,10 @@ function positionAttributesModal() {
 function openAttributesSideModal(entityFilter = "") {
   if (!attributesModal || !activePanelSystem || isEditingLocked()) return;
   attributesModalEntityFilter = entityFilter || "";
+  attributesSearchTerm = "";
+  if (attributesSearchInput) {
+    attributesSearchInput.value = "";
+  }
   selectedAttributeRows.clear();
   lastAttributeSelectedIndex = null;
   renderAttributesModal(activePanelSystem);
