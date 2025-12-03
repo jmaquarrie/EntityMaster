@@ -5772,10 +5772,22 @@ function applyColorCoding() {
 function applyApiGlowStyling() {
   systems.forEach((system) => {
     const apiDetails = ensureApiDetailsOnSystem(system);
-    const available = apiDetails?.available;
-    const shouldGlow = apiGlowEnabled && !!system.element;
-    system.element.classList.toggle("api-glow-yes", shouldGlow && available === "yes");
-    system.element.classList.toggle("api-glow-no", shouldGlow && available === "no");
+    const available = (apiDetails?.available || "").toString().toLowerCase();
+    const element = system.element;
+    if (!element) return;
+
+    element.dataset.apiAvailable = available || "unknown";
+    element.classList.remove("api-glow-yes", "api-glow-no");
+
+    if (!apiGlowEnabled) {
+      return;
+    }
+
+    if (available === "yes") {
+      element.classList.add("api-glow-yes");
+    } else if (available === "no") {
+      element.classList.add("api-glow-no");
+    }
   });
 }
 
