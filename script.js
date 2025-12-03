@@ -488,6 +488,11 @@ const ownerColorMaps = {
   platformOwner: new Map(),
 };
 const COLOR_POOL = ["#5d8dee", "#c266ff", "#ffa447", "#3fb28a", "#dd5f68", "#2f9edc", "#6f7bf7", "#ff6ea9", "#29c6b7", "#845ef7"];
+const API_AVAILABILITY_COLORS = {
+  yes: "#2ecc71",
+  no: "#e05252",
+  unknown: "#f2c94c",
+};
 
 let platformOwnerFilterText = "";
 let businessOwnerFilterText = "";
@@ -6084,7 +6089,7 @@ function applyApiGlowStyling() {
     if (!element) return;
 
     element.dataset.apiAvailable = available || "unknown";
-    element.classList.remove("api-glow-yes", "api-glow-no");
+    element.classList.remove("api-glow-yes", "api-glow-no", "api-glow-unknown");
 
     if (!apiGlowEnabled) {
       return;
@@ -6094,6 +6099,8 @@ function applyApiGlowStyling() {
       element.classList.add("api-glow-yes");
     } else if (available === "no") {
       element.classList.add("api-glow-no");
+    } else {
+      element.classList.add("api-glow-unknown");
     }
   });
 }
@@ -6109,6 +6116,12 @@ function getColorForSystem(system) {
     const domainColor = definition?.color;
     if (!domainColor) return { background: "", border: "" };
     return { background: tintColor(domainColor, 0.85), border: domainColor };
+  }
+  if (currentColorBy === "apiAvailability") {
+    const apiDetails = ensureApiDetailsOnSystem(system);
+    const status = (apiDetails?.available || "unknown").toString().toLowerCase();
+    const color = API_AVAILABILITY_COLORS[status] || API_AVAILABILITY_COLORS.unknown;
+    return { background: tintColor(color, 0.85), border: color };
   }
   let value = "";
   if (currentColorBy === "functionOwner") value = system.functionOwner;

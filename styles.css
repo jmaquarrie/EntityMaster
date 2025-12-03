@@ -906,7 +906,8 @@ button.ghost {
 }
 
 .system-node.api-glow-yes,
-.system-node.api-glow-no {
+.system-node.api-glow-no,
+.system-node.api-glow-unknown {
   box-shadow: 0 0 0 3px rgba(46, 204, 113, 0.08), 0 0 0 5px rgba(46, 204, 113, 0.06),
     0 14px 28px rgba(22, 28, 45, 0.16);
   outline-offset: 4px;
@@ -924,6 +925,13 @@ button.ghost {
     0 14px 28px rgba(22, 28, 45, 0.16);
   outline: 2px solid rgba(224, 82, 82, 0.75);
   border-color: rgba(224, 82, 82, 0.9);
+}
+
+.system-node.api-glow-unknown {
+  box-shadow: 0 0 0 4px rgba(242, 201, 76, 0.65), 0 0 18px rgba(242, 201, 76, 0.4),
+    0 14px 28px rgba(22, 28, 45, 0.16);
+  outline: 2px solid rgba(242, 201, 76, 0.9);
+  border-color: rgba(242, 201, 76, 1);
 }
 
 .system-node.multi-selected {
