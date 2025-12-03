@@ -381,6 +381,16 @@ button.ghost {
   z-index: 3;
 }
 
+.system-node.api-glow-yes {
+  box-shadow: 0 0 0 3px rgba(46, 204, 113, 0.75), 0 12px 24px rgba(22, 28, 45, 0.16);
+  border-color: rgba(46, 204, 113, 0.9);
+}
+
+.system-node.api-glow-no {
+  box-shadow: 0 0 0 3px rgba(224, 82, 82, 0.75), 0 12px 24px rgba(22, 28, 45, 0.16);
+  border-color: rgba(224, 82, 82, 0.9);
+}
+
 .system-node .direction-adders {
   position: absolute;
   inset: 0;
@@ -1587,9 +1597,10 @@ button.ghost {
 #attributesModal,
 #apiModal {
   position: fixed;
-  width: min(720px, calc(83vw - var(--panel-width) - 2rem));
-  max-width: min(720px, calc(83vw - var(--panel-width) - 2rem));
-  height: calc(100vh - 3rem);
+  width: min(500px, 90vw);
+  max-width: min(500px, 90vw);
+  height: auto;
+  max-height: 85vh;
   top: 1.5rem;
   z-index: 20;
 }
@@ -2506,8 +2517,8 @@ button.small {
 
 .text-box .text-delete-btn {
   position: absolute;
-  top: -18px;
-  left: 50%;
+  top: -12px;
+  right: -12px;
   width: 30px;
   height: 30px;
   border-radius: 50%;
@@ -2523,8 +2534,8 @@ button.small {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.15s ease;
-  transform: translate(-50%, -50%);
   aspect-ratio: 1 / 1;
+  z-index: 3;
 }
 
 .text-box:hover .text-delete-btn,

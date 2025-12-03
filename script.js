@@ -523,6 +523,7 @@ let visualLayoutMode = "scaled";
 let dataTableShowAttributes = false;
 let dataTableHideEmptyFields = false;
 let dataTableMultiSystemOnly = false;
+let apiGlowEnabled = false;
 let lastDataTableGroupField = "domain";
 let lastDeletedSnapshot = null;
 let saveStatusTimer = null;
@@ -588,6 +589,16 @@ function toggleElementsDisabled(elements, disabled) {
     });
 }
 
+function syncApiGlowControls() {
+  if (!apiGlowToggleBtn) return;
+  apiGlowToggleBtn.textContent = apiGlowEnabled ? "API On" : "API Off";
+  apiGlowToggleBtn.setAttribute("aria-pressed", apiGlowEnabled ? "true" : "false");
+  apiGlowToggleBtn.setAttribute(
+    "aria-label",
+    apiGlowEnabled ? "API highlighting on" : "API highlighting off"
+  );
+}
+
 const canvasContent = document.getElementById("canvasContent");
 const canvasViewport = document.getElementById("canvasViewport");
 const canvas = document.getElementById("canvas");
@@ -600,6 +611,7 @@ const addObjectBtn = document.getElementById("addObjectBtn");
 const addTextBtn = document.getElementById("addTextBtn");
 const objectMenu = document.getElementById("objectMenu");
 const shareMenu = document.getElementById("shareMenu");
+const apiGlowToggleBtn = document.getElementById("apiGlowToggle");
 const filterModeToggleBtn = document.getElementById("filterModeToggle");
 const dataTableToggle = document.getElementById("dataTableToggle");
 const fileNameDisplay = document.getElementById("fileNameDisplay");
@@ -954,6 +966,7 @@ function init() {
   renderVisualEntityOptions();
   renderVisualBusinessOwnerOptions();
   renderFunctionalConsumerFilterChips();
+  syncApiGlowControls();
 
   refreshDomainOptionsUi();
   panelDomainChoices.addEventListener("change", handleDomainSelection);
@@ -1049,6 +1062,11 @@ function init() {
     searchType = event.target.value;
     selectedSystemId = null;
     updateHighlights();
+  });
+  apiGlowToggleBtn?.addEventListener("click", () => {
+    apiGlowEnabled = !apiGlowEnabled;
+    syncApiGlowControls();
+    applyApiGlowStyling();
   });
   filterModeSelect?.addEventListener("change", (event) => {
     if (isFiltersLocked()) {
@@ -5087,6 +5105,7 @@ function updateHighlights() {
 
   systemHighlightState = nextHighlightState;
   applyColorCoding();
+  applyApiGlowStyling();
   drawConnections();
   applyConnectionFilterClasses(shouldApplyState);
   refreshDataTableIfVisible();
@@ -5747,6 +5766,16 @@ function applyColorCoding() {
       system.element.style.removeProperty("--node-bg-color");
       system.element.style.removeProperty("--node-border-color");
     }
+  });
+}
+
+function applyApiGlowStyling() {
+  systems.forEach((system) => {
+    const apiDetails = ensureApiDetailsOnSystem(system);
+    const available = apiDetails?.available;
+    const shouldGlow = apiGlowEnabled && !!system.element;
+    system.element.classList.toggle("api-glow-yes", shouldGlow && available === "yes");
+    system.element.classList.toggle("api-glow-no", shouldGlow && available === "no");
   });
 }
 
