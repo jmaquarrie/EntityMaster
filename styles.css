@@ -1568,7 +1568,7 @@ button.ghost {
   border: 1px solid #d5d8e2;
   border-radius: 10px;
   box-shadow: 0 6px 24px rgba(15, 20, 36, 0.15);
-  min-width: 150px;
+  min-width: 130px;
   padding: 0.35rem;
   color: #0f1424;
 }
@@ -1605,13 +1605,14 @@ button.ghost {
 }
 
 .column-remove-btn {
-  background: transparent;
+  background: none;
   border: none;
-  border-radius: 50%;
-  width: 28px;
-  height: 28px;
+  border-radius: 0;
+  width: auto;
+  height: auto;
+  padding: 0;
   line-height: 1;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   cursor: pointer;
   color: #0f1424;
   display: inline-flex;
@@ -1622,7 +1623,8 @@ button.ghost {
 
 .column-remove-btn:hover {
   background: none;
-  color: #1c2550;
+  color: #0f1424;
+  text-decoration: underline;
 }
 
 .system-data-table {
