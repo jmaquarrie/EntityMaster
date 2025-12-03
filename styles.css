@@ -1503,6 +1503,22 @@ button.ghost {
   gap: 0.5rem;
 }
 
+.reset-columns-btn {
+  margin-left: auto;
+  background: #fff;
+  color: #0f1424;
+  border: 1px solid #d5d8e2;
+  border-radius: 10px;
+  padding: 0.5rem 0.75rem;
+  font-weight: 600;
+  box-shadow: 0 4px 10px rgba(15, 20, 36, 0.08);
+}
+
+.reset-columns-btn:hover {
+  border-color: #b9becd;
+  box-shadow: 0 6px 16px rgba(15, 20, 36, 0.12);
+}
+
 .table-header-actions .field.compact {
   margin: 0;
   min-width: 150px;
@@ -1587,15 +1603,18 @@ button.ghost {
 }
 
 .column-remove-btn {
-  background: transparent;
+  background: #fff;
   border: 1px solid #d5d8e2;
-  border-radius: 8px;
-  width: 26px;
-  height: 26px;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
   line-height: 1;
   font-size: 1rem;
   cursor: pointer;
   color: #6b7280;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .column-remove-btn:hover {

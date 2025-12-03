@@ -548,13 +548,6 @@
                 <span>Group by</span>
                 <select id="dataTableGroupSelect" aria-label="Group table rows">
                   <option value="none">None</option>
-                  <option value="domain">Domain</option>
-                  <option value="entity">Entity</option>
-                  <option value="attributes">Attributes</option>
-                  <option value="system">System</option>
-                  <option value="functionOwner">Function Owner</option>
-                  <option value="businessOwner">Business Owner</option>
-                  <option value="platformOwner">Platform Owner</option>
                 </select>
               </label>
               <label id="dataTableHideEmptyWrapper" class="field compact inline-toggle hidden">
@@ -569,6 +562,9 @@
                 <input type="checkbox" id="dataTableMultiSystemToggle" />
                 <span>Show multi-system only</span>
               </label>
+              <button id="resetDataTableColumnsBtn" type="button" class="reset-columns-btn">
+                Reset Columns
+              </button>
               <button id="saveTableCsvBtn" type="button" class="secondary">Save to CSV</button>
               <button id="closeDataTableBtn" aria-label="Close system data table">Close</button>
             </div>
