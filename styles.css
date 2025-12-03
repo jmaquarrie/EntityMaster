@@ -1503,6 +1503,42 @@ button.ghost {
   gap: 0.5rem;
 }
 
+.column-selector {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.column-chip-list {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  min-height: 2.25rem;
+}
+
+.column-chip {
+  background: #eef1fb;
+  border: 1px solid #d5d8e2;
+  border-radius: 999px;
+  padding: 0.25rem 0.65rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  color: #0f1424;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.column-chip:hover {
+  background: #e0e7ff;
+  border-color: #c5cde8;
+}
+
+.column-chip.placeholder {
+  background: #f2f3f8;
+  border-style: dashed;
+  cursor: default;
+}
+
 .table-header-actions .field.compact {
   margin: 0;
   min-width: 150px;

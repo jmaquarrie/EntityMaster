@@ -569,6 +569,16 @@
                 <input type="checkbox" id="dataTableMultiSystemToggle" />
                 <span>Show multi-system only</span>
               </label>
+              <label class="field compact">
+                <span>Columns</span>
+                <div class="column-selector">
+                  <select id="dataTableColumnSelect" aria-label="Add table column">
+                    <option value="">Add column…</option>
+                  </select>
+                  <button id="addDataTableColumnBtn" type="button" class="secondary">Add</button>
+                </div>
+              </label>
+              <div id="dataTableActiveColumns" class="column-chip-list" aria-live="polite"></div>
               <button id="saveTableCsvBtn" type="button" class="secondary">Save to CSV</button>
               <button id="closeDataTableBtn" aria-label="Close system data table">Close</button>
             </div>
@@ -576,24 +586,8 @@
           <div class="table-body-wrapper">
             <table class="system-data-table">
               <thead>
-                <tr>
-                  <th>Domain</th>
-                  <th>Entity</th>
-                  <th>Attributes</th>
-                  <th>System</th>
-                  <th>Function Owner</th>
-                  <th>Business Owner</th>
-                  <th>Platform Owner</th>
-                </tr>
-                <tr class="table-filter-row">
-                  <th><input type="text" id="dataTableFilterDomain" class="column-filter-input" placeholder="Filter" /></th>
-                  <th><input type="text" id="dataTableFilterEntity" class="column-filter-input" placeholder="Filter" /></th>
-                  <th><input type="text" id="dataTableFilterAttributes" class="column-filter-input" placeholder="Filter" /></th>
-                  <th><input type="text" id="dataTableFilterSystem" class="column-filter-input" placeholder="Filter" /></th>
-                  <th><input type="text" id="dataTableFilterFunctionOwner" class="column-filter-input" placeholder="Filter" /></th>
-                  <th><input type="text" id="dataTableFilterBusinessOwner" class="column-filter-input" placeholder="Filter" /></th>
-                  <th><input type="text" id="dataTableFilterPlatformOwner" class="column-filter-input" placeholder="Filter" /></th>
-                </tr>
+                <tr id="systemDataHeaderRow"></tr>
+                <tr id="systemDataFilterRow" class="table-filter-row"></tr>
               </thead>
               <tbody id="systemDataTableBody"></tbody>
             </table>
