@@ -569,21 +569,24 @@
                 <input type="checkbox" id="dataTableMultiSystemToggle" />
                 <span>Show multi-system only</span>
               </label>
-              <label class="field compact">
-                <span>Columns</span>
-                <div class="column-selector">
-                  <select id="dataTableColumnSelect" aria-label="Add table column">
-                    <option value="">Add column…</option>
-                  </select>
-                  <button id="addDataTableColumnBtn" type="button" class="secondary">Add</button>
-                </div>
-              </label>
-              <div id="dataTableActiveColumns" class="column-chip-list" aria-live="polite"></div>
               <button id="saveTableCsvBtn" type="button" class="secondary">Save to CSV</button>
               <button id="closeDataTableBtn" aria-label="Close system data table">Close</button>
             </div>
           </div>
           <div class="table-body-wrapper">
+            <div class="table-column-add" aria-label="Add table column">
+              <button
+                id="dataTableAddColumnBtn"
+                class="icon-btn column-add-btn"
+                type="button"
+                title="Add column"
+                aria-haspopup="true"
+                aria-expanded="false"
+              >
+                +
+              </button>
+              <div id="dataTableColumnMenu" class="column-menu hidden" role="menu"></div>
+            </div>
             <table class="system-data-table">
               <thead>
                 <tr id="systemDataHeaderRow"></tr>

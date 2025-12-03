@@ -800,9 +800,8 @@ const dataTableMultiSystemToggle = document.getElementById("dataTableMultiSystem
 const systemDataTableBody = document.getElementById("systemDataTableBody");
 const systemDataHeaderRow = document.getElementById("systemDataHeaderRow");
 const systemDataFilterRow = document.getElementById("systemDataFilterRow");
-const dataTableColumnSelect = document.getElementById("dataTableColumnSelect");
-const addDataTableColumnBtn = document.getElementById("addDataTableColumnBtn");
-const dataTableActiveColumns = document.getElementById("dataTableActiveColumns");
+const dataTableAddColumnBtn = document.getElementById("dataTableAddColumnBtn");
+const dataTableColumnMenu = document.getElementById("dataTableColumnMenu");
 const filePresenceFilterSelect = document.getElementById("filePresenceFilter");
 const waitingOnInfoFilterSelect = document.getElementById("waitingOnInfoFilter");
 const visualToggleBtn = document.getElementById("visualToggle");
@@ -1248,17 +1247,19 @@ function init() {
     dataTableMultiSystemOnly = event.target.checked;
     renderSystemDataTable();
   });
-  dataTableColumnSelect?.addEventListener("change", (event) => {
-    addDataTableExtraColumn(event.target.value);
-    if (dataTableColumnSelect) {
-      dataTableColumnSelect.value = "";
-    }
+  dataTableAddColumnBtn?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleDataTableColumnMenu();
   });
-  addDataTableColumnBtn?.addEventListener("click", () => {
-    addDataTableExtraColumn(dataTableColumnSelect?.value || "");
-    if (dataTableColumnSelect) {
-      dataTableColumnSelect.value = "";
+  document.addEventListener("click", (event) => {
+    if (!dataTableColumnMenu || dataTableColumnMenu.classList.contains("hidden")) return;
+    if (
+      dataTableColumnMenu.contains(event.target) ||
+      (dataTableAddColumnBtn && dataTableAddColumnBtn.contains(event.target))
+    ) {
+      return;
     }
+    closeDataTableColumnMenu();
   });
   saveTableCsvBtn?.addEventListener("click", exportTableToCsv);
   dataTableModal?.addEventListener("click", (event) => {
@@ -6799,43 +6800,57 @@ function syncDataTableColumnFilters() {
 }
 
 function renderDataTableColumnControls() {
-  if (dataTableColumnSelect) {
-    dataTableColumnSelect.innerHTML = "";
-    const defaultOption = document.createElement("option");
-    defaultOption.value = "";
-    defaultOption.textContent = "Add column…";
-    dataTableColumnSelect.appendChild(defaultOption);
+  if (!dataTableColumnMenu) return;
+  dataTableColumnMenu.innerHTML = "";
+  const availableColumns = DATA_TABLE_OPTIONAL_COLUMNS.filter(
+    ({ key }) => !dataTableExtraColumns.includes(key),
+  );
 
-    DATA_TABLE_OPTIONAL_COLUMNS.forEach(({ key, label }) => {
-      const option = document.createElement("option");
-      option.value = key;
-      option.textContent = label;
-      option.disabled = dataTableExtraColumns.includes(key);
-      dataTableColumnSelect.appendChild(option);
+  if (!availableColumns.length) {
+    const emptyState = document.createElement("div");
+    emptyState.className = "menu-empty";
+    emptyState.textContent = "All optional columns added";
+    dataTableColumnMenu.appendChild(emptyState);
+  } else {
+    availableColumns.forEach(({ key, label }) => {
+      const optionBtn = document.createElement("button");
+      optionBtn.type = "button";
+      optionBtn.role = "menuitem";
+      optionBtn.textContent = label;
+      optionBtn.addEventListener("click", () => {
+        addDataTableExtraColumn(key);
+        closeDataTableColumnMenu();
+      });
+      dataTableColumnMenu.appendChild(optionBtn);
     });
   }
 
-  if (dataTableActiveColumns) {
-    dataTableActiveColumns.innerHTML = "";
-    if (!dataTableExtraColumns.length) {
-      const placeholder = document.createElement("div");
-      placeholder.className = "column-chip placeholder";
-      placeholder.textContent = "Default columns only";
-      dataTableActiveColumns.appendChild(placeholder);
-      return;
-    }
+  if (dataTableAddColumnBtn) {
+    const expanded = !dataTableColumnMenu.classList.contains("hidden");
+    dataTableAddColumnBtn.setAttribute("aria-expanded", expanded ? "true" : "false");
+  }
+}
 
-    dataTableExtraColumns.forEach((key) => {
-      const chip = document.createElement("button");
-      chip.type = "button";
-      chip.className = "column-chip";
-      chip.textContent = getDataTableColumnLabel(key);
-      chip.title = `Remove ${getDataTableColumnLabel(key)}`;
-      chip.addEventListener("click", () => {
-        removeDataTableExtraColumn(key);
-      });
-      dataTableActiveColumns.appendChild(chip);
-    });
+function openDataTableColumnMenu() {
+  if (!dataTableColumnMenu) return;
+  renderDataTableColumnControls();
+  dataTableColumnMenu.classList.remove("hidden");
+  dataTableAddColumnBtn?.setAttribute("aria-expanded", "true");
+}
+
+function closeDataTableColumnMenu() {
+  if (!dataTableColumnMenu) return;
+  dataTableColumnMenu.classList.add("hidden");
+  dataTableAddColumnBtn?.setAttribute("aria-expanded", "false");
+}
+
+function toggleDataTableColumnMenu() {
+  if (!dataTableColumnMenu) return;
+  const shouldOpen = dataTableColumnMenu.classList.contains("hidden");
+  if (shouldOpen) {
+    openDataTableColumnMenu();
+  } else {
+    closeDataTableColumnMenu();
   }
 }
 
@@ -6849,7 +6864,23 @@ function renderDataTableHeaderRows() {
 
   activeColumns.forEach((columnKey) => {
     const headerCell = document.createElement("th");
-    headerCell.textContent = getDataTableColumnLabel(columnKey);
+    const headerWrapper = document.createElement("div");
+    headerWrapper.className = "column-header";
+    const label = document.createElement("span");
+    label.textContent = getDataTableColumnLabel(columnKey);
+    headerWrapper.appendChild(label);
+
+    if (!DATA_TABLE_DEFAULT_COLUMNS.includes(columnKey)) {
+      const removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.className = "column-remove-btn";
+      removeBtn.title = `Remove ${getDataTableColumnLabel(columnKey)}`;
+      removeBtn.textContent = "−";
+      removeBtn.addEventListener("click", () => removeDataTableExtraColumn(columnKey));
+      headerWrapper.appendChild(removeBtn);
+    }
+
+    headerCell.appendChild(headerWrapper);
     systemDataHeaderRow.appendChild(headerCell);
 
     const filterCell = document.createElement("th");
@@ -6875,6 +6906,7 @@ function addDataTableExtraColumn(columnKey) {
     DATA_TABLE_DEFAULT_COLUMNS.includes(columnKey);
   if (!isKnownColumn) return;
   dataTableExtraColumns.push(columnKey);
+  closeDataTableColumnMenu();
   syncDataTableColumnFilters();
   renderDataTableColumnControls();
   renderDataTableHeaderRows();
@@ -6995,6 +7027,7 @@ function closeDataTableModal() {
     dataTableModal.classList.add("hidden");
     dataTableModal.setAttribute("aria-hidden", "true");
   }
+  closeDataTableColumnMenu();
 }
 
 function renderVisualSnapshot() {
