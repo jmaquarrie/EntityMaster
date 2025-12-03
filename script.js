@@ -530,6 +530,8 @@ let saveStatusTimer = null;
 let editingConnectionId = null;
 let editingConnectionOriginalLabel = "";
 let editingGroupId = null;
+let currentProcessSystemId = null;
+let processLinkingState = null;
 const historyStack = [];
 const redoStack = [];
 const MAX_HISTORY_ENTRIES = 50;
@@ -609,6 +611,7 @@ const connectionHandleLayer = document.getElementById("connectionHandleLayer");
 const addSystemBtn = document.getElementById("addSystemBtn");
 const addObjectBtn = document.getElementById("addObjectBtn");
 const addTextBtn = document.getElementById("addTextBtn");
+const openProcessMapBtn = document.getElementById("openProcessMapModal");
 const objectMenu = document.getElementById("objectMenu");
 const shareMenu = document.getElementById("shareMenu");
 const apiGlowToggleBtn = document.getElementById("apiGlowToggle");
@@ -656,6 +659,13 @@ const apiWebhooksSelect = document.getElementById("apiWebhooksSelect");
 const apiIntegrationSelect = document.getElementById("apiIntegrationSelect");
 const apiVendorConstraintsInput = document.getElementById("apiVendorConstraintsInput");
 const apiNotesInput = document.getElementById("apiNotesInput");
+const processMapModal = document.getElementById("processMapModal");
+const processMapSystemName = document.getElementById("processMapSystemName");
+const processMapCanvas = document.getElementById("processMapCanvas");
+const processNodeLayer = document.getElementById("processNodeLayer");
+const processConnectionLayer = document.getElementById("processConnectionLayer");
+const closeProcessMapModalBtn = document.getElementById("closeProcessMapModal");
+const processAddNodeBtn = document.getElementById("processAddNodeBtn");
 const closePanelBtn = document.getElementById("closePanelBtn");
 const panelDomainChoices = document.getElementById("panelDomainChoices");
 const globalDomainChips = document.getElementById("globalDomainChips");
@@ -810,6 +820,8 @@ function applyAccessMode(mode = "full") {
     [addSystemBtn, addObjectBtn, addTextBtn, newDiagramBtn, saveDiagramBtn, loadDiagramBtn, settingsBtn],
     readOnly
   );
+
+  toggleElementsDisabled([processAddNodeBtn], readOnly);
 
   if (fileNameDisplay) {
     fileNameDisplay.tabIndex = readOnly ? -1 : 0;
@@ -986,6 +998,12 @@ function init() {
   closePanelBtn.addEventListener("click", closePanel);
   entityForm.addEventListener("submit", handleAddEntity);
   attributesModalTrigger?.addEventListener("click", () => openAttributesSideModal(""));
+  openProcessMapBtn?.addEventListener("click", () => {
+    const system = systems.find((item) => item.id === selectedSystemId);
+    if (system) {
+      openProcessMap(system);
+    }
+  });
   apiModalTrigger?.addEventListener("click", openApiSideModal);
   closeAttributesModalBtn?.addEventListener("click", closeAttributesSideModal);
   closeApiModalBtn?.addEventListener("click", closeApiSideModal);
@@ -1011,6 +1029,8 @@ function init() {
   apiSupportedEntitySelect?.addEventListener("change", () => apiSupportedEntitySelect?.blur());
   addApiSupportedEntityBtn?.addEventListener("click", handleAddApiSupportedEntity);
   apiSupportedEntityList?.addEventListener("click", handleApiSupportedEntityListClick);
+  processAddNodeBtn?.addEventListener("click", addProcessNode);
+  closeProcessMapModalBtn?.addEventListener("click", closeProcessMapModal);
   canvas.addEventListener("click", handleCanvasClick);
   document.addEventListener("pointerdown", (event) => {
     if (!event.target.closest(".text-box")) {
@@ -1842,6 +1862,53 @@ function normalizeApiDetails(details = {}) {
   return merged;
 }
 
+function normalizeProcessMap(map = {}) {
+  const nodes = Array.isArray(map.nodes)
+    ? map.nodes.map((node) => ({
+        id: node.id || `pm-node-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        x: typeof node.x === "number" ? node.x : 100,
+        y: typeof node.y === "number" ? node.y : 100,
+        text: typeof node.text === "string" && node.text ? node.text : "Process step",
+        width: Math.max(60, node.width || 180),
+        height: Math.max(60, node.height || 120),
+      }))
+    : [];
+  const idSet = new Set();
+  const uniqueNodes = nodes.map((node, index) => {
+    let id = node.id;
+    while (idSet.has(id)) {
+      id = `${id}-${index}`;
+    }
+    idSet.add(id);
+    return { ...node, id };
+  });
+  const connections = Array.isArray(map.connections)
+    ? map.connections
+        .map((connection) => ({
+          id: connection.id || `pm-conn-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          from: connection.from,
+          to: connection.to,
+        }))
+        .filter(
+          (connection) =>
+            connection.from &&
+            connection.to &&
+            connection.from !== connection.to &&
+            idSet.has(connection.from) &&
+            idSet.has(connection.to)
+        )
+    : [];
+  return { nodes: uniqueNodes, connections };
+}
+
+function cloneProcessMap(map = { nodes: [], connections: [] }) {
+  const normalized = normalizeProcessMap(map || {});
+  return {
+    nodes: normalized.nodes.map((node) => ({ ...node })),
+    connections: normalized.connections.map((connection) => ({ ...connection })),
+  };
+}
+
 function addSystem({
   id,
   name,
@@ -1866,6 +1933,7 @@ function addSystem({
   shapeComments = "",
   attributes = [],
   apiDetails = {},
+  processMap = { nodes: [], connections: [] },
 } = {}) {
   const resolvedId = id || `sys-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
   const defaultPosition = getNewSystemPosition();
@@ -1902,6 +1970,7 @@ function addSystem({
       ? attributes.map((entry) => ({ attribute: entry.attribute || entry.name || "", entity: entry.entity || "" }))
       : [],
     api: normalizeApiDetails(apiDetails),
+    processMap: normalizeProcessMap(processMap),
     element: document.createElement("div"),
     isEntityExpanded: false,
     forceEntityExpand: false,
@@ -2175,6 +2244,232 @@ function addTextBox({
   refreshTextBoxAccess();
   scheduleShareUrlSync();
   return textBox;
+}
+
+function getProcessMapSystem() {
+  if (!currentProcessSystemId) return null;
+  return systems.find((system) => system.id === currentProcessSystemId) || null;
+}
+
+function ensureProcessMapForSystem(system) {
+  if (!system) return { nodes: [], connections: [] };
+  system.processMap = normalizeProcessMap(system.processMap || {});
+  return system.processMap;
+}
+
+function getProcessCanvasCoords(clientX, clientY) {
+  if (!processMapCanvas) return { x: 0, y: 0 };
+  const rect = processMapCanvas.getBoundingClientRect();
+  return { x: clientX - rect.left, y: clientY - rect.top };
+}
+
+function positionProcessNode(node, element) {
+  if (!element) return;
+  element.style.transform = `translate(${node.x}px, ${node.y}px)`;
+}
+
+function getProcessNodeCenter(node) {
+  const width = Math.max(60, node.width || 0);
+  const height = Math.max(60, node.height || 0);
+  return { x: node.x + width / 2, y: node.y + height / 2 };
+}
+
+function addProcessConnection(map, fromId, toId) {
+  if (!map || !fromId || !toId || fromId === toId) return;
+  const exists = map.connections.some(
+    (connection) =>
+      (connection.from === fromId && connection.to === toId) || (connection.from === toId && connection.to === fromId)
+  );
+  if (exists) return;
+  map.connections.push({
+    id: `pm-conn-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    from: fromId,
+    to: toId,
+  });
+}
+
+function drawProcessConnections(map) {
+  if (!processConnectionLayer) return;
+  processConnectionLayer.innerHTML = "";
+  if (!map) return;
+  map.connections.forEach((connection) => {
+    const fromNode = map.nodes.find((node) => node.id === connection.from);
+    const toNode = map.nodes.find((node) => node.id === connection.to);
+    if (!fromNode || !toNode) return;
+    const fromCenter = getProcessNodeCenter(fromNode);
+    const toCenter = getProcessNodeCenter(toNode);
+    const path = document.createElementNS(SVG_NS, "path");
+    path.classList.add("process-connection-path");
+    path.dataset.id = connection.id;
+    path.setAttribute("d", `M ${fromCenter.x} ${fromCenter.y} L ${toCenter.x} ${toCenter.y}`);
+    if (!isEditingLocked()) {
+      path.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const targetMap = ensureProcessMapForSystem(getProcessMapSystem());
+        targetMap.connections = targetMap.connections.filter((conn) => conn.id !== connection.id);
+        drawProcessConnections(targetMap);
+        scheduleShareUrlSync();
+      });
+    }
+    processConnectionLayer.appendChild(path);
+  });
+}
+
+function renderProcessMap() {
+  const system = getProcessMapSystem();
+  if (!system || !processNodeLayer || !processConnectionLayer) return;
+  const map = ensureProcessMapForSystem(system);
+  processNodeLayer.innerHTML = "";
+  processConnectionLayer.innerHTML = "";
+
+  const locked = isEditingLocked();
+  map.nodes.forEach((node) => {
+    const nodeEl = document.createElement("div");
+    nodeEl.className = "process-node";
+    nodeEl.dataset.id = node.id;
+    if (locked) nodeEl.classList.add("locked");
+    nodeEl.innerHTML = `
+      <div class="process-actions">
+        <button class="process-connector" type="button" aria-label="Connect to another step">⇢</button>
+        <button class="process-delete" type="button" aria-label="Delete step">🗑️</button>
+      </div>
+      <textarea class="process-text" spellcheck="false" ${locked ? "disabled" : ""}></textarea>
+    `;
+    const textField = nodeEl.querySelector(".process-text");
+    if (textField) {
+      textField.value = node.text || "";
+      textField.addEventListener("input", () => {
+        node.text = textField.value;
+        node.width = nodeEl.offsetWidth;
+        node.height = nodeEl.offsetHeight;
+        drawProcessConnections(map);
+        scheduleShareUrlSync();
+      });
+    }
+
+    const deleteBtn = nodeEl.querySelector(".process-delete");
+    deleteBtn?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (isEditingLocked()) return;
+      map.nodes = map.nodes.filter((entry) => entry.id !== node.id);
+      map.connections = map.connections.filter((connection) => connection.from !== node.id && connection.to !== node.id);
+      renderProcessMap();
+      scheduleShareUrlSync();
+    });
+
+    const connectorBtn = nodeEl.querySelector(".process-connector");
+    connectorBtn?.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0 || isEditingLocked()) return;
+      event.stopPropagation();
+      const start = getProcessNodeCenter(node);
+      const tempPath = document.createElementNS(SVG_NS, "path");
+      tempPath.classList.add("process-connection-path");
+      tempPath.dataset.temp = "true";
+      processConnectionLayer.appendChild(tempPath);
+      processLinkingState = { fromId: node.id, tempPath };
+
+      function onMove(moveEvent) {
+        const coords = getProcessCanvasCoords(moveEvent.clientX, moveEvent.clientY);
+        tempPath.setAttribute("d", `M ${start.x} ${start.y} L ${coords.x} ${coords.y}`);
+      }
+
+      function onUp(upEvent) {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        tempPath.remove();
+        const targetEl = upEvent.target.closest?.(".process-node");
+        if (targetEl && targetEl.dataset.id && targetEl.dataset.id !== node.id) {
+          addProcessConnection(map, node.id, targetEl.dataset.id);
+          drawProcessConnections(map);
+          scheduleShareUrlSync();
+        }
+        processLinkingState = null;
+      }
+
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    });
+
+    nodeEl.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0 || isEditingLocked()) return;
+      if (event.target.closest("textarea")) return;
+      if (event.target.closest(".process-connector") || event.target.closest(".process-delete")) return;
+      event.preventDefault();
+      const start = { x: node.x, y: node.y };
+      const startCoords = { x: event.clientX, y: event.clientY };
+      nodeEl.classList.add("dragging");
+
+      function onMove(moveEvent) {
+        const deltaX = moveEvent.clientX - startCoords.x;
+        const deltaY = moveEvent.clientY - startCoords.y;
+        node.x = Math.max(0, start.x + deltaX);
+        node.y = Math.max(0, start.y + deltaY);
+        positionProcessNode(node, nodeEl);
+        drawProcessConnections(map);
+      }
+
+      function onUp() {
+        nodeEl.classList.remove("dragging");
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        node.width = nodeEl.offsetWidth;
+        node.height = nodeEl.offsetHeight;
+        scheduleShareUrlSync();
+      }
+
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    });
+
+    processNodeLayer.appendChild(nodeEl);
+    node.width = nodeEl.offsetWidth;
+    node.height = nodeEl.offsetHeight;
+    positionProcessNode(node, nodeEl);
+  });
+
+  drawProcessConnections(map);
+}
+
+function addProcessNode() {
+  const system = getProcessMapSystem();
+  if (!system || isEditingLocked()) return;
+  const map = ensureProcessMapForSystem(system);
+  const column = map.nodes.length % 4;
+  const row = Math.floor(map.nodes.length / 4);
+  const startX = 80 + column * 180;
+  const startY = 80 + row * 160;
+  map.nodes.push({
+    id: `pm-node-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    x: startX,
+    y: startY,
+    text: "Process step",
+    width: 180,
+    height: 120,
+  });
+  renderProcessMap();
+  scheduleShareUrlSync();
+}
+
+function openProcessMap(system) {
+  if (!processMapModal || !system) return;
+  currentProcessSystemId = system.id;
+  ensureProcessMapForSystem(system);
+  processMapSystemName.textContent = system.name;
+  processMapModal.classList.remove("hidden");
+  renderProcessMap();
+}
+
+function closeProcessMapModal() {
+  if (!processMapModal) return;
+  processMapModal.classList.add("hidden");
+  currentProcessSystemId = null;
+  processLinkingState = null;
+  if (processConnectionLayer) {
+    processConnectionLayer.innerHTML = "";
+  }
+  if (processNodeLayer) {
+    processNodeLayer.innerHTML = "";
+  }
 }
 
 function createAdjacentSystem(system, direction) {
@@ -3662,6 +3957,7 @@ function openPanel(system) {
   businessOwnerInput.value = system.businessOwner;
   functionOwnerInput.value = system.functionOwner;
   ensureApiDetailsOnSystem(system);
+  ensureProcessMapForSystem(system);
   renderFunctionalConsumers(system);
   if (spreadsheetSelect) {
     spreadsheetSelect.value = system.isSpreadsheet ? "yes" : "no";
@@ -3733,6 +4029,9 @@ systemNameInput.addEventListener("input", () => {
   activePanelSystem.name = systemNameInput.value.trim() || "Untitled";
   activePanelSystem.element.querySelector(".title").textContent = activePanelSystem.name;
   panelTitle.textContent = activePanelSystem.name;
+  if (currentProcessSystemId === activePanelSystem.id && processMapSystemName) {
+    processMapSystemName.textContent = activePanelSystem.name;
+  }
 });
 
 function handleOwnerFieldChange() {
@@ -4357,6 +4656,10 @@ function syncAttributeRowSelectionClasses() {
       row.classList.remove("selected");
     }
   });
+
+  if (processMapModal && !processMapModal.classList.contains("hidden")) {
+    renderProcessMap();
+  }
 }
 
 function handleAddAttributeRow() {
@@ -4750,6 +5053,9 @@ function handleDeleteSystem(system) {
     selectedSystemId = null;
     closePanel();
   }
+  if (currentProcessSystemId === system.id) {
+    closeProcessMapModal();
+  }
   if (activeObjectNode && activeObjectNode.id === system.id) {
     closeObjectModal();
   }
@@ -4904,6 +5210,7 @@ function cloneSystemData(system) {
     shapeComments: system.shapeComments,
     apiDetails: normalizeApiDetails(system.api || {}),
     entities: system.entities.map((entity) => ({ name: entity.name, isSor: !!entity.isSor })),
+    processMap: cloneProcessMap(system.processMap || { nodes: [], connections: [] }),
   };
 }
 
@@ -7869,6 +8176,7 @@ function serializeState(accessModeOverride, options = {}) {
               : [],
           }),
       api: normalizeApiDetails(system.api || {}),
+      processMap: cloneProcessMap(system.processMap || { nodes: [], connections: [] }),
     })),
     textBoxes: textBoxes.map((box) => ({
       id: box.id,
@@ -7985,6 +8293,7 @@ function loadSerializedState(snapshot) {
       shapeComments: systemData.shapeComments,
       attributes: systemData.attributes,
       apiDetails: systemData.api,
+      processMap: systemData.processMap,
     });
   });
   (snapshot.textBoxes || []).forEach((box) => {

@@ -310,6 +310,7 @@
           <div class="section-title">Domains</div>
           <div id="panelDomainChoices" class="domain-choices"></div>
         </section>
+        <button id="openProcessMapModal" type="button" class="inline-link">Add Process Map</button>
         <button
           id="openApiModal"
           type="button"
@@ -840,6 +841,38 @@
               </div>
             </div>
             <aside id="visualFilterHost" class="visual-filter-host"></aside>
+          </div>
+        </div>
+      </div>
+      <div
+        id="processMapModal"
+        class="modal hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="processMapModalTitle"
+      >
+        <div class="modal-card visual-modal-card process-map-card">
+          <div class="modal-header visual-header process-map-header">
+            <div class="visual-header-main process-map-title">
+              <div>
+                <h3 id="processMapModalTitle">Process Map</h3>
+                <div id="processMapSystemName" class="process-map-system"></div>
+              </div>
+            </div>
+            <div class="process-map-controls">
+              <button id="processAddNodeBtn" type="button" class="secondary">Add Step</button>
+            </div>
+            <button id="closeProcessMapModal" class="icon-btn" type="button" aria-label="Close process map">
+              ×
+            </button>
+          </div>
+          <div class="visual-body process-map-body">
+            <div class="visual-main process-map-main">
+              <div id="processMapCanvas" class="process-canvas">
+                <svg id="processConnectionLayer" class="process-connection-layer" aria-hidden="true"></svg>
+                <div id="processNodeLayer" class="process-node-layer"></div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
