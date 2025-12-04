@@ -11,6 +11,7 @@ const STORAGE_KEY = "entityMasterSaves";
 const DELETED_STORAGE_KEY = "entityMasterDeletedSaves";
 const DEFAULT_ICON = "cube";
 const DEFAULT_OBJECT_COLOR = "#d1d5db";
+const MAX_SHARE_URL_LENGTH = 32000;
 const ICON_LIBRARY = {
   cube: "⬛",
   database: "🗄️",
@@ -6482,6 +6483,10 @@ function handleShareDiagramWithMode(mode) {
     }
   } catch (error) {
     console.warn("Unable to build shareable URL", error);
+    alert(
+      error?.message ||
+        "Unable to build a shareable link. Try removing optional content or simplify the diagram before sharing.",
+    );
   }
 }
 
@@ -6626,8 +6631,14 @@ function handleRedoAction() {
 }
 
 function buildShareUrlFromState(state) {
-  const payload = encodeStatePayload(state);
-  return `${window.location.origin}${window.location.pathname}?data=${encodeURIComponent(payload)}`;
+  const payload = encodeStatePayload(state, { forUrl: true });
+  const url = `${window.location.origin}${window.location.pathname}?data=${payload}`;
+  if (url.length > MAX_SHARE_URL_LENGTH) {
+    throw new Error(
+      `Share URL is ${url.length.toLocaleString()} characters and exceeds the ${MAX_SHARE_URL_LENGTH.toLocaleString()} character limit. Try removing optional content before sharing.`,
+    );
+  }
+  return url;
 }
 
 function buildSaveIdUrl(id) {
@@ -8789,45 +8800,60 @@ function formatSaveEntryName(fileName, date) {
     );
   }
 
-  function encodeStatePayload(state) {
+  function encodeStatePayload(state, options = {}) {
+    const { forUrl = false } = options;
     const json = JSON.stringify(state);
     if (window.LZString?.compressToEncodedURIComponent) {
       const compressed = window.LZString.compressToEncodedURIComponent(json);
       if (compressed) return compressed;
-  }
-  if (typeof TextEncoder === "undefined") {
-    return btoa(unescape(encodeURIComponent(json)));
-  }
-  const encoder = new TextEncoder();
-  const bytes = encoder.encode(json);
-  let binary = "";
-  bytes.forEach((byte) => {
-    binary += String.fromCharCode(byte);
-  });
-  return btoa(binary);
-}
-
-function decodeStatePayload(payload) {
-  if (window.LZString?.decompressFromEncodedURIComponent) {
-    try {
-      const decompressed = window.LZString.decompressFromEncodedURIComponent(payload);
-      if (decompressed) {
-        return JSON.parse(decompressed);
-      }
-    } catch (error) {
-      console.warn("Unable to decompress shared payload, trying legacy decode", error);
     }
+    const base64 = (() => {
+      if (typeof TextEncoder === "undefined") {
+        return btoa(unescape(encodeURIComponent(json)));
+      }
+      const encoder = new TextEncoder();
+      const bytes = encoder.encode(json);
+      let binary = "";
+      bytes.forEach((byte) => {
+        binary += String.fromCharCode(byte);
+      });
+      return btoa(binary);
+    })();
+    if (!forUrl) return base64;
+    return base64
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/g, "");
   }
-  const binary = atob(payload);
-  if (typeof TextDecoder === "undefined") {
-    const decoded = decodeURIComponent(escape(binary));
-    return JSON.parse(decoded);
+
+  function decodeStatePayload(payload) {
+    const normalizedPayload = typeof payload === "string" ? payload.replace(/\s/g, "+") : payload;
+    if (window.LZString?.decompressFromEncodedURIComponent) {
+      try {
+        const decompressed = window.LZString.decompressFromEncodedURIComponent(normalizedPayload);
+        if (decompressed) {
+          return JSON.parse(decompressed);
+        }
+      } catch (error) {
+        console.warn("Unable to decompress shared payload, trying legacy decode", error);
+      }
+    }
+    const b64 = (() => {
+      const reverted = normalizedPayload.replace(/-/g, "+").replace(/_/g, "/");
+      const paddingNeeded = reverted.length % 4;
+      if (paddingNeeded === 0) return reverted;
+      return `${reverted}${"=".repeat(4 - paddingNeeded)}`;
+    })();
+    const binary = atob(b64);
+    if (typeof TextDecoder === "undefined") {
+      const decoded = decodeURIComponent(escape(binary));
+      return JSON.parse(decoded);
+    }
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    const decoder = new TextDecoder();
+    const json = decoder.decode(bytes);
+    return JSON.parse(json);
   }
-  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-  const decoder = new TextDecoder();
-  const json = decoder.decode(bytes);
-  return JSON.parse(json);
-}
 
 function loadFromUrlParams() {
   try {
