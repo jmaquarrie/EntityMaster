@@ -8865,7 +8865,8 @@ function formatSaveEntryName(fileName, date) {
       copyIfValue("comments", system.comments);
       copyIfValue("description", system.description);
       copyIfValue("waitingOnInfo", system.waitingOnInfo);
-      copyIfValue("fileUrl", system.fileUrl);
+      // Omit file URLs from shared snapshots to keep links compact.
+      // copyIfValue("fileUrl", system.fileUrl);
       copyIfValue("isSpreadsheet", system.isSpreadsheet);
       copyIfValue("isObject", system.isObject);
       copyIfValue("shapeType", system.shapeType);
@@ -8877,28 +8878,8 @@ function formatSaveEntryName(fileName, date) {
         Array.isArray(system.entities) ? system.entities.filter((entity) => entity && entity.name) : [],
         true
       );
-      if (system.attributes && system.attributes.length) {
-        copyIfValue(
-          "attributes",
-          system.attributes.map((entry) => ({ attribute: entry.attribute || "", entity: entry.entity || "" })),
-          true
-        );
-      }
-      const normalizedApi = normalizeApiDetails(system.api || {});
-      const apiDefaults = normalizeApiDetails(DEFAULT_API_DETAILS);
-      const apiPayload = {};
-      Object.keys(normalizedApi).forEach((key) => {
-        const value = normalizedApi[key];
-        if (Array.isArray(value) && value.length === 0) return;
-        if (value === "" || value === apiDefaults[key]) return;
-        apiPayload[key] = value;
-      });
-      if (Object.keys(apiPayload).length) {
-        pruned.api = apiPayload;
-      }
-      if (system.processMap && (system.processMap.nodes?.length || system.processMap.connections?.length)) {
-        pruned.processMap = cloneProcessMap(system.processMap);
-      }
+      // Attributes, API metadata, and process maps are excluded from shared payloads to
+      // avoid exceeding URL length limits.
 
       return pruned;
     });
@@ -8958,7 +8939,7 @@ function formatSaveEntryName(fileName, date) {
     const slim = JSON.parse(JSON.stringify(state));
     if (Array.isArray(slim.systems)) {
       slim.systems = slim.systems.map((system) => {
-        const { processMap, attributes, ...rest } = system;
+        const { processMap, attributes, fileUrl, api, ...rest } = system;
         return rest;
       });
     }
