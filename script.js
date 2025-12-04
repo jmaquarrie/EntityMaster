@@ -12,6 +12,7 @@ const DELETED_STORAGE_KEY = "entityMasterDeletedSaves";
 const DEFAULT_ICON = "cube";
 const DEFAULT_OBJECT_COLOR = "#d1d5db";
 const MAX_SHARE_URL_LENGTH = 32000;
+const SHARE_ENCODING_PREFIX = "v1";
 const ICON_LIBRARY = {
   cube: "⬛",
   database: "🗄️",
@@ -6631,11 +6632,25 @@ function handleRedoAction() {
 }
 
 function buildShareUrlFromState(state) {
-  const payload = encodeStatePayload(state, { forUrl: true });
-  const url = `${window.location.origin}${window.location.pathname}?data=${payload}`;
+  const buildUrl = (payload) => `${window.location.origin}${window.location.pathname}?data=${payload}`;
+
+  const compactSnapshot = compactStateForSharing(state);
+  let payload = encodeStatePayload(compactSnapshot, { forUrl: true, compact: false });
+  let url = buildUrl(payload);
+
+  if (url.length > MAX_SHARE_URL_LENGTH) {
+    const stripped = stripHeavyShareFields(compactSnapshot);
+    const trimmedPayload = encodeStatePayload(stripped, { forUrl: true, compact: false });
+    const trimmedUrl = buildUrl(trimmedPayload);
+    if (trimmedUrl.length < url) {
+      payload = trimmedPayload;
+      url = trimmedUrl;
+    }
+  }
+
   if (url.length > MAX_SHARE_URL_LENGTH) {
     throw new Error(
-      `Share URL is ${url.length.toLocaleString()} characters and exceeds the ${MAX_SHARE_URL_LENGTH.toLocaleString()} character limit. Try removing optional content before sharing.`,
+      `Share URL is ${url.length.toLocaleString()} characters and exceeds the ${MAX_SHARE_URL_LENGTH.toLocaleString()} character limit even after trimming optional details. Export or save the diagram instead.`,
     );
   }
   return url;
@@ -8800,13 +8815,179 @@ function formatSaveEntryName(fileName, date) {
     );
   }
 
+  function compactStateForSharing(state) {
+    const compactFilters = (() => {
+      const filterState = state.filterState || {};
+      const pruned = {};
+      if (filterState.search) pruned.search = filterState.search;
+      if (filterState.searchType && filterState.searchType !== "contains") pruned.searchType = filterState.searchType;
+      if (filterState.filterMode && filterState.filterMode !== "highlight") pruned.filterMode = filterState.filterMode;
+      if (Array.isArray(filterState.domains) && filterState.domains.length) pruned.domains = filterState.domains;
+      if (filterState.platformOwner) pruned.platformOwner = filterState.platformOwner;
+      if (filterState.businessOwner) pruned.businessOwner = filterState.businessOwner;
+      if (filterState.functionOwner) pruned.functionOwner = filterState.functionOwner;
+      if (Array.isArray(filterState.functionalConsumers) && filterState.functionalConsumers.length)
+        pruned.functionalConsumers = filterState.functionalConsumers;
+      if (filterState.sor && filterState.sor !== "any") pruned.sor = filterState.sor;
+      if (filterState.spreadsheets && filterState.spreadsheets !== "yes") pruned.spreadsheets = filterState.spreadsheets;
+      if (filterState.filePresence && filterState.filePresence !== "any") pruned.filePresence = filterState.filePresence;
+      if (filterState.apiAvailability && filterState.apiAvailability !== "any")
+        pruned.apiAvailability = filterState.apiAvailability;
+      if (filterState.waitingOnInfo && filterState.waitingOnInfo !== "any") pruned.waitingOnInfo = filterState.waitingOnInfo;
+      if (filterState.expandEntities) pruned.expandEntities = !!filterState.expandEntities;
+      if (filterState.showParents) pruned.showParents = !!filterState.showParents;
+      if (filterState.fullParentLineage) pruned.fullParentLineage = !!filterState.fullParentLineage;
+      if (typeof filterState.sidebarCollapsed === "boolean") pruned.sidebarCollapsed = filterState.sidebarCollapsed;
+      return pruned;
+    })();
+
+    const compactSystems = (state.systems || []).map((system) => {
+      const pruned = {
+        id: system.id,
+        name: system.name,
+        x: system.x,
+        y: system.y,
+      };
+
+      const copyIfValue = (key, value, shouldKeep = true) => {
+        if (value === undefined || value === null) return;
+        if (Array.isArray(value) && value.length === 0) return;
+        if (value === "" || value === false) return;
+        if (shouldKeep) pruned[key] = value;
+      };
+
+      copyIfValue("domains", Array.isArray(system.domains) && system.domains.length ? system.domains : undefined);
+      copyIfValue("platformOwner", system.platformOwner);
+      copyIfValue("businessOwner", system.businessOwner);
+      copyIfValue("functionOwner", system.functionOwner);
+      copyIfValue("functionalConsumers", Array.isArray(system.functionalConsumers) ? system.functionalConsumers : []);
+      copyIfValue("icon", system.icon !== DEFAULT_ICON ? system.icon : undefined);
+      copyIfValue("comments", system.comments);
+      copyIfValue("description", system.description);
+      copyIfValue("waitingOnInfo", system.waitingOnInfo);
+      copyIfValue("fileUrl", system.fileUrl);
+      copyIfValue("isSpreadsheet", system.isSpreadsheet);
+      copyIfValue("isObject", system.isObject);
+      copyIfValue("shapeType", system.shapeType);
+      copyIfValue("shapeLabel", system.shapeLabel);
+      copyIfValue("shapeColor", system.shapeColor && system.shapeColor !== DEFAULT_OBJECT_COLOR ? system.shapeColor : undefined);
+      copyIfValue("shapeComments", system.shapeComments);
+      copyIfValue(
+        "entities",
+        Array.isArray(system.entities) ? system.entities.filter((entity) => entity && entity.name) : [],
+        true
+      );
+      if (system.attributes && system.attributes.length) {
+        copyIfValue(
+          "attributes",
+          system.attributes.map((entry) => ({ attribute: entry.attribute || "", entity: entry.entity || "" })),
+          true
+        );
+      }
+      const normalizedApi = normalizeApiDetails(system.api || {});
+      const apiDefaults = normalizeApiDetails(DEFAULT_API_DETAILS);
+      const apiPayload = {};
+      Object.keys(normalizedApi).forEach((key) => {
+        const value = normalizedApi[key];
+        if (Array.isArray(value) && value.length === 0) return;
+        if (value === "" || value === apiDefaults[key]) return;
+        apiPayload[key] = value;
+      });
+      if (Object.keys(apiPayload).length) {
+        pruned.api = apiPayload;
+      }
+      if (system.processMap && (system.processMap.nodes?.length || system.processMap.connections?.length)) {
+        pruned.processMap = cloneProcessMap(system.processMap);
+      }
+
+      return pruned;
+    });
+
+    const compactText = (state.textBoxes || []).map((box) => {
+      const pruned = { id: box.id, x: box.x, y: box.y, text: box.text };
+      if (box.fontSize) pruned.fontSize = box.fontSize;
+      if (box.color && box.color !== "#000000") pruned.color = box.color;
+      if (box.width) pruned.width = box.width;
+      if (box.height) pruned.height = box.height;
+      return pruned;
+    });
+
+    const compactGroups = (state.groups || []).map((group) => {
+      const pruned = { id: group.id, systemIds: group.systemIds };
+      if (group.name && group.name !== getDefaultGroupName()) pruned.name = group.name;
+      if (group.color && group.color !== "#ffffff") pruned.color = group.color;
+      if (group.hidden) pruned.hidden = true;
+      return pruned;
+    });
+
+    const snapshot = {
+      fileName: state.fileName,
+      systems: compactSystems,
+      textBoxes: compactText.length ? compactText : undefined,
+      connections: (state.connections || []).map((connection) => {
+        const pruned = { ...connection };
+        const dropIf = (key, predicate) => {
+          if (key in pruned && predicate(pruned[key])) {
+            delete pruned[key];
+          }
+        };
+        dropIf("label", (value) => !value);
+        dropIf("bidirectional", (value) => !value);
+        dropIf("arrowMode", (value) => !value || value === "single");
+        dropIf("color", (value) => !value || value === "#000000");
+        dropIf("strokeWidth", (value) => !value || value === 2);
+        dropIf("pathStyle", (value) => !value || value === "angled");
+        dropIf("fromSide", (value) => !value);
+        dropIf("toSide", (value) => !value);
+        dropIf("id", (value) => !value);
+        return pruned;
+      }),
+      groups: compactGroups.length ? compactGroups : undefined,
+      counter: state.counter,
+      colorBy: state.colorBy,
+      filterState: compactFilters,
+      accessMode: state.accessMode,
+      customDomains: state.customDomains && state.customDomains.length ? state.customDomains : undefined,
+      functionOwners: state.functionOwners && state.functionOwners.length ? state.functionOwners : undefined,
+    };
+
+    return JSON.parse(JSON.stringify(snapshot));
+  }
+
+  function stripHeavyShareFields(state) {
+    const slim = JSON.parse(JSON.stringify(state));
+    if (Array.isArray(slim.systems)) {
+      slim.systems = slim.systems.map((system) => {
+        const { processMap, attributes, ...rest } = system;
+        return rest;
+      });
+    }
+    return slim;
+  }
+
   function encodeStatePayload(state, options = {}) {
-    const { forUrl = false } = options;
-    const json = JSON.stringify(state);
+    const { forUrl = false, compact = false } = options;
+    const preparedState = compact ? compactStateForSharing(state) : state;
+    const json = JSON.stringify(preparedState);
+    const candidates = [];
+
     if (window.LZString?.compressToEncodedURIComponent) {
       const compressed = window.LZString.compressToEncodedURIComponent(json);
-      if (compressed) return compressed;
+      if (compressed) {
+        candidates.push({ prefix: `${SHARE_ENCODING_PREFIX}:u:`, value: compressed });
+      }
     }
+
+    if (window.LZString?.compressToBase64) {
+      const compressed = window.LZString.compressToBase64(json);
+      if (compressed) {
+        const safe = forUrl
+          ? compressed.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "")
+          : compressed;
+        candidates.push({ prefix: `${SHARE_ENCODING_PREFIX}:b:`, value: safe });
+      }
+    }
+
     const base64 = (() => {
       if (typeof TextEncoder === "undefined") {
         return btoa(unescape(encodeURIComponent(json)));
@@ -8819,18 +9000,64 @@ function formatSaveEntryName(fileName, date) {
       });
       return btoa(binary);
     })();
-    if (!forUrl) return base64;
-    return base64
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/g, "");
+    if (base64) {
+      const safe = forUrl ? base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "") : base64;
+      candidates.push({ prefix: `${SHARE_ENCODING_PREFIX}:p:`, value: safe });
+    }
+
+    const shortest = candidates.reduce((best, current) => {
+      if (!best || current.value.length < best.value.length) return current;
+      return best;
+    }, null);
+
+    return shortest ? `${shortest.prefix}${shortest.value}` : "";
   }
 
   function decodeStatePayload(payload) {
     const normalizedPayload = typeof payload === "string" ? payload.replace(/\s/g, "+") : payload;
-    if (window.LZString?.decompressFromEncodedURIComponent) {
+
+    const parseLegacyOrPlain = (raw) => {
+      const b64 = (() => {
+        const reverted = raw.replace(/-/g, "+").replace(/_/g, "/");
+        const paddingNeeded = reverted.length % 4;
+        if (paddingNeeded === 0) return reverted;
+        return `${reverted}${"=".repeat(4 - paddingNeeded)}`;
+      })();
+      const binary = atob(b64);
+      if (typeof TextDecoder === "undefined") {
+        const decoded = decodeURIComponent(escape(binary));
+        return JSON.parse(decoded);
+      }
+      const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+      const decoder = new TextDecoder();
+      const json = decoder.decode(bytes);
+      return JSON.parse(json);
+    };
+
+    const [prefix, encoding, rawPayload] = (() => {
+      if (typeof normalizedPayload !== "string") return [null, null, normalizedPayload];
+      const parts = normalizedPayload.split(":");
+      if (parts.length >= 3 && parts[0] === SHARE_ENCODING_PREFIX) {
+        const [, enc, ...rest] = parts;
+        return [parts[0], enc, rest.join(":")];
+      }
+      return [null, null, normalizedPayload];
+    })();
+
+    if (!encoding && window.LZString?.decompressFromEncodedURIComponent) {
       try {
         const decompressed = window.LZString.decompressFromEncodedURIComponent(normalizedPayload);
+        if (decompressed) {
+          return JSON.parse(decompressed);
+        }
+      } catch (error) {
+        console.warn("Unable to decompress legacy payload, trying alternate decode", error);
+      }
+    }
+
+    if (encoding === "u" && window.LZString?.decompressFromEncodedURIComponent) {
+      try {
+        const decompressed = window.LZString.decompressFromEncodedURIComponent(rawPayload);
         if (decompressed) {
           return JSON.parse(decompressed);
         }
@@ -8838,21 +9065,28 @@ function formatSaveEntryName(fileName, date) {
         console.warn("Unable to decompress shared payload, trying legacy decode", error);
       }
     }
-    const b64 = (() => {
-      const reverted = normalizedPayload.replace(/-/g, "+").replace(/_/g, "/");
-      const paddingNeeded = reverted.length % 4;
-      if (paddingNeeded === 0) return reverted;
-      return `${reverted}${"=".repeat(4 - paddingNeeded)}`;
-    })();
-    const binary = atob(b64);
-    if (typeof TextDecoder === "undefined") {
-      const decoded = decodeURIComponent(escape(binary));
-      return JSON.parse(decoded);
+
+    if (encoding === "b" && window.LZString?.decompressFromBase64) {
+      try {
+        const reverted = rawPayload.replace(/-/g, "+").replace(/_/g, "/");
+        const decompressed = window.LZString.decompressFromBase64(reverted);
+        if (decompressed) {
+          return JSON.parse(decompressed);
+        }
+      } catch (error) {
+        console.warn("Unable to decompress base64 payload, trying legacy decode", error);
+      }
     }
-    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-    const decoder = new TextDecoder();
-    const json = decoder.decode(bytes);
-    return JSON.parse(json);
+
+    if (encoding === "p" || prefix === SHARE_ENCODING_PREFIX) {
+      try {
+        return parseLegacyOrPlain(rawPayload);
+      } catch (error) {
+        console.warn("Unable to decode base64 payload, trying legacy decode", error);
+      }
+    }
+
+    return parseLegacyOrPlain(normalizedPayload);
   }
 
 function loadFromUrlParams() {
