@@ -8486,7 +8486,7 @@ function serializeState(accessModeOverride, options = {}) {
       shapeComments: system.shapeComments,
       entities: system.entities.map((entity) => ({ name: entity.name, isSor: !!entity.isSor })),
       ...(stripSensitive
-        ? { attributes: [] }
+        ? {}
         : {
             fileUrl: system.fileUrl,
             attributes: Array.isArray(system.attributes)
