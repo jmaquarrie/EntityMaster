@@ -13,6 +13,7 @@ const DEFAULT_ICON = "cube";
 const DEFAULT_OBJECT_COLOR = "#d1d5db";
 const MAX_SHARE_URL_LENGTH = 32000;
 const SHARE_ENCODING_PREFIX = "v1";
+const EMPLOYEE_TYPE_OPTIONS = ["PAYE", "CIS", "Subcontractor", "None"];
 const ICON_LIBRARY = {
   cube: "⬛",
   database: "🗄️",
@@ -522,6 +523,7 @@ let spreadsheetFilterValue = "yes";
 let filePresenceFilterValue = "any";
 let apiAvailabilityFilterValue = "any";
 let waitingOnInfoFilterValue = "any";
+let employeeTypeFilterValue = "any";
 let collapsedResetRecentlyUsed = false;
 let expandEntitiesGlobally = false;
 let showParentsFilter = false;
@@ -563,6 +565,7 @@ const DATA_TABLE_DEFAULT_COLUMNS = [
 ];
 const DATA_TABLE_OPTIONAL_COLUMNS = [
   { key: "functionalConsumers", label: "Functional Consumers" },
+  { key: "employeeTypes", label: "Employee Type" },
   { key: "waitingOnInfo", label: "Waiting on Info" },
   { key: "fileUrl", label: "File URL" },
   { key: "isSpreadsheet", label: "Spreadsheet" },
@@ -585,6 +588,7 @@ const DATA_TABLE_COLUMN_DEFINITIONS = {
   businessOwner: { label: "Business Owner" },
   platformOwner: { label: "Platform Owner" },
   functionalConsumers: { label: "Functional Consumers" },
+  employeeTypes: { label: "Employee Type" },
   waitingOnInfo: { label: "Waiting on Info" },
   fileUrl: { label: "File URL" },
   isSpreadsheet: { label: "Spreadsheet" },
@@ -607,6 +611,20 @@ function normalizeOwnerFilterValue(value) {
   const trimmed = (value || "").trim();
   if (!trimmed) return "";
   return trimmed.toLowerCase() === "none" ? OWNER_NONE_FILTER : trimmed.toLowerCase();
+}
+
+function normalizeEmployeeTypes(values = []) {
+  const result = new Set();
+  if (!Array.isArray(values)) return result;
+  values.forEach((value) => {
+    const trimmed = (value || "").trim();
+    if (!trimmed) return;
+    const match = EMPLOYEE_TYPE_OPTIONS.find((option) => option.toLowerCase() === trimmed.toLowerCase());
+    if (match) {
+      result.add(match);
+    }
+  });
+  return result;
 }
 let currentSaveId = null;
 let marqueePreviewIds = new Set();
@@ -675,6 +693,9 @@ const functionOwnerInput = document.getElementById("functionOwnerInput");
 const functionalConsumerForm = document.getElementById("functionalConsumerForm");
 const functionalConsumerInput = document.getElementById("functionalConsumerInput");
 const functionalConsumerList = document.getElementById("functionalConsumerList");
+const employeeTypeForm = document.getElementById("employeeTypeForm");
+const employeeTypeSelect = document.getElementById("employeeTypeSelect");
+const employeeTypeList = document.getElementById("employeeTypeList");
 const entityForm = document.getElementById("entityForm");
 const entityInput = document.getElementById("entityInput");
 const entityList = document.getElementById("entityList");
@@ -724,6 +745,7 @@ const functionalConsumerFilterChips = document.getElementById("functionalConsume
 const searchInput = document.getElementById("searchInput");
 const searchTypeSelect = document.getElementById("searchType");
 const apiAvailabilityFilterSelect = document.getElementById("apiAvailabilityFilter");
+const employeeTypeFilterSelect = document.getElementById("employeeTypeFilter");
 const fileUrlInput = document.getElementById("fileUrlInput");
 const zoomLabel = document.getElementById("zoomLabel");
 const zoomButtons = document.querySelectorAll(".zoom-btn");
@@ -1096,6 +1118,8 @@ function init() {
   });
   functionalConsumerForm?.addEventListener("submit", handleFunctionalConsumerSubmit);
   functionalConsumerList?.addEventListener("click", handleFunctionalConsumerListClick);
+  employeeTypeForm?.addEventListener("submit", handleEmployeeTypeSubmit);
+  employeeTypeList?.addEventListener("click", handleEmployeeTypeListClick);
   fileUrlInput?.addEventListener("input", handleFileUrlChange);
   platformOwnerFilterInput.addEventListener("input", (event) => {
     if (isFiltersLocked()) return;
@@ -1165,6 +1189,12 @@ function init() {
   apiAvailabilityFilterSelect?.addEventListener("change", (event) => {
     if (isFiltersLocked()) return;
     apiAvailabilityFilterValue = event.target.value;
+    selectedSystemId = null;
+    updateHighlights();
+  });
+  employeeTypeFilterSelect?.addEventListener("change", (event) => {
+    if (isFiltersLocked()) return;
+    employeeTypeFilterValue = event.target.value;
     selectedSystemId = null;
     updateHighlights();
   });
@@ -1974,6 +2004,7 @@ function addSystem({
   businessOwner = "",
   functionOwner = "",
   functionalConsumers = [],
+  employeeTypes = [],
   entities = [],
   icon = DEFAULT_ICON,
   comments = "",
@@ -2010,6 +2041,7 @@ function addSystem({
     businessOwner: businessOwner || "",
     functionOwner: functionOwner || "",
     functionalConsumers: new Set(functionalConsumers || []),
+    employeeTypes: normalizeEmployeeTypes(employeeTypes),
     icon: normalizeIconKey(icon),
     comments: comments || "",
     description: description || "",
@@ -4014,6 +4046,10 @@ function openPanel(system) {
   ensureApiDetailsOnSystem(system);
   ensureProcessMapForSystem(system);
   renderFunctionalConsumers(system);
+  if (employeeTypeSelect) {
+    employeeTypeSelect.value = EMPLOYEE_TYPE_OPTIONS[0];
+  }
+  renderEmployeeTypes(system);
   if (spreadsheetSelect) {
     spreadsheetSelect.value = system.isSpreadsheet ? "yes" : "no";
   }
@@ -4155,6 +4191,59 @@ function handleFunctionalConsumerListClick(event) {
   activePanelSystem.functionalConsumers.delete(value);
   renderFunctionalConsumers(activePanelSystem);
   renderFunctionalConsumerFilterChips();
+  updateHighlights();
+  scheduleShareUrlSync();
+}
+
+function renderEmployeeTypes(system) {
+  if (!employeeTypeList) return;
+  employeeTypeList.innerHTML = "";
+  if (!system) return;
+  const types = Array.from(system.employeeTypes || []);
+  types.sort((a, b) => a.localeCompare(b));
+  types.forEach((type) => {
+    const li = document.createElement("li");
+    const pill = document.createElement("div");
+    pill.className = "consumer-pill";
+    const label = document.createElement("span");
+    label.className = "consumer-name";
+    label.textContent = type;
+    pill.appendChild(label);
+    li.appendChild(pill);
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "consumer-remove";
+    removeBtn.dataset.employeeType = type;
+    removeBtn.textContent = "×";
+    li.appendChild(removeBtn);
+    employeeTypeList.appendChild(li);
+  });
+}
+
+function handleEmployeeTypeSubmit(event) {
+  event.preventDefault();
+  if (isEditingLocked()) return;
+  if (!activePanelSystem) return;
+  const selectedType = employeeTypeSelect?.value;
+  if (!selectedType) return;
+  const match = EMPLOYEE_TYPE_OPTIONS.find((option) => option === selectedType);
+  if (!match) return;
+  activePanelSystem.employeeTypes.add(match);
+  renderEmployeeTypes(activePanelSystem);
+  updateSystemMeta(activePanelSystem);
+  updateHighlights();
+  scheduleShareUrlSync();
+}
+
+function handleEmployeeTypeListClick(event) {
+  if (isEditingLocked()) return;
+  const button = event.target.closest(".consumer-remove");
+  if (!button || !activePanelSystem) return;
+  const value = button.dataset.employeeType;
+  if (!value) return;
+  activePanelSystem.employeeTypes.delete(value);
+  renderEmployeeTypes(activePanelSystem);
+  updateSystemMeta(activePanelSystem);
   updateHighlights();
   scheduleShareUrlSync();
 }
@@ -4805,6 +4894,10 @@ function updateSystemMeta(system) {
     if (system.platformOwner) ownerBits.push({ label: "Platform", value: system.platformOwner });
     if (system.businessOwner) ownerBits.push({ label: "Business", value: system.businessOwner });
     if (system.functionOwner) ownerBits.push({ label: "Function", value: system.functionOwner });
+    const employeeTypes = Array.from(system.employeeTypes || []);
+    if (employeeTypes.length) {
+      ownerBits.push({ label: "Employee Type", value: employeeTypes.join(", ") });
+    }
     const consumers = Array.from(system.functionalConsumers || []);
     if (consumers.length) {
       ownerBits.push({ label: "Consumers", value: consumers.join(", ") });
@@ -5252,6 +5345,8 @@ function cloneSystemData(system) {
     platformOwner: system.platformOwner,
     businessOwner: system.businessOwner,
     functionOwner: system.functionOwner,
+    functionalConsumers: Array.from(system.functionalConsumers || []),
+    employeeTypes: Array.from(system.employeeTypes || []),
     icon: system.icon,
     comments: system.comments,
     description: system.description,
@@ -5298,6 +5393,7 @@ function resetFilters({ alsoClearSelection = false } = {}) {
   spreadsheetFilterValue = "yes";
   filePresenceFilterValue = "any";
   apiAvailabilityFilterValue = "any";
+  employeeTypeFilterValue = "any";
   waitingOnInfoFilterValue = "any";
   relationFocus = null;
   clearEntityLinkHighlight(false);
@@ -5322,6 +5418,9 @@ function resetFilters({ alsoClearSelection = false } = {}) {
   }
   if (apiAvailabilityFilterSelect) {
     apiAvailabilityFilterSelect.value = "any";
+  }
+  if (employeeTypeFilterSelect) {
+    employeeTypeFilterSelect.value = "any";
   }
   if (waitingOnInfoFilterSelect) {
     waitingOnInfoFilterSelect.value = "any";
@@ -5497,6 +5596,7 @@ function syncResetButtonsVisibility() {
     spreadsheetFilterValue !== "yes" ||
     filePresenceFilterValue !== "any" ||
     apiAvailabilityFilterValue !== "any" ||
+    employeeTypeFilterValue !== "any" ||
     waitingOnInfoFilterValue !== "any" ||
     showParentsFilter ||
     showFullParentLineage;
@@ -5674,6 +5774,19 @@ function systemMatchesFilters(system) {
   if (apiAvailabilityFilterValue === "no" && apiDetails.available !== "no") {
     return false;
   }
+  const employeeTypes =
+    system.employeeTypes instanceof Set
+      ? system.employeeTypes
+      : new Set(Array.isArray(system.employeeTypes) ? system.employeeTypes : []);
+  if (employeeTypeFilterValue !== "any") {
+    const hasNone = employeeTypes.size === 0 || employeeTypes.has("None");
+    if (employeeTypeFilterValue === "none" && !hasNone) {
+      return false;
+    }
+    if (employeeTypeFilterValue !== "none" && !employeeTypes.has(employeeTypeFilterValue)) {
+      return false;
+    }
+  }
   if (waitingOnInfoFilterValue === "yes" && !system.waitingOnInfo) {
     return false;
   }
@@ -5730,6 +5843,10 @@ function doesSystemMatchSearch(system) {
       return (system.businessOwner || "").toLowerCase().includes(query);
     case "functionOwner":
       return (system.functionOwner || "").toLowerCase().includes(query);
+    case "employeeType": {
+      const types = Array.from(system.employeeTypes || []);
+      return types.some((type) => type.toLowerCase().includes(query));
+    }
     case "entity":
       return system.entities.some((entity) => entity.name.toLowerCase().includes(query));
     case "attributes":
@@ -8500,6 +8617,7 @@ function serializeState(accessModeOverride, options = {}) {
       businessOwner: system.businessOwner,
       functionOwner: system.functionOwner,
       functionalConsumers: Array.from(system.functionalConsumers || []),
+      employeeTypes: Array.from(system.employeeTypes || []),
       icon: system.icon,
       comments: system.comments,
       description: system.description,
@@ -8561,6 +8679,7 @@ function serializeState(accessModeOverride, options = {}) {
       spreadsheets: spreadsheetFilterValue,
       filePresence: filePresenceFilterValue,
       apiAvailability: apiAvailabilityFilterValue,
+      employeeType: employeeTypeFilterValue,
       waitingOnInfo: waitingOnInfoFilterValue,
       expandEntities: expandEntitiesGlobally,
       showParents: showParentsFilter,
@@ -8623,6 +8742,7 @@ function loadSerializedState(snapshot) {
       businessOwner: systemData.businessOwner,
       functionOwner: systemData.functionOwner,
       functionalConsumers: systemData.functionalConsumers,
+      employeeTypes: systemData.employeeTypes,
       entities: systemData.entities,
       icon: systemData.icon,
       comments: systemData.comments,
@@ -8711,6 +8831,7 @@ function applyFilterState(filterState = {}) {
   const spreadsheetFilter = filterState.spreadsheets || "yes";
   const filePresenceFilter = filterState.filePresence || "any";
   const apiAvailabilityFilter = filterState.apiAvailability || "any";
+  const employeeTypeFilter = filterState.employeeType || "any";
   const waitingFilter = filterState.waitingOnInfo || "any";
   const expandEntities = !!filterState.expandEntities;
   const showParents = !!filterState.showParents;
@@ -8728,6 +8849,7 @@ function applyFilterState(filterState = {}) {
   spreadsheetFilterValue = spreadsheetFilter;
   filePresenceFilterValue = filePresenceFilter;
   apiAvailabilityFilterValue = apiAvailabilityFilter;
+  employeeTypeFilterValue = employeeTypeFilter;
   waitingOnInfoFilterValue = waitingFilter;
   expandEntitiesGlobally = expandEntities;
   showParentsFilter = showParents;
@@ -8744,6 +8866,7 @@ function applyFilterState(filterState = {}) {
   if (spreadsheetFilterSelect) spreadsheetFilterSelect.value = spreadsheetFilterValue;
   if (filePresenceFilterSelect) filePresenceFilterSelect.value = filePresenceFilterValue;
   if (apiAvailabilityFilterSelect) apiAvailabilityFilterSelect.value = apiAvailabilityFilterValue;
+  if (employeeTypeFilterSelect) employeeTypeFilterSelect.value = employeeTypeFilterValue;
   if (waitingOnInfoFilterSelect) waitingOnInfoFilterSelect.value = waitingOnInfoFilterValue;
   if (expandEntitiesToggle) expandEntitiesToggle.checked = expandEntitiesGlobally;
   if (showParentsToggle) showParentsToggle.checked = showParentsFilter;
@@ -8833,6 +8956,8 @@ function formatSaveEntryName(fileName, date) {
       if (filterState.filePresence && filterState.filePresence !== "any") pruned.filePresence = filterState.filePresence;
       if (filterState.apiAvailability && filterState.apiAvailability !== "any")
         pruned.apiAvailability = filterState.apiAvailability;
+      if (filterState.employeeType && filterState.employeeType !== "any")
+        pruned.employeeType = filterState.employeeType;
       if (filterState.waitingOnInfo && filterState.waitingOnInfo !== "any") pruned.waitingOnInfo = filterState.waitingOnInfo;
       if (filterState.expandEntities) pruned.expandEntities = !!filterState.expandEntities;
       if (filterState.showParents) pruned.showParents = !!filterState.showParents;
@@ -8861,6 +8986,7 @@ function formatSaveEntryName(fileName, date) {
       copyIfValue("businessOwner", system.businessOwner);
       copyIfValue("functionOwner", system.functionOwner);
       copyIfValue("functionalConsumers", Array.isArray(system.functionalConsumers) ? system.functionalConsumers : []);
+      copyIfValue("employeeTypes", Array.isArray(system.employeeTypes) ? system.employeeTypes : []);
       copyIfValue("icon", system.icon !== DEFAULT_ICON ? system.icon : undefined);
       copyIfValue("comments", system.comments);
       copyIfValue("description", system.description);
@@ -9263,6 +9389,7 @@ function renderSystemDataTable() {
     const entities = system.entities?.length ? system.entities : [{ name: "" }];
     const systemAttributes = Array.isArray(system.attributes) ? system.attributes : [];
     const functionalConsumers = Array.from(system.functionalConsumers || []);
+    const employeeTypes = Array.from(system.employeeTypes || []);
     const apiDetails = system.api || {};
     const apiSupportedEntities = Array.isArray(apiDetails.supportedEntities) ? apiDetails.supportedEntities : [];
     const description = system.description || "";
@@ -9285,6 +9412,7 @@ function renderSystemDataTable() {
         businessOwner: businessOwner || "—",
         platformOwner: platformOwner || "—",
         functionalConsumers,
+        employeeTypes,
         waitingOnInfo: formatBooleanLabel(system.waitingOnInfo),
         fileUrl: system.fileUrl || "",
         isSpreadsheet: formatBooleanLabel(system.isSpreadsheet),

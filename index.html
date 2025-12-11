@@ -111,13 +111,14 @@
               <span>Search Type</span>
               <select id="searchType">
                 <option value="system">System</option>
-                  <option value="domain">Domain</option>
-                  <option value="platformOwner">Platform Owner</option>
-                  <option value="businessOwner">Business Owner</option>
-                  <option value="functionOwner">Function Owner</option>
-                  <option value="entity">Entity</option>
-                  <option value="attributes">Attributes</option>
-                </select>
+                <option value="domain">Domain</option>
+                <option value="platformOwner">Platform Owner</option>
+                <option value="businessOwner">Business Owner</option>
+                <option value="functionOwner">Function Owner</option>
+                <option value="employeeType">Employee Type</option>
+                <option value="entity">Entity</option>
+                <option value="attributes">Attributes</option>
+              </select>
             </label>
             <label class="field">
               <span>Search</span>
@@ -191,6 +192,16 @@
                 <option value="any">Any</option>
                 <option value="yes">Yes</option>
                 <option value="no">No</option>
+              </select>
+            </label>
+            <label class="field compact">
+              <span>Employee Type</span>
+              <select id="employeeTypeFilter">
+                <option value="any">Any</option>
+                <option value="PAYE">PAYE</option>
+                <option value="CIS">CIS</option>
+                <option value="Subcontractor">Subcontractor</option>
+                <option value="none">None/Unset</option>
               </select>
             </label>
             <label class="field compact">
@@ -293,10 +304,28 @@
           </form>
           <ul id="functionalConsumerList" class="consumer-list"></ul>
         </section>
+        <section class="field">
+          <div class="section-title">Employee Type</div>
+          <form id="employeeTypeForm" class="inline-form">
+            <label class="sr-only" for="employeeTypeSelect">Employee Type</label>
+            <select id="employeeTypeSelect">
+              <option value="PAYE">PAYE</option>
+              <option value="CIS">CIS</option>
+              <option value="Subcontractor">Subcontractor</option>
+              <option value="None">None</option>
+            </select>
+            <button type="submit">Add</button>
+          </form>
+          <ul id="employeeTypeList" class="consumer-list"></ul>
+        </section>
         <label class="field" data-shared-hidden="true">
           <span>File URL</span>
           <input type="text" id="fileUrlInput" placeholder="https://" />
         </label>
+        <section class="field">
+          <div class="section-title">Domains</div>
+          <div id="panelDomainChoices" class="domain-choices"></div>
+        </section>
         <section class="field">
           <div class="section-title">Entities</div>
           <form id="entityForm">
@@ -305,10 +334,6 @@
           </form>
           <ul id="entityList" class="entity-list"></ul>
           <button id="openAttributesModal" type="button" class="inline-link" data-shared-hidden="true">Attributes</button>
-        </section>
-        <section class="field">
-          <div class="section-title">Domains</div>
-          <div id="panelDomainChoices" class="domain-choices"></div>
         </section>
         <button id="openProcessMapModal" type="button" class="inline-link">Add Process Map</button>
         <button

@@ -2705,6 +2705,16 @@ button.small {
   margin-bottom: 0.75rem;
 }
 
+.inline-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.inline-form select {
+  flex: 1;
+}
+
 .settings-inline-form input {
   flex: 1;
 }
