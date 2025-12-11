@@ -28,6 +28,7 @@ const ICON_LIBRARY = {
   spreadsheet: "📗",
 };
 const GRID_SIZE = 40;
+const EMPTY_SET = Object.freeze(new Set());
 const DEFAULT_API_DETAILS = {
   available: "unknown",
   type: "none",
@@ -465,6 +466,7 @@ const DOMAIN_NONE_KEY = "__none__";
 const OWNER_NONE_FILTER = "__none__";
 
 const systems = [];
+const systemById = new Map();
 const textBoxes = [];
 let activeTextBoxId = null;
 const OBJECT_TYPES = {
@@ -474,7 +476,74 @@ const OBJECT_TYPES = {
   end: { label: "End", className: "shape-end" },
 };
 const connections = [];
+const connectionGraph = { incoming: new Map(), outgoing: new Map(), dirty: true };
 const groups = [];
+
+function registerSystemIndex(system) {
+  if (!system?.id) return;
+  systemById.set(system.id, system);
+}
+
+function removeSystemFromIndex(systemId) {
+  if (!systemId) return;
+  systemById.delete(systemId);
+}
+
+function rebuildSystemIndex() {
+  systemById.clear();
+  systems.forEach((system) => registerSystemIndex(system));
+}
+
+function markConnectionGraphDirty() {
+  connectionGraph.dirty = true;
+}
+
+function addConnectionEdge(map, key, value) {
+  if (!key || !value) return;
+  let bucket = map.get(key);
+  if (!bucket) {
+    bucket = new Set();
+    map.set(key, bucket);
+  }
+  bucket.add(value);
+}
+
+function rebuildConnectionGraph() {
+  connectionGraph.incoming.clear();
+  connectionGraph.outgoing.clear();
+  connections.forEach((connection) => {
+    const mode = getConnectionArrowMode(connection);
+    if (mode === "none") return;
+    const hasStartArrow = connection.arrowStart;
+    const hasEndArrow = connection.arrowEnd;
+    if (hasEndArrow) {
+      addConnectionEdge(connectionGraph.outgoing, connection.from, connection.to);
+      addConnectionEdge(connectionGraph.incoming, connection.to, connection.from);
+    }
+    if (mode === "double" || hasStartArrow) {
+      addConnectionEdge(connectionGraph.outgoing, connection.to, connection.from);
+      addConnectionEdge(connectionGraph.incoming, connection.from, connection.to);
+    }
+  });
+  connectionGraph.dirty = false;
+}
+
+function ensureConnectionGraph() {
+  if (connectionGraph.dirty) {
+    rebuildConnectionGraph();
+  }
+  return connectionGraph;
+}
+
+function getOutgoingForSystem(systemId) {
+  ensureConnectionGraph();
+  return connectionGraph.outgoing.get(systemId) || EMPTY_SET;
+}
+
+function getIncomingForSystem(systemId) {
+  ensureConnectionGraph();
+  return connectionGraph.incoming.get(systemId) || EMPTY_SET;
+}
 const GROUP_OVERLAY_PADDING = 24;
 let canvasWidth = CANVAS_WIDTH;
 let canvasHeight = CANVAS_HEIGHT;
@@ -552,6 +621,7 @@ let undoTimer = null;
 let activeEntityLinkName = null;
 let activeEntitySourceId = null;
 let systemHighlightState = new Map();
+let pendingHighlightFrame = null;
 let currentFileName = "Untitled";
 let fileNameBeforeEdit = "Untitled";
 const DATA_TABLE_DEFAULT_COLUMNS = [
@@ -2114,6 +2184,7 @@ function addSystem({
 
   canvas.appendChild(system.element);
   systems.push(system);
+  registerSystemIndex(system);
 
   positionSystemElement(system);
   ensureCanvasBoundsForSystem(system);
@@ -2728,6 +2799,7 @@ function setConnectionArrowMode(connection, mode) {
     connection.arrowEnd = true;
   }
   connection.bidirectional = connection.arrowStart && connection.arrowEnd;
+  markConnectionGraphDirty();
 }
 
 function setConnectionArrowSide(connection, side, explicitState) {
@@ -2748,6 +2820,7 @@ function setConnectionArrowSide(connection, side, explicitState) {
   const derived = deriveArrowMode(connection);
   connection.arrowMode = derived;
   connection.bidirectional = connection.arrowStart && connection.arrowEnd;
+  markConnectionGraphDirty();
 }
 
 function deriveArrowMode(connection) {
@@ -2841,6 +2914,7 @@ function addConnection(source, target) {
   );
   if (existing) {
     setConnectionArrowMode(existing, "double");
+    markConnectionGraphDirty();
     drawConnections();
     updateHighlights();
     return;
@@ -2856,6 +2930,7 @@ function addConnection(source, target) {
     arrowStart: false,
     arrowEnd: true,
   });
+  markConnectionGraphDirty();
   drawConnections();
   updateHighlights();
 }
@@ -2868,6 +2943,7 @@ function removeConnection(connectionId) {
   if (editingConnectionId === connectionId) {
     closeConnectionLabelEditor();
   }
+  markConnectionGraphDirty();
   drawConnections();
   updateHighlights();
   scheduleShareUrlSync();
@@ -2881,8 +2957,8 @@ function drawConnections() {
   ensureArrowMarker();
   const applyState = hasActiveFilters() || hasEntitySelection();
   connections.forEach((connection) => {
-    const fromSystem = systems.find((s) => s.id === connection.from);
-    const toSystem = systems.find((s) => s.id === connection.to);
+    const fromSystem = systemById.get(connection.from) || systems.find((s) => s.id === connection.from);
+    const toSystem = systemById.get(connection.to) || systems.find((s) => s.id === connection.to);
     if (!fromSystem || !toSystem) return;
     if (fromSystem.isHiddenByGroup || toSystem.isHiddenByGroup) return;
     const { from: fromPos, to: toPos, fromSide, toSide } = getConnectionPoints(fromSystem, toSystem);
@@ -2969,9 +3045,13 @@ function applyConnectionFilterClasses(shouldApplyState) {
     typeof shouldApplyState === "boolean"
       ? shouldApplyState
       : hasActiveFilters() || hasEntitySelection();
+  const connectionMap = new Map();
+  connections.forEach((conn) => {
+    connectionMap.set(conn.id, conn);
+  });
 
   groups.forEach((group) => {
-    const connection = connections.find((conn) => conn.id === group.dataset.id);
+    const connection = connectionMap.get(group.dataset.id);
     if (!connection) return;
     const fromState = systemHighlightState.get(connection.from);
     const toState = systemHighlightState.get(connection.to);
@@ -5178,12 +5258,14 @@ function handleDeleteSystem(system) {
     connections: relatedConnections.map((conn) => ({ ...conn })),
   };
   systems.splice(index, 1);
+  removeSystemFromIndex(system.id);
   system.element.remove();
   for (let i = connections.length - 1; i >= 0; i -= 1) {
     if (connections[i].from === system.id || connections[i].to === system.id) {
       connections.splice(i, 1);
     }
   }
+  markConnectionGraphDirty();
   if (multiSelectedIds.has(system.id)) {
     multiSelectedIds.delete(system.id);
     refreshMultiSelectStyles();
@@ -5245,6 +5327,7 @@ function handleUndoDelete() {
       connections.push({ ...connection });
     }
   });
+  markConnectionGraphDirty();
   drawConnections();
   updateHighlights();
   undoDeleteBtn?.classList.add("hidden");
@@ -5288,7 +5371,9 @@ function resetDiagramToBlank() {
   systemHighlightState = new Map();
   systems.forEach((system) => system.element.remove());
   systems.length = 0;
+  systemById.clear();
   connections.length = 0;
+  markConnectionGraphDirty();
   groups.length = 0;
   connectionLayer.innerHTML = "";
   connectionHandleLayer.innerHTML = "";
@@ -5437,6 +5522,15 @@ function handleClearHighlights() {
 }
 
 function updateHighlights() {
+  if (pendingHighlightFrame !== null) return;
+  pendingHighlightFrame = window.requestAnimationFrame(() => {
+    pendingHighlightFrame = null;
+    runUpdateHighlights();
+  });
+}
+
+function runUpdateHighlights() {
+  ensureConnectionGraph();
   const connectedSet = selectedSystemId ? getImmediateConnectedSystemIds(selectedSystemId) : null;
   const focusActive = !!relationFocus;
 
@@ -5477,27 +5571,23 @@ function updateHighlights() {
     const queue = showFullParentLineage ? [...parentSeedIds] : [];
 
     parentSeedIds.forEach((id) => {
-      connections.forEach((conn) => {
-        getIncomingSourcesTo(conn, id).forEach((sourceId) => {
-          parentBoostIds.add(sourceId);
-          if (showFullParentLineage && !visited.has(sourceId)) {
-            visited.add(sourceId);
-            queue.push(sourceId);
-          }
-        });
+      getIncomingForSystem(id).forEach((sourceId) => {
+        parentBoostIds.add(sourceId);
+        if (showFullParentLineage && !visited.has(sourceId)) {
+          visited.add(sourceId);
+          queue.push(sourceId);
+        }
       });
     });
 
     while (showFullParentLineage && queue.length) {
       const currentId = queue.shift();
-      connections.forEach((conn) => {
-        getIncomingSourcesTo(conn, currentId).forEach((sourceId) => {
-          if (!visited.has(sourceId)) {
-            visited.add(sourceId);
-            queue.push(sourceId);
-          }
-          parentBoostIds.add(sourceId);
-        });
+      getIncomingForSystem(currentId).forEach((sourceId) => {
+        if (!visited.has(sourceId)) {
+          visited.add(sourceId);
+          queue.push(sourceId);
+        }
+        parentBoostIds.add(sourceId);
       });
     }
   }
@@ -5615,11 +5705,10 @@ function syncResetButtonsVisibility() {
 }
 
 function getImmediateConnectedSystemIds(startId) {
+  ensureConnectionGraph();
   const visited = new Set([startId]);
-  connections.forEach((conn) => {
-    getOutgoingTargetsFrom(conn, startId).forEach((id) => visited.add(id));
-    getIncomingSourcesTo(conn, startId).forEach((id) => visited.add(id));
-  });
+  getOutgoingForSystem(startId).forEach((id) => visited.add(id));
+  getIncomingForSystem(startId).forEach((id) => visited.add(id));
   return visited;
 }
 
@@ -8698,10 +8787,12 @@ function loadSerializedState(snapshot) {
   currentSaveId = null;
   systems.forEach((system) => system.element.remove());
   systems.length = 0;
+  systemById.clear();
   textBoxes.forEach((box) => box.element?.remove());
   textBoxes.length = 0;
   setActiveTextBox(null);
   connections.length = 0;
+  markConnectionGraphDirty();
   groups.length = 0;
   visualNodePositions.clear();
   visualLayoutContext = { width: 0, height: 0, padding: 50, groupMode: "none", clusters: new Map(), anchors: new Map(), positions: new Map(), includedIds: new Set() };
@@ -8782,6 +8873,7 @@ function loadSerializedState(snapshot) {
         : !!connection.bidirectional,
     }))
   );
+  markConnectionGraphDirty();
   (snapshot.groups || []).forEach((group) => {
     if (!group || !Array.isArray(group.systemIds)) return;
     groups.push({
