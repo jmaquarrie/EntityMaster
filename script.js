@@ -9710,13 +9710,22 @@ function renderSystemDataTable() {
         if (!grouped.has(key)) {
           const bucket = {};
           columnOrder.forEach((field) => {
-            bucket[field] = new Set();
+            bucket[field] = field === "system" ? new Map() : new Set();
           });
           grouped.set(key, bucket);
         }
         const bucket = grouped.get(key);
 
         columnOrder.forEach((field) => {
+          if (field === "system") {
+            const label = (row.system || "").trim() || "—";
+            const systemId = row.systemId || label;
+            if (!bucket.system.has(systemId)) {
+              bucket.system.set(systemId, label);
+            }
+            return;
+          }
+
           const values = normalizeValues(row[field]);
           values.forEach((val) => {
             if (val && val !== "—") {
@@ -9725,8 +9734,13 @@ function renderSystemDataTable() {
           });
         });
 
-        if (!bucket[groupBy].size) {
-          bucket[groupBy].add("—");
+        const groupBucket = bucket[groupBy];
+        if (groupBucket && !groupBucket.size) {
+          if (groupBy === "system") {
+            groupBucket.set("—", "—");
+          } else {
+            groupBucket.add("—");
+          }
         }
       });
     });
@@ -9742,7 +9756,9 @@ function renderSystemDataTable() {
       const exportRow = {};
       columnOrder.forEach((field, index) => {
         const cell = document.createElement("td");
-        const values = Array.from(bucket[field]);
+        const isSystemField = field === "system";
+        const rawValues = bucket[field];
+        const values = isSystemField ? Array.from(rawValues.values()) : Array.from(rawValues);
         const hideAttributes = !showAttributesColumn && field === "attributes" && groupBy !== "attributes";
         const display = hideAttributes
           ? "—"
@@ -9752,7 +9768,30 @@ function renderSystemDataTable() {
               ? values.sort((a, b) => a.localeCompare(b)).join(", ")
               : "—";
         exportRow[field] = display;
-        cell.textContent = display;
+
+        if (isSystemField && rawValues.size) {
+          const sortedSystems = Array.from(rawValues.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+          sortedSystems.forEach(([systemId, label], idx) => {
+            if (idx > 0) {
+              cell.appendChild(document.createTextNode(", "));
+            }
+            const linkBtn = document.createElement("a");
+            linkBtn.href = "#";
+            linkBtn.className = "table-system-link";
+            linkBtn.textContent = label;
+            linkBtn.addEventListener("click", (event) => {
+              event.preventDefault();
+              const targetSystem = systems.find((sys) => sys.id === systemId);
+              if (targetSystem) {
+                selectSystem(targetSystem, { skipHighlight: true, skipSelectionState: true });
+              }
+            });
+            cell.appendChild(linkBtn);
+          });
+        } else {
+          cell.textContent = display;
+        }
+
         if (index === groupColumnIndex) {
           cell.classList.add("highlight-column");
         }
