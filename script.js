@@ -9499,6 +9499,14 @@ function exportTableToCsv() {
   if (!lastRenderedTableRows.length) return;
   const headers = getActiveDataTableColumns().map((columnKey) => getDataTableColumnLabel(columnKey));
 
+  const sanitizeCellValue = (value) => {
+    if (value === undefined || value === null) {
+      return "";
+    }
+    const text = value.toString();
+    return text.trim() === "—" ? "" : text;
+  };
+
   const escapeCell = (value) => {
     const text = (value ?? "").toString();
     if (text.includes(",") || text.includes("\"") || text.includes("\n")) {
@@ -9509,7 +9517,7 @@ function exportTableToCsv() {
 
   const lines = [headers.join(",")];
   lastRenderedTableRows.forEach((row) => {
-    const cells = headers.map((header) => escapeCell(row[header]));
+    const cells = headers.map((header) => escapeCell(sanitizeCellValue(row[header])));
     lines.push(cells.join(","));
   });
 
