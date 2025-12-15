@@ -14,6 +14,7 @@ const DEFAULT_OBJECT_COLOR = "#d1d5db";
 const MAX_SHARE_URL_LENGTH = 32000;
 const SHARE_ENCODING_PREFIX = "v1";
 const EMPLOYEE_TYPE_OPTIONS = ["PAYE", "CIS", "Subcontractor", "None"];
+const LEVEL_OPTIONS = ["1", "2", "3", "4"];
 const ICON_LIBRARY = {
   cube: "⬛",
   database: "🗄️",
@@ -593,6 +594,7 @@ let filePresenceFilterValue = "any";
 let apiAvailabilityFilterValue = "any";
 let waitingOnInfoFilterValue = "any";
 let employeeTypeFilterValue = "any";
+let levelFilterSelection = new Set(LEVEL_OPTIONS);
 let collapsedResetRecentlyUsed = false;
 let expandEntitiesGlobally = false;
 let showParentsFilter = false;
@@ -622,6 +624,8 @@ let activeEntityLinkName = null;
 let activeEntitySourceId = null;
 let systemHighlightState = new Map();
 let pendingHighlightFrame = null;
+let systemLayoutCache = { dirty: true, rects: new Map(), obstacles: [] };
+let pendingConnectionRender = null;
 let currentFileName = "Untitled";
 let fileNameBeforeEdit = "Untitled";
 const DATA_TABLE_DEFAULT_COLUMNS = [
@@ -634,6 +638,7 @@ const DATA_TABLE_DEFAULT_COLUMNS = [
   "platformOwner",
 ];
 const DATA_TABLE_OPTIONAL_COLUMNS = [
+  { key: "level", label: "Level" },
   { key: "functionalConsumers", label: "Functional Consumers" },
   { key: "employeeTypes", label: "Employee Type" },
   { key: "waitingOnInfo", label: "Waiting on Info" },
@@ -657,6 +662,7 @@ const DATA_TABLE_COLUMN_DEFINITIONS = {
   functionOwner: { label: "Function Owner" },
   businessOwner: { label: "Business Owner" },
   platformOwner: { label: "Platform Owner" },
+  level: { label: "Level" },
   functionalConsumers: { label: "Functional Consumers" },
   employeeTypes: { label: "Employee Type" },
   waitingOnInfo: { label: "Waiting on Info" },
@@ -695,6 +701,18 @@ function normalizeEmployeeTypes(values = []) {
     }
   });
   return result;
+}
+
+function syncLevelFilterUi() {
+  if (!levelFilterControls) return;
+  const buttons = levelFilterControls.querySelectorAll("[data-level]");
+  buttons.forEach((button) => {
+    const value = button.dataset.level;
+    const active = levelFilterSelection.has(value);
+    button.classList.toggle("inactive", !active);
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
 }
 let currentSaveId = null;
 let marqueePreviewIds = new Set();
@@ -861,6 +879,7 @@ const expandEntitiesToggle = document.getElementById("expandEntitiesToggle");
 const showParentsToggle = document.getElementById("showParentsToggle");
 const fullParentLineageToggle = document.getElementById("fullParentLineageToggle");
 const systemIconSelect = document.getElementById("systemIconSelect");
+const systemLevelSelect = document.getElementById("systemLevelSelect");
 const systemCommentsInput = document.getElementById("systemCommentsInput");
 const systemDescriptionInput = document.getElementById("systemDescriptionInput");
 const waitingOnInfoCheckbox = document.getElementById("waitingOnInfoCheckbox");
@@ -899,6 +918,7 @@ const systemDataFilterRow = document.getElementById("systemDataFilterRow");
 const dataTableAddColumnBtn = document.getElementById("dataTableAddColumnBtn");
 const dataTableColumnMenu = document.getElementById("dataTableColumnMenu");
 const filePresenceFilterSelect = document.getElementById("filePresenceFilter");
+const levelFilterControls = document.getElementById("levelFilterControls");
 const waitingOnInfoFilterSelect = document.getElementById("waitingOnInfoFilter");
 const visualToggleBtn = document.getElementById("visualToggle");
 const newDiagramModal = document.getElementById("newDiagramModal");
@@ -975,6 +995,7 @@ function applyAccessMode(mode = "full") {
       entityInput,
       fileUrlInput,
       spreadsheetSelect,
+      systemLevelSelect,
       systemIconSelect,
       systemCommentsInput,
       systemDescriptionInput,
@@ -1115,6 +1136,7 @@ function init() {
   renderVisualBusinessOwnerOptions();
   renderFunctionalConsumerFilterChips();
   syncApiGlowControls();
+  syncLevelFilterUi();
 
   refreshDomainOptionsUi();
   panelDomainChoices.addEventListener("change", handleDomainSelection);
@@ -1268,6 +1290,22 @@ function init() {
     selectedSystemId = null;
     updateHighlights();
   });
+  levelFilterControls?.addEventListener("click", (event) => {
+    if (isFiltersLocked()) return;
+    const button = event.target.closest("[data-level]");
+    if (!button) return;
+    const value = button.dataset.level;
+    if (!value) return;
+    if (levelFilterSelection.has(value)) {
+      levelFilterSelection.delete(value);
+    } else {
+      levelFilterSelection.add(value);
+    }
+    syncLevelFilterUi();
+    selectedSystemId = null;
+    updateHighlights();
+    scheduleShareUrlSync();
+  });
   waitingOnInfoFilterSelect?.addEventListener("change", (event) => {
     if (isFiltersLocked()) return;
     waitingOnInfoFilterValue = event.target.value;
@@ -1409,6 +1447,12 @@ function init() {
     if (!activePanelSystem) return;
     activePanelSystem.icon = systemIconSelect.value;
     updateSystemIcon(activePanelSystem);
+  });
+  systemLevelSelect?.addEventListener("change", () => {
+    if (!activePanelSystem) return;
+    activePanelSystem.level = systemLevelSelect.value;
+    scheduleShareUrlSync();
+    updateHighlights();
   });
   systemCommentsInput?.addEventListener("input", () => {
     if (!activePanelSystem) return;
@@ -2075,6 +2119,7 @@ function addSystem({
   functionOwner = "",
   functionalConsumers = [],
   employeeTypes = [],
+  level = LEVEL_OPTIONS[0],
   entities = [],
   icon = DEFAULT_ICON,
   comments = "",
@@ -2112,6 +2157,7 @@ function addSystem({
     functionOwner: functionOwner || "",
     functionalConsumers: new Set(functionalConsumers || []),
     employeeTypes: normalizeEmployeeTypes(employeeTypes),
+    level: LEVEL_OPTIONS.includes(String(level)) ? String(level) : LEVEL_OPTIONS[0],
     icon: normalizeIconKey(icon),
     comments: comments || "",
     description: description || "",
@@ -2187,6 +2233,7 @@ function addSystem({
   registerSystemIndex(system);
 
   positionSystemElement(system);
+  markSystemLayoutDirty();
   ensureCanvasBoundsForSystem(system);
   attachNodeEvents(system);
   if (!system.isObject) {
@@ -2207,6 +2254,7 @@ function addSystem({
 
 function positionSystemElement(system) {
   system.element.style.transform = `translate(${system.x}px, ${system.y}px)`;
+  markSystemLayoutDirty();
 }
 
 function positionTextBox(textBox) {
@@ -2950,19 +2998,29 @@ function removeConnection(connectionId) {
 }
 
 function drawConnections() {
+  if (pendingConnectionRender !== null) return;
+  pendingConnectionRender = window.requestAnimationFrame(() => {
+    pendingConnectionRender = null;
+    renderConnections();
+  });
+}
+
+function renderConnections() {
+  const layout = ensureSystemLayoutCache();
   connectionLayer.innerHTML = "";
   if (connectionHandleLayer) {
     connectionHandleLayer.innerHTML = "";
   }
   ensureArrowMarker();
   const applyState = hasActiveFilters() || hasEntitySelection();
+  const obstacles = layout.obstacles;
   connections.forEach((connection) => {
     const fromSystem = systemById.get(connection.from) || systems.find((s) => s.id === connection.from);
     const toSystem = systemById.get(connection.to) || systems.find((s) => s.id === connection.to);
     if (!fromSystem || !toSystem) return;
     if (fromSystem.isHiddenByGroup || toSystem.isHiddenByGroup) return;
     const { from: fromPos, to: toPos, fromSide, toSide } = getConnectionPoints(fromSystem, toSystem);
-    const route = getConnectionRoute(fromSystem, toSystem, fromPos, toPos, fromSide, toSide);
+    const route = getConnectionRoute(fromSystem, toSystem, fromPos, toPos, fromSide, toSide, obstacles);
     const group = document.createElementNS(SVG_NS, "g");
     group.classList.add("connection-group");
     group.dataset.id = connection.id;
@@ -3141,23 +3199,64 @@ function getCurvedPath(from, to) {
   return `M ${from.x} ${from.y} Q ${controlX} ${controlY} ${to.x} ${to.y}`;
 }
 
+function markSystemLayoutDirty() {
+  systemLayoutCache.dirty = true;
+}
+
+function ensureSystemLayoutCache() {
+  if (!systemLayoutCache.dirty) return systemLayoutCache;
+  const rects = new Map();
+  systems.forEach((system) => {
+    const width = system.element?.offsetWidth || DEFAULT_NODE_WIDTH;
+    const height = system.element?.offsetHeight || DEFAULT_NODE_HEIGHT;
+    rects.set(system.id, {
+      x: typeof system.x === "number" ? system.x : 0,
+      y: typeof system.y === "number" ? system.y : 0,
+      width,
+      height,
+      centerX: (typeof system.x === "number" ? system.x : 0) + width / 2,
+      centerY: (typeof system.y === "number" ? system.y : 0) + height / 2,
+    });
+  });
+  systemLayoutCache = {
+    dirty: false,
+    rects,
+    obstacles: Array.from(rects.entries()).map(([id, rect]) => ({ ...rect, id })),
+  };
+  return systemLayoutCache;
+}
+
 function getSystemCenter(system) {
   const rect = getSystemRect(system);
   return {
-    x: rect.x + rect.width / 2,
-    y: rect.y + rect.height / 2,
+    x: rect.centerX ?? rect.x + rect.width / 2,
+    y: rect.centerY ?? rect.y + rect.height / 2,
   };
 }
 
 function getSystemRect(system) {
   if (!system) {
-    return { x: 0, y: 0, width: DEFAULT_NODE_WIDTH, height: DEFAULT_NODE_HEIGHT };
+    return {
+      x: 0,
+      y: 0,
+      width: DEFAULT_NODE_WIDTH,
+      height: DEFAULT_NODE_HEIGHT,
+      centerX: DEFAULT_NODE_WIDTH / 2,
+      centerY: DEFAULT_NODE_HEIGHT / 2,
+    };
   }
+  const cache = ensureSystemLayoutCache();
+  const rect = cache.rects.get(system.id);
+  if (rect) return rect;
+  const width = system.element?.offsetWidth || DEFAULT_NODE_WIDTH;
+  const height = system.element?.offsetHeight || DEFAULT_NODE_HEIGHT;
   return {
     x: typeof system.x === "number" ? system.x : 0,
     y: typeof system.y === "number" ? system.y : 0,
-    width: system.element?.offsetWidth || DEFAULT_NODE_WIDTH,
-    height: system.element?.offsetHeight || DEFAULT_NODE_HEIGHT,
+    width,
+    height,
+    centerX: (typeof system.x === "number" ? system.x : 0) + width / 2,
+    centerY: (typeof system.y === "number" ? system.y : 0) + height / 2,
   };
 }
 
@@ -3255,11 +3354,13 @@ function getConnectionPoints(fromSystem, toSystem) {
   };
 }
 
-function getConnectionRoute(fromSystem, toSystem, fromPos, toPos, fromSide, toSide) {
+function getConnectionRoute(fromSystem, toSystem, fromPos, toPos, fromSide, toSide, obstaclesCache) {
   const basePoints = buildBasePathPoints(fromPos, toPos, fromSide, toSide);
-  const obstacles = systems
-    .filter((system) => system.id !== fromSystem.id && system.id !== toSystem.id)
-    .map((system) => ({ ...getSystemRect(system), id: system.id }));
+  const obstacles = Array.isArray(obstaclesCache)
+    ? obstaclesCache.filter((entry) => entry.id !== fromSystem.id && entry.id !== toSystem.id)
+    : systems
+        .filter((system) => system.id !== fromSystem.id && system.id !== toSystem.id)
+        .map((system) => ({ ...getSystemRect(system), id: system.id }));
 
   const baseLength = getPathLength(basePoints);
   const blockingRect = findFirstIntersectingRect(basePoints, obstacles);
@@ -4134,6 +4235,9 @@ function openPanel(system) {
     spreadsheetSelect.value = system.isSpreadsheet ? "yes" : "no";
   }
   syncIconSelectValue(system.icon);
+  if (systemLevelSelect) {
+    systemLevelSelect.value = LEVEL_OPTIONS.includes(String(system.level)) ? String(system.level) : LEVEL_OPTIONS[0];
+  }
   if (systemCommentsInput) {
     systemCommentsInput.value = system.comments || "";
   }
@@ -4246,6 +4350,7 @@ function renderFunctionalConsumers(system) {
     li.appendChild(removeBtn);
     functionalConsumerList.appendChild(li);
   });
+  markSystemLayoutDirty();
 }
 
 function handleFunctionalConsumerSubmit(event) {
@@ -4298,6 +4403,7 @@ function renderEmployeeTypes(system) {
     li.appendChild(removeBtn);
     employeeTypeList.appendChild(li);
   });
+  markSystemLayoutDirty();
 }
 
 function handleEmployeeTypeSubmit(event) {
@@ -4959,6 +5065,7 @@ function renderDomainBubbles(system) {
     bubble.textContent = definition.label;
     container.appendChild(bubble);
   });
+  markSystemLayoutDirty();
 }
 
 function updateSystemMeta(system) {
@@ -5006,6 +5113,7 @@ function updateSystemMeta(system) {
   renderInlineEntities(system);
   renderFileLinkIndicator(system);
   ensureSystemDescriptionTooltip(system);
+  markSystemLayoutDirty();
 }
 
 function updateSystemIcon(system) {
@@ -5158,6 +5266,7 @@ function renderInlineEntities(system) {
 
   table.appendChild(tbody);
   container.appendChild(table);
+  markSystemLayoutDirty();
 }
 
 function applyGlobalEntityExpansion() {
@@ -5266,6 +5375,7 @@ function handleDeleteSystem(system) {
     }
   }
   markConnectionGraphDirty();
+  markSystemLayoutDirty();
   if (multiSelectedIds.has(system.id)) {
     multiSelectedIds.delete(system.id);
     refreshMultiSelectStyles();
@@ -5432,6 +5542,7 @@ function cloneSystemData(system) {
     functionOwner: system.functionOwner,
     functionalConsumers: Array.from(system.functionalConsumers || []),
     employeeTypes: Array.from(system.employeeTypes || []),
+    level: LEVEL_OPTIONS.includes(String(system.level)) ? String(system.level) : LEVEL_OPTIONS[0],
     icon: system.icon,
     comments: system.comments,
     description: system.description,
@@ -5479,6 +5590,7 @@ function resetFilters({ alsoClearSelection = false } = {}) {
   filePresenceFilterValue = "any";
   apiAvailabilityFilterValue = "any";
   employeeTypeFilterValue = "any";
+  levelFilterSelection = new Set(LEVEL_OPTIONS);
   waitingOnInfoFilterValue = "any";
   relationFocus = null;
   clearEntityLinkHighlight(false);
@@ -5507,6 +5619,7 @@ function resetFilters({ alsoClearSelection = false } = {}) {
   if (employeeTypeFilterSelect) {
     employeeTypeFilterSelect.value = "any";
   }
+  syncLevelFilterUi();
   if (waitingOnInfoFilterSelect) {
     waitingOnInfoFilterSelect.value = "any";
   }
@@ -5658,7 +5771,6 @@ function runUpdateHighlights() {
   applyColorCoding();
   applyApiGlowStyling();
   drawConnections();
-  applyConnectionFilterClasses(shouldApplyState);
   refreshDataTableIfVisible();
   if (visualModal && !visualModal.classList.contains("hidden")) {
     requestVisualRender();
@@ -5686,6 +5798,7 @@ function syncResetButtonsVisibility() {
     spreadsheetFilterValue !== "yes" ||
     filePresenceFilterValue !== "any" ||
     apiAvailabilityFilterValue !== "any" ||
+    levelFilterSelection.size !== LEVEL_OPTIONS.length ||
     employeeTypeFilterValue !== "any" ||
     waitingOnInfoFilterValue !== "any" ||
     showParentsFilter ||
@@ -5856,6 +5969,10 @@ function systemMatchesFilters(system) {
   if (filePresenceFilterValue === "no" && system.fileUrl && system.fileUrl.trim()) {
     return false;
   }
+  const levelValue = LEVEL_OPTIONS.includes(String(system.level)) ? String(system.level) : LEVEL_OPTIONS[0];
+  if (!levelFilterSelection.has(levelValue)) {
+    return false;
+  }
   const apiDetails = ensureApiDetailsOnSystem(system);
   if (apiAvailabilityFilterValue === "yes" && apiDetails.available !== "yes") {
     return false;
@@ -5902,6 +6019,7 @@ function hasActiveFilters() {
     spreadsheetFilterValue !== "yes" ||
     filePresenceFilterValue !== "any" ||
     apiAvailabilityFilterValue !== "any" ||
+    levelFilterSelection.size !== LEVEL_OPTIONS.length ||
     waitingOnInfoFilterValue !== "any" ||
     showParentsFilter ||
     showFullParentLineage
@@ -8707,6 +8825,7 @@ function serializeState(accessModeOverride, options = {}) {
       functionOwner: system.functionOwner,
       functionalConsumers: Array.from(system.functionalConsumers || []),
       employeeTypes: Array.from(system.employeeTypes || []),
+      level: LEVEL_OPTIONS.includes(String(system.level)) ? String(system.level) : LEVEL_OPTIONS[0],
       icon: system.icon,
       comments: system.comments,
       description: system.description,
@@ -8768,6 +8887,7 @@ function serializeState(accessModeOverride, options = {}) {
       spreadsheets: spreadsheetFilterValue,
       filePresence: filePresenceFilterValue,
       apiAvailability: apiAvailabilityFilterValue,
+      levels: Array.from(levelFilterSelection),
       employeeType: employeeTypeFilterValue,
       waitingOnInfo: waitingOnInfoFilterValue,
       expandEntities: expandEntitiesGlobally,
@@ -8834,6 +8954,7 @@ function loadSerializedState(snapshot) {
       functionOwner: systemData.functionOwner,
       functionalConsumers: systemData.functionalConsumers,
       employeeTypes: systemData.employeeTypes,
+      level: systemData.level,
       entities: systemData.entities,
       icon: systemData.icon,
       comments: systemData.comments,
@@ -8923,6 +9044,9 @@ function applyFilterState(filterState = {}) {
   const spreadsheetFilter = filterState.spreadsheets || "yes";
   const filePresenceFilter = filterState.filePresence || "any";
   const apiAvailabilityFilter = filterState.apiAvailability || "any";
+  const levelFilters = Array.isArray(filterState.levels) && filterState.levels.length
+    ? new Set(filterState.levels.map((value) => String(value)))
+    : new Set(LEVEL_OPTIONS);
   const employeeTypeFilter = filterState.employeeType || "any";
   const waitingFilter = filterState.waitingOnInfo || "any";
   const expandEntities = !!filterState.expandEntities;
@@ -8941,6 +9065,7 @@ function applyFilterState(filterState = {}) {
   spreadsheetFilterValue = spreadsheetFilter;
   filePresenceFilterValue = filePresenceFilter;
   apiAvailabilityFilterValue = apiAvailabilityFilter;
+  levelFilterSelection = levelFilters;
   employeeTypeFilterValue = employeeTypeFilter;
   waitingOnInfoFilterValue = waitingFilter;
   expandEntitiesGlobally = expandEntities;
@@ -8958,6 +9083,7 @@ function applyFilterState(filterState = {}) {
   if (spreadsheetFilterSelect) spreadsheetFilterSelect.value = spreadsheetFilterValue;
   if (filePresenceFilterSelect) filePresenceFilterSelect.value = filePresenceFilterValue;
   if (apiAvailabilityFilterSelect) apiAvailabilityFilterSelect.value = apiAvailabilityFilterValue;
+  syncLevelFilterUi();
   if (employeeTypeFilterSelect) employeeTypeFilterSelect.value = employeeTypeFilterValue;
   if (waitingOnInfoFilterSelect) waitingOnInfoFilterSelect.value = waitingOnInfoFilterValue;
   if (expandEntitiesToggle) expandEntitiesToggle.checked = expandEntitiesGlobally;
@@ -9500,6 +9626,7 @@ function renderSystemDataTable() {
         attributes: matchingAttributes,
         system: systemName,
         systemId: system.id,
+        level: LEVEL_OPTIONS.includes(String(system.level)) ? String(system.level) : LEVEL_OPTIONS[0],
         functionOwner: functionOwner || "—",
         businessOwner: businessOwner || "—",
         platformOwner: platformOwner || "—",

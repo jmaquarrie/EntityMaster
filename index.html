@@ -194,6 +194,15 @@
                 <option value="no">No</option>
               </select>
             </label>
+            <div class="field compact level-filter" id="levelFilterControls" role="group" aria-label="Level filter">
+              <span>Level</span>
+              <div class="level-chip-row" aria-live="polite">
+                <button type="button" data-level="1" class="level-chip active" aria-pressed="true">1</button>
+                <button type="button" data-level="2" class="level-chip active" aria-pressed="true">2</button>
+                <button type="button" data-level="3" class="level-chip active" aria-pressed="true">3</button>
+                <button type="button" data-level="4" class="level-chip active" aria-pressed="true">4</button>
+              </div>
+            </div>
             <label class="field compact">
               <span>Employee Type</span>
               <select id="employeeTypeFilter">
@@ -248,6 +257,15 @@
             <option value="shield">🛡️</option>
             <option value="rocket">🚀</option>
           </select>
+          <label class="mini-toggle" for="systemLevelSelect">
+            <span>Level</span>
+            <select id="systemLevelSelect">
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+            </select>
+          </label>
           <label class="mini-toggle" for="spreadsheetSelect">
             <span>Spreadsheet?</span>
             <select id="spreadsheetSelect">

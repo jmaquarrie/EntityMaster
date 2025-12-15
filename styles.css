@@ -1259,6 +1259,38 @@ button.ghost {
   background: rgba(0, 0, 0, 0.08);
 }
 
+.level-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.level-chip-row {
+  display: inline-flex;
+  gap: 0.4rem;
+}
+
+.level-chip {
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: #fff;
+  color: #0f1424;
+  border: 1px solid rgba(15, 20, 36, 0.35);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  transition: opacity 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+}
+
+.level-chip:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.level-chip.inactive {
+  opacity: 0.4;
+  box-shadow: none;
+}
+
 .panel {
   position: absolute;
   top: 1.5rem;
