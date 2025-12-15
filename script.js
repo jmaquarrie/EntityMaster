@@ -4296,6 +4296,9 @@ function closePanel() {
   closeAttributesSideModal();
   closeApiSideModal();
   activePanelSystem = null;
+  if (dataTableModal && !dataTableModal.classList.contains("hidden")) {
+    renderSystemDataTable();
+  }
 }
 
 systemNameInput.addEventListener("input", () => {
@@ -9784,21 +9787,22 @@ function renderSystemDataTable() {
           : "—";
       exportRow[field] = display;
 
-      if (field === "system" && groupBy === "none" && entry.systemId) {
-        const linkBtn = document.createElement("button");
-        linkBtn.type = "button";
-        linkBtn.className = "table-system-link";
-        linkBtn.textContent = display;
-        linkBtn.addEventListener("click", () => {
-          const targetSystem = systems.find((sys) => sys.id === entry.systemId);
-          if (targetSystem) {
-            selectSystem(targetSystem, { skipHighlight: true, skipSelectionState: true });
-          }
-        });
-        cell.appendChild(linkBtn);
-      } else {
-        cell.textContent = display;
-      }
+    if (field === "system" && groupBy === "none" && entry.systemId) {
+      const linkBtn = document.createElement("a");
+      linkBtn.href = "#";
+      linkBtn.className = "table-system-link";
+      linkBtn.textContent = display;
+      linkBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        const targetSystem = systems.find((sys) => sys.id === entry.systemId);
+        if (targetSystem) {
+          selectSystem(targetSystem, { skipHighlight: true, skipSelectionState: true });
+        }
+      });
+      cell.appendChild(linkBtn);
+    } else {
+      cell.textContent = display;
+    }
       if (index === groupColumnIndex) {
         cell.classList.add("highlight-column");
       }
