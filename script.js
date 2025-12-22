@@ -9953,9 +9953,19 @@ function renderSystemDataTable() {
     });
   });
 
-  const matchesFilter = (value, filterText) => {
+  const matchesFilter = (value, filterText, columnKey) => {
     const normalizedFilter = (filterText || "").trim().toLowerCase();
     if (!normalizedFilter) return true;
+
+    if (columnKey === "attributes") {
+      const terms = normalizedFilter
+        .split(",")
+        .map((term) => term.trim())
+        .filter(Boolean);
+      const searchTerms = terms.length ? terms : [normalizedFilter];
+      const values = normalizeValues(value).map((val) => val.toLowerCase());
+      return searchTerms.some((term) => values.some((val) => val === term));
+    }
 
     const terms = normalizedFilter
       .split(/[\s,]+/)
@@ -9972,7 +9982,7 @@ function renderSystemDataTable() {
   const filteredRows = rawRows.filter((row) => {
     const hasFilterMismatch = Object.entries(dataTableColumnFilters).some(([columnKey, filterValue]) => {
       if (!filterValue) return false;
-      return !matchesFilter(row[columnKey], filterValue);
+      return !matchesFilter(row[columnKey], filterValue, columnKey);
     });
 
     if (hasFilterMismatch) {
