@@ -2764,6 +2764,75 @@ button.small {
   flex-wrap: wrap;
 }
 
+.standardisation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.standardisation-card {
+  border: 1px solid rgba(15, 20, 36, 0.08);
+  border-radius: 12px;
+  padding: 0.75rem;
+  background: #f8f9fb;
+}
+
+.standardisation-card h4 {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+  color: #131735;
+}
+
+.standardisation-card .field {
+  margin-bottom: 0.6rem;
+}
+
+.standardisation-card .attribute-token-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.35rem;
+}
+
+.attribute-token {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.55rem;
+  background: #e5e7ef;
+  border-radius: 999px;
+  color: #131735;
+  font-size: 0.9rem;
+}
+
+.attribute-token button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #6f728c;
+  padding: 0;
+}
+
+.standardisation-card .inline-form {
+  margin-bottom: 0;
+}
+
+.modal-actions-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.modal-actions-inline .spacer {
+  flex: 1;
+}
+
+.attribute-display-tag {
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
+  color: #6f728c;
+}
+
 .token-list {
   list-style: none;
   padding: 0;

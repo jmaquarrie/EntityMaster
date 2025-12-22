@@ -479,6 +479,7 @@ const OBJECT_TYPES = {
 const connections = [];
 const connectionGraph = { incoming: new Map(), outgoing: new Map(), dirty: true };
 const groups = [];
+let attributeStandardisationGroups = [];
 
 function registerSystemIndex(system) {
   if (!system?.id) return;
@@ -891,6 +892,12 @@ const redoActionBtn = document.getElementById("redoActionBtn");
 const settingsBtn = document.getElementById("settingsBtn");
 const settingsModal = document.getElementById("settingsModal");
 const closeSettingsModalBtn = document.getElementById("closeSettingsModal");
+const openDataStandardisationBtn = document.getElementById("openDataStandardisationBtn");
+const dataStandardisationModal = document.getElementById("dataStandardisationModal");
+const dataStandardisationGroups = document.getElementById("dataStandardisationGroups");
+const addDataGroupBtn = document.getElementById("addDataGroupBtn");
+const saveDataStandardisationBtn = document.getElementById("saveDataStandardisationBtn");
+const closeDataStandardisationModalBtn = document.getElementById("closeDataStandardisationModal");
 const groupColorModal = document.getElementById("groupColorModal");
 const groupNameInput = document.getElementById("groupNameInput");
 const groupColorInput = document.getElementById("groupColorInput");
@@ -1474,6 +1481,17 @@ function init() {
   connectionLabelField?.addEventListener("blur", commitConnectionLabel);
   settingsBtn?.addEventListener("click", openSettingsModal);
   closeSettingsModalBtn?.addEventListener("click", closeSettingsModal);
+  openDataStandardisationBtn?.addEventListener("click", openDataStandardisationModal);
+  addDataGroupBtn?.addEventListener("click", addStandardisationGroup);
+  saveDataStandardisationBtn?.addEventListener("click", closeDataStandardisationModal);
+  closeDataStandardisationModalBtn?.addEventListener("click", closeDataStandardisationModal);
+  dataStandardisationGroups?.addEventListener("click", handleStandardisationGroupClick);
+  dataStandardisationGroups?.addEventListener("change", handleStandardisationGroupChange);
+  dataStandardisationModal?.addEventListener("click", (event) => {
+    if (event.target === dataStandardisationModal) {
+      closeDataStandardisationModal();
+    }
+  });
   settingsModal?.addEventListener("click", (event) => {
     if (event.target === settingsModal) {
       closeSettingsModal();
@@ -1790,7 +1808,7 @@ function renderVisualAttributeOptions(sourceSystems = systems) {
   sourceSystems.forEach((system) => {
     const seenForSystem = new Set();
     (system.attributes || []).forEach((entry) => {
-      const name = (entry.attribute || "").trim();
+      const name = getStandardisedAttributeName(entry.attribute);
       if (!name) return;
       seenForSystem.add(name);
     });
@@ -4582,6 +4600,243 @@ function ensureAttributesArray(system) {
   return system.attributes;
 }
 
+function normalizeAttributeLabel(name) {
+  return (name || "").trim();
+}
+
+function getAllAttributeNames() {
+  const names = new Set();
+  systems.forEach((system) => {
+    (system.attributes || []).forEach((entry) => {
+      const label = normalizeAttributeLabel(entry.attribute);
+      if (label) {
+        names.add(label);
+      }
+    });
+  });
+  attributeStandardisationGroups.forEach((group) => {
+    (group.attributes || []).forEach((label) => {
+      const normalized = normalizeAttributeLabel(label);
+      if (normalized) names.add(normalized);
+    });
+  });
+  return Array.from(names).sort((a, b) => a.localeCompare(b));
+}
+
+function getStandardisedAttributeName(name) {
+  const trimmed = normalizeAttributeLabel(name);
+  if (!trimmed) return "";
+  const match = attributeStandardisationGroups.find((group) =>
+    Array.isArray(group.attributes)
+      ? group.attributes.some((alias) => normalizeAttributeLabel(alias).toLowerCase() === trimmed.toLowerCase())
+      : false
+  );
+  return normalizeAttributeLabel(match?.name) || trimmed;
+}
+
+function addStandardisationGroup() {
+  const id = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `std-${Date.now()}`;
+  attributeStandardisationGroups.push({ id, name: "", attributes: [] });
+  renderStandardisationGroups();
+}
+
+function getStandardisationGroup(groupId) {
+  return attributeStandardisationGroups.find((group) => group.id === groupId);
+}
+
+function renderStandardisationGroups() {
+  if (!dataStandardisationGroups) return;
+  dataStandardisationGroups.innerHTML = "";
+  const availableAttributes = getAllAttributeNames();
+  const globallyUsedAttributes = new Set();
+  attributeStandardisationGroups.forEach((group) => {
+    (group.attributes || []).forEach((attr) => {
+      const normalized = normalizeAttributeLabel(attr).toLowerCase();
+      if (normalized) globallyUsedAttributes.add(normalized);
+    });
+  });
+  if (!attributeStandardisationGroups.length) {
+    const empty = document.createElement("p");
+    empty.className = "modal-hint";
+    empty.textContent = "No attribute groups yet. Add your first grouping to begin standardising names.";
+    dataStandardisationGroups.appendChild(empty);
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  attributeStandardisationGroups.forEach((group, index) => {
+    const card = document.createElement("div");
+    card.className = "standardisation-card";
+    card.dataset.groupId = group.id;
+
+    const title = document.createElement("h4");
+    title.textContent = `Grouping ${index + 1}`;
+    card.appendChild(title);
+
+    const nameField = document.createElement("label");
+    nameField.className = "field";
+    const nameSpan = document.createElement("span");
+    nameSpan.textContent = "Master name";
+    const nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.value = group.name || "";
+    nameInput.placeholder = "e.g. First name";
+    nameInput.dataset.groupId = group.id;
+    nameInput.className = "standardisation-name-input";
+    nameField.append(nameSpan, nameInput);
+    card.appendChild(nameField);
+
+    const attributeField = document.createElement("label");
+    attributeField.className = "field";
+    const attributeSpan = document.createElement("span");
+    attributeSpan.textContent = "Attributes";
+    const attributeRow = document.createElement("div");
+    attributeRow.className = "inline-form";
+    const attributeSelect = document.createElement("select");
+    attributeSelect.dataset.groupId = group.id;
+    attributeSelect.dataset.role = "attributeSelect";
+    const usedAttributes = new Set((group.attributes || []).map((attr) => normalizeAttributeLabel(attr).toLowerCase()));
+    const selectOptions = [
+      "",
+      ...availableAttributes.filter((attr) => {
+        const normalized = attr.toLowerCase();
+        if (usedAttributes.has(normalized)) return false;
+        if (globallyUsedAttributes.has(normalized)) return false;
+        return true;
+      }),
+    ];
+    attributeSelect.innerHTML = selectOptions
+      .map((value) => {
+        const label = value || "Select attribute";
+        return `<option value="${value}">${label}</option>`;
+      })
+      .join("");
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.textContent = "Add";
+    addBtn.dataset.groupId = group.id;
+    addBtn.dataset.action = "add-attribute";
+    attributeRow.append(attributeSelect, addBtn);
+    attributeField.append(attributeSpan, attributeRow);
+
+    const tokenList = document.createElement("div");
+    tokenList.className = "attribute-token-list";
+    if (Array.isArray(group.attributes) && group.attributes.length) {
+      group.attributes.forEach((attr) => {
+        const token = document.createElement("span");
+        token.className = "attribute-token";
+        const label = document.createElement("span");
+        label.textContent = getStandardisedAttributeName(attr);
+        const raw = document.createElement("span");
+        raw.className = "attribute-display-tag";
+        raw.textContent = normalizeAttributeLabel(attr);
+        const removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.dataset.groupId = group.id;
+        removeBtn.dataset.value = attr;
+        removeBtn.dataset.action = "remove-attribute";
+        removeBtn.setAttribute("aria-label", `Remove ${attr} from ${group.name || "group"}`);
+        removeBtn.textContent = "×";
+        token.append(label, raw, removeBtn);
+        tokenList.appendChild(token);
+      });
+    } else {
+      const emptyToken = document.createElement("div");
+      emptyToken.className = "attribute-display-tag";
+      emptyToken.textContent = "No attributes linked yet.";
+      tokenList.appendChild(emptyToken);
+    }
+
+    const actionsRow = document.createElement("div");
+    actionsRow.className = "modal-actions modal-actions-inline";
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "ghost";
+    removeBtn.dataset.groupId = group.id;
+    removeBtn.dataset.action = "remove-group";
+    removeBtn.textContent = "Remove grouping";
+    actionsRow.appendChild(removeBtn);
+
+    attributeField.appendChild(tokenList);
+    card.append(attributeField, actionsRow);
+    fragment.appendChild(card);
+  });
+
+  dataStandardisationGroups.appendChild(fragment);
+}
+
+function handleStandardisationGroupChange(event) {
+  const target = event.target;
+  if (target instanceof HTMLInputElement && target.classList.contains("standardisation-name-input")) {
+    const groupId = target.dataset.groupId;
+    const group = getStandardisationGroup(groupId);
+    if (!group) return;
+    group.name = target.value;
+    refreshStandardisedAttributeUsage();
+    scheduleShareUrlSync();
+  }
+}
+
+function handleStandardisationGroupClick(event) {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  const { action, groupId, value } = target.dataset;
+  if (!groupId) return;
+  const group = getStandardisationGroup(groupId);
+  if (!group) return;
+
+  if (action === "add-attribute") {
+    const select = dataStandardisationGroups?.querySelector(`select[data-group-id="${groupId}"]`);
+    const selected = select?.value || "";
+    const normalized = normalizeAttributeLabel(selected);
+    const takenElsewhere = attributeStandardisationGroups.some(
+      (entry) =>
+        entry.id !== groupId &&
+        (entry.attributes || []).some((attr) => normalizeAttributeLabel(attr).toLowerCase() === normalized.toLowerCase())
+    );
+    if (takenElsewhere) {
+      alert("That attribute is already linked to another grouping. Remove it there first.");
+      return;
+    }
+    if (normalized && !group.attributes.some((attr) => normalizeAttributeLabel(attr).toLowerCase() === normalized.toLowerCase())) {
+      group.attributes.push(normalized);
+      renderStandardisationGroups();
+      refreshStandardisedAttributeUsage();
+      scheduleShareUrlSync();
+    }
+    return;
+  }
+
+  if (action === "remove-attribute") {
+    group.attributes = (group.attributes || []).filter(
+      (attr) => normalizeAttributeLabel(attr).toLowerCase() !== normalizeAttributeLabel(value).toLowerCase()
+    );
+    renderStandardisationGroups();
+    refreshStandardisedAttributeUsage();
+    scheduleShareUrlSync();
+    return;
+  }
+
+  if (action === "remove-group") {
+    attributeStandardisationGroups = attributeStandardisationGroups.filter((entry) => entry.id !== groupId);
+    renderStandardisationGroups();
+    refreshStandardisedAttributeUsage();
+    scheduleShareUrlSync();
+  }
+}
+
+function refreshStandardisedAttributeUsage() {
+  if (activePanelSystem && attributesModal && !attributesModal.classList.contains("hidden")) {
+    renderAttributesModal(activePanelSystem);
+  }
+  renderSystemDataTable();
+  renderVisualAttributeOptions();
+  if (visualModal && !visualModal.classList.contains("hidden")) {
+    window.requestAnimationFrame(renderVisualSnapshot);
+  }
+  updateHighlights();
+}
+
 function ensureApiDetailsOnSystem(system) {
   if (!system) return { ...DEFAULT_API_DETAILS };
   system.api = normalizeApiDetails(system.api || {});
@@ -4689,6 +4944,11 @@ function renderAttributesModal(system) {
     attributeInput.placeholder = "Attribute";
     attributeInput.className = "cell-input";
     attributeCell.appendChild(attributeInput);
+    const displayLabel = document.createElement("div");
+    displayLabel.className = "attribute-display-tag";
+    const displayName = getStandardisedAttributeName(entry.attribute);
+    displayLabel.textContent = displayName ? `Displays as: ${displayName}` : "Displays as: —";
+    attributeCell.appendChild(displayLabel);
 
     const entityCell = document.createElement("td");
     const entitySelect = buildAttributeEntitySelect(system, entry.entity);
@@ -6060,7 +6320,11 @@ function doesSystemMatchSearch(system) {
     case "entity":
       return system.entities.some((entity) => entity.name.toLowerCase().includes(query));
     case "attributes":
-      return (system.attributes || []).some((entry) => (entry.attribute || "").toLowerCase().includes(query));
+      return (system.attributes || []).some((entry) => {
+        const raw = (entry.attribute || "").toLowerCase();
+        const display = getStandardisedAttributeName(entry.attribute).toLowerCase();
+        return raw.includes(query) || display.includes(query);
+      });
     case "system":
     default:
       return system.name.toLowerCase().includes(query);
@@ -7037,6 +7301,18 @@ function closeSettingsModal() {
   settingsModal?.classList.add("hidden");
 }
 
+function openDataStandardisationModal() {
+  closeSettingsModal();
+  renderStandardisationGroups();
+  dataStandardisationModal?.classList.remove("hidden");
+}
+
+function closeDataStandardisationModal() {
+  dataStandardisationModal?.classList.add("hidden");
+  refreshStandardisedAttributeUsage();
+  scheduleShareUrlSync();
+}
+
 function embedFilterPanelIntoVisual() {
   if (!filterPanel || !visualFilterHost || !filterPanelPlaceholder) return;
   if (sidebarCollapsedBeforeVisual === null) {
@@ -7599,7 +7875,7 @@ function renderVisualSnapshot() {
   } else if (groupByAttribute) {
     eligibleSystems = systemsToShow.filter((system) =>
       (system.attributes || []).some(
-        (entry) => (entry.attribute || "").trim().toLowerCase() === targetAttribute.trim().toLowerCase()
+        (entry) => getStandardisedAttributeName(entry.attribute).toLowerCase() === targetAttribute.trim().toLowerCase()
       )
     );
   } else if (groupByBusinessOwner) {
@@ -8872,6 +9148,11 @@ function serializeState(accessModeOverride, options = {}) {
     functionOwners: Array.from(functionOwnerOptions),
     counter: systemCounter,
     colorBy: currentColorBy,
+    attributeGroups: attributeStandardisationGroups.map((group) => ({
+      id: group.id,
+      name: group.name,
+      attributes: Array.isArray(group.attributes) ? [...group.attributes] : [],
+    })),
     customDomains: domainDefinitions.filter((domain) => domain.isCustom).map((domain) => ({
       key: domain.key,
       label: domain.label,
@@ -8938,10 +9219,18 @@ function loadSerializedState(snapshot) {
     snapshot.functionOwners.forEach((value) => functionOwnerOptions.add(value));
   }
   domainDefinitions = buildDomainDefinitions(snapshot.customDomains);
+  attributeStandardisationGroups = Array.isArray(snapshot.attributeGroups)
+    ? snapshot.attributeGroups.map((group) => ({
+        id: group.id || `std-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        name: group.name || "",
+        attributes: Array.isArray(group.attributes) ? group.attributes.filter(Boolean) : [],
+      }))
+    : [];
   refreshDomainOptionsUi();
   populateFunctionOwnerOptions();
   renderVisualFunctionOptions();
   renderVisualEntityOptions();
+  renderVisualAttributeOptions();
   renderVisualBusinessOwnerOptions();
   setFileName(snapshot.fileName || "Untitled");
   applyFilterState(snapshot.filterState);
@@ -9275,6 +9564,10 @@ function formatSaveEntryName(fileName, date) {
       colorBy: state.colorBy,
       filterState: compactFilters,
       accessMode: state.accessMode,
+      attributeGroups:
+        attributeStandardisationGroups && attributeStandardisationGroups.length
+          ? attributeStandardisationGroups
+          : undefined,
       customDomains: state.customDomains && state.customDomains.length ? state.customDomains : undefined,
       functionOwners: state.functionOwners && state.functionOwners.length ? state.functionOwners : undefined,
     };
@@ -9628,13 +9921,14 @@ function renderSystemDataTable() {
       const entityName = entity.name || "";
       const matchingAttributes = systemAttributes
         .filter((entry) => (entry.entity || "") === entityName)
-        .map((entry) => entry.attribute)
+        .map((entry) => getStandardisedAttributeName(entry.attribute))
         .filter((attr) => !!attr && !!attr.trim());
+      const uniqueAttributes = Array.from(new Set(matchingAttributes));
 
       rawRows.push({
         domain: domainLabel || "—",
         entity: entityName || "—",
-        attributes: matchingAttributes,
+        attributes: uniqueAttributes,
         system: systemName,
         systemId: system.id,
         level: LEVEL_OPTIONS.includes(String(system.level)) ? String(system.level) : LEVEL_OPTIONS[0],
