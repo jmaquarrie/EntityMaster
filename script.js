@@ -11,6 +11,10 @@ const STORAGE_KEY = "entityMasterSaves";
 const DELETED_STORAGE_KEY = "entityMasterDeletedSaves";
 const DEFAULT_ICON = "cube";
 const DEFAULT_OBJECT_COLOR = "#d1d5db";
+const MAX_SHARE_URL_LENGTH = 32000;
+const SHARE_ENCODING_PREFIX = "v1";
+const EMPLOYEE_TYPE_OPTIONS = ["PAYE", "CIS", "Subcontractor", "None"];
+const LEVEL_OPTIONS = ["1", "2", "3", "4"];
 const ICON_LIBRARY = {
   cube: "⬛",
   database: "🗄️",
@@ -25,6 +29,7 @@ const ICON_LIBRARY = {
   spreadsheet: "📗",
 };
 const GRID_SIZE = 40;
+const EMPTY_SET = Object.freeze(new Set());
 const DEFAULT_API_DETAILS = {
   available: "unknown",
   type: "none",
@@ -462,6 +467,7 @@ const DOMAIN_NONE_KEY = "__none__";
 const OWNER_NONE_FILTER = "__none__";
 
 const systems = [];
+const systemById = new Map();
 const textBoxes = [];
 let activeTextBoxId = null;
 const OBJECT_TYPES = {
@@ -471,7 +477,74 @@ const OBJECT_TYPES = {
   end: { label: "End", className: "shape-end" },
 };
 const connections = [];
+const connectionGraph = { incoming: new Map(), outgoing: new Map(), dirty: true };
 const groups = [];
+
+function registerSystemIndex(system) {
+  if (!system?.id) return;
+  systemById.set(system.id, system);
+}
+
+function removeSystemFromIndex(systemId) {
+  if (!systemId) return;
+  systemById.delete(systemId);
+}
+
+function rebuildSystemIndex() {
+  systemById.clear();
+  systems.forEach((system) => registerSystemIndex(system));
+}
+
+function markConnectionGraphDirty() {
+  connectionGraph.dirty = true;
+}
+
+function addConnectionEdge(map, key, value) {
+  if (!key || !value) return;
+  let bucket = map.get(key);
+  if (!bucket) {
+    bucket = new Set();
+    map.set(key, bucket);
+  }
+  bucket.add(value);
+}
+
+function rebuildConnectionGraph() {
+  connectionGraph.incoming.clear();
+  connectionGraph.outgoing.clear();
+  connections.forEach((connection) => {
+    const mode = getConnectionArrowMode(connection);
+    if (mode === "none") return;
+    const hasStartArrow = connection.arrowStart;
+    const hasEndArrow = connection.arrowEnd;
+    if (hasEndArrow) {
+      addConnectionEdge(connectionGraph.outgoing, connection.from, connection.to);
+      addConnectionEdge(connectionGraph.incoming, connection.to, connection.from);
+    }
+    if (mode === "double" || hasStartArrow) {
+      addConnectionEdge(connectionGraph.outgoing, connection.to, connection.from);
+      addConnectionEdge(connectionGraph.incoming, connection.from, connection.to);
+    }
+  });
+  connectionGraph.dirty = false;
+}
+
+function ensureConnectionGraph() {
+  if (connectionGraph.dirty) {
+    rebuildConnectionGraph();
+  }
+  return connectionGraph;
+}
+
+function getOutgoingForSystem(systemId) {
+  ensureConnectionGraph();
+  return connectionGraph.outgoing.get(systemId) || EMPTY_SET;
+}
+
+function getIncomingForSystem(systemId) {
+  ensureConnectionGraph();
+  return connectionGraph.incoming.get(systemId) || EMPTY_SET;
+}
 const GROUP_OVERLAY_PADDING = 24;
 let canvasWidth = CANVAS_WIDTH;
 let canvasHeight = CANVAS_HEIGHT;
@@ -488,6 +561,11 @@ const ownerColorMaps = {
   platformOwner: new Map(),
 };
 const COLOR_POOL = ["#5d8dee", "#c266ff", "#ffa447", "#3fb28a", "#dd5f68", "#2f9edc", "#6f7bf7", "#ff6ea9", "#29c6b7", "#845ef7"];
+const API_AVAILABILITY_COLORS = {
+  yes: "#2ecc71",
+  no: "#e05252",
+  unknown: "#f2c94c",
+};
 
 let platformOwnerFilterText = "";
 let businessOwnerFilterText = "";
@@ -515,6 +593,8 @@ let spreadsheetFilterValue = "yes";
 let filePresenceFilterValue = "any";
 let apiAvailabilityFilterValue = "any";
 let waitingOnInfoFilterValue = "any";
+let employeeTypeFilterValue = "any";
+let levelFilterSelection = new Set(LEVEL_OPTIONS);
 let collapsedResetRecentlyUsed = false;
 let expandEntitiesGlobally = false;
 let showParentsFilter = false;
@@ -543,13 +623,96 @@ let undoTimer = null;
 let activeEntityLinkName = null;
 let activeEntitySourceId = null;
 let systemHighlightState = new Map();
+let pendingHighlightFrame = null;
+let systemLayoutCache = { dirty: true, rects: new Map(), obstacles: [] };
+let pendingConnectionRender = null;
 let currentFileName = "Untitled";
 let fileNameBeforeEdit = "Untitled";
+const DATA_TABLE_DEFAULT_COLUMNS = [
+  "domain",
+  "entity",
+  "attributes",
+  "system",
+  "functionOwner",
+  "businessOwner",
+  "platformOwner",
+];
+const DATA_TABLE_OPTIONAL_COLUMNS = [
+  { key: "level", label: "Level" },
+  { key: "functionalConsumers", label: "Functional Consumers" },
+  { key: "employeeTypes", label: "Employee Type" },
+  { key: "waitingOnInfo", label: "Waiting on Info" },
+  { key: "fileUrl", label: "File URL" },
+  { key: "isSpreadsheet", label: "Spreadsheet" },
+  { key: "description", label: "Description" },
+  { key: "comments", label: "Comments" },
+  { key: "apiAvailable", label: "API Available" },
+  { key: "apiType", label: "API Type" },
+  { key: "apiAuthMethod", label: "API Auth Method" },
+  { key: "apiAccessLevel", label: "API Access Level" },
+  { key: "apiSupportedEntities", label: "API Supported Entities" },
+  { key: "apiDocsStatus", label: "API Docs" },
+  { key: "apiIntegration", label: "Integration" },
+];
+const DATA_TABLE_COLUMN_DEFINITIONS = {
+  domain: { label: "Domain" },
+  entity: { label: "Entity" },
+  attributes: { label: "Attributes" },
+  system: { label: "System" },
+  functionOwner: { label: "Function Owner" },
+  businessOwner: { label: "Business Owner" },
+  platformOwner: { label: "Platform Owner" },
+  level: { label: "Level" },
+  functionalConsumers: { label: "Functional Consumers" },
+  employeeTypes: { label: "Employee Type" },
+  waitingOnInfo: { label: "Waiting on Info" },
+  fileUrl: { label: "File URL" },
+  isSpreadsheet: { label: "Spreadsheet" },
+  description: { label: "Description" },
+  comments: { label: "Comments" },
+  apiAvailable: { label: "API Available" },
+  apiType: { label: "API Type" },
+  apiAuthMethod: { label: "API Auth Method" },
+  apiAccessLevel: { label: "API Access Level" },
+  apiSupportedEntities: { label: "API Supported Entities" },
+  apiDocsStatus: { label: "API Docs" },
+  apiIntegration: { label: "Integration" },
+};
+let dataTableRemovedDefaultColumns = new Set();
+let dataTableExtraColumns = [];
+let dataTableColumnFilters = createInitialDataTableFilters();
+let dataTableFilterInputs = {};
 
 function normalizeOwnerFilterValue(value) {
   const trimmed = (value || "").trim();
   if (!trimmed) return "";
   return trimmed.toLowerCase() === "none" ? OWNER_NONE_FILTER : trimmed.toLowerCase();
+}
+
+function normalizeEmployeeTypes(values = []) {
+  const result = new Set();
+  if (!Array.isArray(values)) return result;
+  values.forEach((value) => {
+    const trimmed = (value || "").trim();
+    if (!trimmed) return;
+    const match = EMPLOYEE_TYPE_OPTIONS.find((option) => option.toLowerCase() === trimmed.toLowerCase());
+    if (match) {
+      result.add(match);
+    }
+  });
+  return result;
+}
+
+function syncLevelFilterUi() {
+  if (!levelFilterControls) return;
+  const buttons = levelFilterControls.querySelectorAll("[data-level]");
+  buttons.forEach((button) => {
+    const value = button.dataset.level;
+    const active = levelFilterSelection.has(value);
+    button.classList.toggle("inactive", !active);
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
 }
 let currentSaveId = null;
 let marqueePreviewIds = new Set();
@@ -559,15 +722,6 @@ let currentAccessMode = "full";
 const visualNodePositions = new Map();
 let visualLayoutContext = { width: 0, height: 0, padding: 50, groupMode: "none", clusters: new Map(), anchors: new Map(), positions: new Map(), includedIds: new Set() };
 let visualRenderPending = false;
-const dataTableColumnFilters = {
-  domain: "",
-  entity: "",
-  attributes: "",
-  system: "",
-  functionOwner: "",
-  businessOwner: "",
-  platformOwner: "",
-};
 let lastRenderedTableRows = [];
 
 function isEditingLocked() {
@@ -627,6 +781,9 @@ const functionOwnerInput = document.getElementById("functionOwnerInput");
 const functionalConsumerForm = document.getElementById("functionalConsumerForm");
 const functionalConsumerInput = document.getElementById("functionalConsumerInput");
 const functionalConsumerList = document.getElementById("functionalConsumerList");
+const employeeTypeForm = document.getElementById("employeeTypeForm");
+const employeeTypeSelect = document.getElementById("employeeTypeSelect");
+const employeeTypeList = document.getElementById("employeeTypeList");
 const entityForm = document.getElementById("entityForm");
 const entityInput = document.getElementById("entityInput");
 const entityList = document.getElementById("entityList");
@@ -676,6 +833,7 @@ const functionalConsumerFilterChips = document.getElementById("functionalConsume
 const searchInput = document.getElementById("searchInput");
 const searchTypeSelect = document.getElementById("searchType");
 const apiAvailabilityFilterSelect = document.getElementById("apiAvailabilityFilter");
+const employeeTypeFilterSelect = document.getElementById("employeeTypeFilter");
 const fileUrlInput = document.getElementById("fileUrlInput");
 const zoomLabel = document.getElementById("zoomLabel");
 const zoomButtons = document.querySelectorAll(".zoom-btn");
@@ -721,6 +879,7 @@ const expandEntitiesToggle = document.getElementById("expandEntitiesToggle");
 const showParentsToggle = document.getElementById("showParentsToggle");
 const fullParentLineageToggle = document.getElementById("fullParentLineageToggle");
 const systemIconSelect = document.getElementById("systemIconSelect");
+const systemLevelSelect = document.getElementById("systemLevelSelect");
 const systemCommentsInput = document.getElementById("systemCommentsInput");
 const systemDescriptionInput = document.getElementById("systemDescriptionInput");
 const waitingOnInfoCheckbox = document.getElementById("waitingOnInfoCheckbox");
@@ -752,18 +911,15 @@ const dataTableHideEmptyToggle = document.getElementById("dataTableHideEmptyTogg
 const dataTableHideEmptyWrapper = document.getElementById("dataTableHideEmptyWrapper");
 const dataTableAttributesToggle = document.getElementById("dataTableAttributesToggle");
 const dataTableMultiSystemToggle = document.getElementById("dataTableMultiSystemToggle");
+const resetDataTableColumnsBtn = document.getElementById("resetDataTableColumnsBtn");
 const systemDataTableBody = document.getElementById("systemDataTableBody");
+const systemDataHeaderRow = document.getElementById("systemDataHeaderRow");
+const systemDataFilterRow = document.getElementById("systemDataFilterRow");
+const dataTableAddColumnBtn = document.getElementById("dataTableAddColumnBtn");
+const dataTableColumnMenu = document.getElementById("dataTableColumnMenu");
 const filePresenceFilterSelect = document.getElementById("filePresenceFilter");
+const levelFilterControls = document.getElementById("levelFilterControls");
 const waitingOnInfoFilterSelect = document.getElementById("waitingOnInfoFilter");
-const dataTableFilterInputs = {
-  domain: document.getElementById("dataTableFilterDomain"),
-  entity: document.getElementById("dataTableFilterEntity"),
-  attributes: document.getElementById("dataTableFilterAttributes"),
-  system: document.getElementById("dataTableFilterSystem"),
-  functionOwner: document.getElementById("dataTableFilterFunctionOwner"),
-  businessOwner: document.getElementById("dataTableFilterBusinessOwner"),
-  platformOwner: document.getElementById("dataTableFilterPlatformOwner"),
-};
 const visualToggleBtn = document.getElementById("visualToggle");
 const newDiagramModal = document.getElementById("newDiagramModal");
 const objectModal = document.getElementById("objectModal");
@@ -839,6 +995,7 @@ function applyAccessMode(mode = "full") {
       entityInput,
       fileUrlInput,
       spreadsheetSelect,
+      systemLevelSelect,
       systemIconSelect,
       systemCommentsInput,
       systemDescriptionInput,
@@ -979,6 +1136,7 @@ function init() {
   renderVisualBusinessOwnerOptions();
   renderFunctionalConsumerFilterChips();
   syncApiGlowControls();
+  syncLevelFilterUi();
 
   refreshDomainOptionsUi();
   panelDomainChoices.addEventListener("change", handleDomainSelection);
@@ -1052,6 +1210,8 @@ function init() {
   });
   functionalConsumerForm?.addEventListener("submit", handleFunctionalConsumerSubmit);
   functionalConsumerList?.addEventListener("click", handleFunctionalConsumerListClick);
+  employeeTypeForm?.addEventListener("submit", handleEmployeeTypeSubmit);
+  employeeTypeList?.addEventListener("click", handleEmployeeTypeListClick);
   fileUrlInput?.addEventListener("input", handleFileUrlChange);
   platformOwnerFilterInput.addEventListener("input", (event) => {
     if (isFiltersLocked()) return;
@@ -1123,6 +1283,28 @@ function init() {
     apiAvailabilityFilterValue = event.target.value;
     selectedSystemId = null;
     updateHighlights();
+  });
+  employeeTypeFilterSelect?.addEventListener("change", (event) => {
+    if (isFiltersLocked()) return;
+    employeeTypeFilterValue = event.target.value;
+    selectedSystemId = null;
+    updateHighlights();
+  });
+  levelFilterControls?.addEventListener("click", (event) => {
+    if (isFiltersLocked()) return;
+    const button = event.target.closest("[data-level]");
+    if (!button) return;
+    const value = button.dataset.level;
+    if (!value) return;
+    if (levelFilterSelection.has(value)) {
+      levelFilterSelection.delete(value);
+    } else {
+      levelFilterSelection.add(value);
+    }
+    syncLevelFilterUi();
+    selectedSystemId = null;
+    updateHighlights();
+    scheduleShareUrlSync();
   });
   waitingOnInfoFilterSelect?.addEventListener("change", (event) => {
     if (isFiltersLocked()) return;
@@ -1207,13 +1389,24 @@ function init() {
     dataTableMultiSystemOnly = event.target.checked;
     renderSystemDataTable();
   });
-  saveTableCsvBtn?.addEventListener("click", exportTableToCsv);
-  Object.entries(dataTableFilterInputs).forEach(([key, input]) => {
-    input?.addEventListener("input", (event) => {
-      dataTableColumnFilters[key] = (event.target.value || "").trim().toLowerCase();
-      renderSystemDataTable();
-    });
+  resetDataTableColumnsBtn?.addEventListener("click", () => {
+    resetDataTableColumns();
   });
+  dataTableAddColumnBtn?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleDataTableColumnMenu();
+  });
+  document.addEventListener("click", (event) => {
+    if (!dataTableColumnMenu || dataTableColumnMenu.classList.contains("hidden")) return;
+    if (
+      dataTableColumnMenu.contains(event.target) ||
+      (dataTableAddColumnBtn && dataTableAddColumnBtn.contains(event.target))
+    ) {
+      return;
+    }
+    closeDataTableColumnMenu();
+  });
+  saveTableCsvBtn?.addEventListener("click", exportTableToCsv);
   dataTableModal?.addEventListener("click", (event) => {
     if (event.target === dataTableModal) {
       closeDataTableModal();
@@ -1254,6 +1447,12 @@ function init() {
     if (!activePanelSystem) return;
     activePanelSystem.icon = systemIconSelect.value;
     updateSystemIcon(activePanelSystem);
+  });
+  systemLevelSelect?.addEventListener("change", () => {
+    if (!activePanelSystem) return;
+    activePanelSystem.level = systemLevelSelect.value;
+    scheduleShareUrlSync();
+    updateHighlights();
   });
   systemCommentsInput?.addEventListener("input", () => {
     if (!activePanelSystem) return;
@@ -1919,6 +2118,8 @@ function addSystem({
   businessOwner = "",
   functionOwner = "",
   functionalConsumers = [],
+  employeeTypes = [],
+  level = LEVEL_OPTIONS[0],
   entities = [],
   icon = DEFAULT_ICON,
   comments = "",
@@ -1955,6 +2156,8 @@ function addSystem({
     businessOwner: businessOwner || "",
     functionOwner: functionOwner || "",
     functionalConsumers: new Set(functionalConsumers || []),
+    employeeTypes: normalizeEmployeeTypes(employeeTypes),
+    level: LEVEL_OPTIONS.includes(String(level)) ? String(level) : LEVEL_OPTIONS[0],
     icon: normalizeIconKey(icon),
     comments: comments || "",
     description: description || "",
@@ -2027,8 +2230,10 @@ function addSystem({
 
   canvas.appendChild(system.element);
   systems.push(system);
+  registerSystemIndex(system);
 
   positionSystemElement(system);
+  markSystemLayoutDirty();
   ensureCanvasBoundsForSystem(system);
   attachNodeEvents(system);
   if (!system.isObject) {
@@ -2049,6 +2254,7 @@ function addSystem({
 
 function positionSystemElement(system) {
   system.element.style.transform = `translate(${system.x}px, ${system.y}px)`;
+  markSystemLayoutDirty();
 }
 
 function positionTextBox(textBox) {
@@ -2641,6 +2847,7 @@ function setConnectionArrowMode(connection, mode) {
     connection.arrowEnd = true;
   }
   connection.bidirectional = connection.arrowStart && connection.arrowEnd;
+  markConnectionGraphDirty();
 }
 
 function setConnectionArrowSide(connection, side, explicitState) {
@@ -2661,6 +2868,7 @@ function setConnectionArrowSide(connection, side, explicitState) {
   const derived = deriveArrowMode(connection);
   connection.arrowMode = derived;
   connection.bidirectional = connection.arrowStart && connection.arrowEnd;
+  markConnectionGraphDirty();
 }
 
 function deriveArrowMode(connection) {
@@ -2754,6 +2962,7 @@ function addConnection(source, target) {
   );
   if (existing) {
     setConnectionArrowMode(existing, "double");
+    markConnectionGraphDirty();
     drawConnections();
     updateHighlights();
     return;
@@ -2769,6 +2978,7 @@ function addConnection(source, target) {
     arrowStart: false,
     arrowEnd: true,
   });
+  markConnectionGraphDirty();
   drawConnections();
   updateHighlights();
 }
@@ -2781,25 +2991,36 @@ function removeConnection(connectionId) {
   if (editingConnectionId === connectionId) {
     closeConnectionLabelEditor();
   }
+  markConnectionGraphDirty();
   drawConnections();
   updateHighlights();
   scheduleShareUrlSync();
 }
 
 function drawConnections() {
+  if (pendingConnectionRender !== null) return;
+  pendingConnectionRender = window.requestAnimationFrame(() => {
+    pendingConnectionRender = null;
+    renderConnections();
+  });
+}
+
+function renderConnections() {
+  const layout = ensureSystemLayoutCache();
   connectionLayer.innerHTML = "";
   if (connectionHandleLayer) {
     connectionHandleLayer.innerHTML = "";
   }
   ensureArrowMarker();
   const applyState = hasActiveFilters() || hasEntitySelection();
+  const obstacles = layout.obstacles;
   connections.forEach((connection) => {
-    const fromSystem = systems.find((s) => s.id === connection.from);
-    const toSystem = systems.find((s) => s.id === connection.to);
+    const fromSystem = systemById.get(connection.from) || systems.find((s) => s.id === connection.from);
+    const toSystem = systemById.get(connection.to) || systems.find((s) => s.id === connection.to);
     if (!fromSystem || !toSystem) return;
     if (fromSystem.isHiddenByGroup || toSystem.isHiddenByGroup) return;
     const { from: fromPos, to: toPos, fromSide, toSide } = getConnectionPoints(fromSystem, toSystem);
-    const route = getConnectionRoute(fromSystem, toSystem, fromPos, toPos, fromSide, toSide);
+    const route = getConnectionRoute(fromSystem, toSystem, fromPos, toPos, fromSide, toSide, obstacles);
     const group = document.createElementNS(SVG_NS, "g");
     group.classList.add("connection-group");
     group.dataset.id = connection.id;
@@ -2882,9 +3103,13 @@ function applyConnectionFilterClasses(shouldApplyState) {
     typeof shouldApplyState === "boolean"
       ? shouldApplyState
       : hasActiveFilters() || hasEntitySelection();
+  const connectionMap = new Map();
+  connections.forEach((conn) => {
+    connectionMap.set(conn.id, conn);
+  });
 
   groups.forEach((group) => {
-    const connection = connections.find((conn) => conn.id === group.dataset.id);
+    const connection = connectionMap.get(group.dataset.id);
     if (!connection) return;
     const fromState = systemHighlightState.get(connection.from);
     const toState = systemHighlightState.get(connection.to);
@@ -2974,23 +3199,64 @@ function getCurvedPath(from, to) {
   return `M ${from.x} ${from.y} Q ${controlX} ${controlY} ${to.x} ${to.y}`;
 }
 
+function markSystemLayoutDirty() {
+  systemLayoutCache.dirty = true;
+}
+
+function ensureSystemLayoutCache() {
+  if (!systemLayoutCache.dirty) return systemLayoutCache;
+  const rects = new Map();
+  systems.forEach((system) => {
+    const width = system.element?.offsetWidth || DEFAULT_NODE_WIDTH;
+    const height = system.element?.offsetHeight || DEFAULT_NODE_HEIGHT;
+    rects.set(system.id, {
+      x: typeof system.x === "number" ? system.x : 0,
+      y: typeof system.y === "number" ? system.y : 0,
+      width,
+      height,
+      centerX: (typeof system.x === "number" ? system.x : 0) + width / 2,
+      centerY: (typeof system.y === "number" ? system.y : 0) + height / 2,
+    });
+  });
+  systemLayoutCache = {
+    dirty: false,
+    rects,
+    obstacles: Array.from(rects.entries()).map(([id, rect]) => ({ ...rect, id })),
+  };
+  return systemLayoutCache;
+}
+
 function getSystemCenter(system) {
   const rect = getSystemRect(system);
   return {
-    x: rect.x + rect.width / 2,
-    y: rect.y + rect.height / 2,
+    x: rect.centerX ?? rect.x + rect.width / 2,
+    y: rect.centerY ?? rect.y + rect.height / 2,
   };
 }
 
 function getSystemRect(system) {
   if (!system) {
-    return { x: 0, y: 0, width: DEFAULT_NODE_WIDTH, height: DEFAULT_NODE_HEIGHT };
+    return {
+      x: 0,
+      y: 0,
+      width: DEFAULT_NODE_WIDTH,
+      height: DEFAULT_NODE_HEIGHT,
+      centerX: DEFAULT_NODE_WIDTH / 2,
+      centerY: DEFAULT_NODE_HEIGHT / 2,
+    };
   }
+  const cache = ensureSystemLayoutCache();
+  const rect = cache.rects.get(system.id);
+  if (rect) return rect;
+  const width = system.element?.offsetWidth || DEFAULT_NODE_WIDTH;
+  const height = system.element?.offsetHeight || DEFAULT_NODE_HEIGHT;
   return {
     x: typeof system.x === "number" ? system.x : 0,
     y: typeof system.y === "number" ? system.y : 0,
-    width: system.element?.offsetWidth || DEFAULT_NODE_WIDTH,
-    height: system.element?.offsetHeight || DEFAULT_NODE_HEIGHT,
+    width,
+    height,
+    centerX: (typeof system.x === "number" ? system.x : 0) + width / 2,
+    centerY: (typeof system.y === "number" ? system.y : 0) + height / 2,
   };
 }
 
@@ -3088,11 +3354,13 @@ function getConnectionPoints(fromSystem, toSystem) {
   };
 }
 
-function getConnectionRoute(fromSystem, toSystem, fromPos, toPos, fromSide, toSide) {
+function getConnectionRoute(fromSystem, toSystem, fromPos, toPos, fromSide, toSide, obstaclesCache) {
   const basePoints = buildBasePathPoints(fromPos, toPos, fromSide, toSide);
-  const obstacles = systems
-    .filter((system) => system.id !== fromSystem.id && system.id !== toSystem.id)
-    .map((system) => ({ ...getSystemRect(system), id: system.id }));
+  const obstacles = Array.isArray(obstaclesCache)
+    ? obstaclesCache.filter((entry) => entry.id !== fromSystem.id && entry.id !== toSystem.id)
+    : systems
+        .filter((system) => system.id !== fromSystem.id && system.id !== toSystem.id)
+        .map((system) => ({ ...getSystemRect(system), id: system.id }));
 
   const baseLength = getPathLength(basePoints);
   const blockingRect = findFirstIntersectingRect(basePoints, obstacles);
@@ -3959,10 +4227,17 @@ function openPanel(system) {
   ensureApiDetailsOnSystem(system);
   ensureProcessMapForSystem(system);
   renderFunctionalConsumers(system);
+  if (employeeTypeSelect) {
+    employeeTypeSelect.value = EMPLOYEE_TYPE_OPTIONS[0];
+  }
+  renderEmployeeTypes(system);
   if (spreadsheetSelect) {
     spreadsheetSelect.value = system.isSpreadsheet ? "yes" : "no";
   }
   syncIconSelectValue(system.icon);
+  if (systemLevelSelect) {
+    systemLevelSelect.value = LEVEL_OPTIONS.includes(String(system.level)) ? String(system.level) : LEVEL_OPTIONS[0];
+  }
   if (systemCommentsInput) {
     systemCommentsInput.value = system.comments || "";
   }
@@ -4021,6 +4296,9 @@ function closePanel() {
   closeAttributesSideModal();
   closeApiSideModal();
   activePanelSystem = null;
+  if (dataTableModal && !dataTableModal.classList.contains("hidden")) {
+    renderSystemDataTable();
+  }
 }
 
 systemNameInput.addEventListener("input", () => {
@@ -4075,6 +4353,7 @@ function renderFunctionalConsumers(system) {
     li.appendChild(removeBtn);
     functionalConsumerList.appendChild(li);
   });
+  markSystemLayoutDirty();
 }
 
 function handleFunctionalConsumerSubmit(event) {
@@ -4100,6 +4379,60 @@ function handleFunctionalConsumerListClick(event) {
   activePanelSystem.functionalConsumers.delete(value);
   renderFunctionalConsumers(activePanelSystem);
   renderFunctionalConsumerFilterChips();
+  updateHighlights();
+  scheduleShareUrlSync();
+}
+
+function renderEmployeeTypes(system) {
+  if (!employeeTypeList) return;
+  employeeTypeList.innerHTML = "";
+  if (!system) return;
+  const types = Array.from(system.employeeTypes || []);
+  types.sort((a, b) => a.localeCompare(b));
+  types.forEach((type) => {
+    const li = document.createElement("li");
+    const pill = document.createElement("div");
+    pill.className = "consumer-pill";
+    const label = document.createElement("span");
+    label.className = "consumer-name";
+    label.textContent = type;
+    pill.appendChild(label);
+    li.appendChild(pill);
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "consumer-remove";
+    removeBtn.dataset.employeeType = type;
+    removeBtn.textContent = "×";
+    li.appendChild(removeBtn);
+    employeeTypeList.appendChild(li);
+  });
+  markSystemLayoutDirty();
+}
+
+function handleEmployeeTypeSubmit(event) {
+  event.preventDefault();
+  if (isEditingLocked()) return;
+  if (!activePanelSystem) return;
+  const selectedType = employeeTypeSelect?.value;
+  if (!selectedType) return;
+  const match = EMPLOYEE_TYPE_OPTIONS.find((option) => option === selectedType);
+  if (!match) return;
+  activePanelSystem.employeeTypes.add(match);
+  renderEmployeeTypes(activePanelSystem);
+  updateSystemMeta(activePanelSystem);
+  updateHighlights();
+  scheduleShareUrlSync();
+}
+
+function handleEmployeeTypeListClick(event) {
+  if (isEditingLocked()) return;
+  const button = event.target.closest(".consumer-remove");
+  if (!button || !activePanelSystem) return;
+  const value = button.dataset.employeeType;
+  if (!value) return;
+  activePanelSystem.employeeTypes.delete(value);
+  renderEmployeeTypes(activePanelSystem);
+  updateSystemMeta(activePanelSystem);
   updateHighlights();
   scheduleShareUrlSync();
 }
@@ -4735,6 +5068,7 @@ function renderDomainBubbles(system) {
     bubble.textContent = definition.label;
     container.appendChild(bubble);
   });
+  markSystemLayoutDirty();
 }
 
 function updateSystemMeta(system) {
@@ -4750,6 +5084,10 @@ function updateSystemMeta(system) {
     if (system.platformOwner) ownerBits.push({ label: "Platform", value: system.platformOwner });
     if (system.businessOwner) ownerBits.push({ label: "Business", value: system.businessOwner });
     if (system.functionOwner) ownerBits.push({ label: "Function", value: system.functionOwner });
+    const employeeTypes = Array.from(system.employeeTypes || []);
+    if (employeeTypes.length) {
+      ownerBits.push({ label: "Employee Type", value: employeeTypes.join(", ") });
+    }
     const consumers = Array.from(system.functionalConsumers || []);
     if (consumers.length) {
       ownerBits.push({ label: "Consumers", value: consumers.join(", ") });
@@ -4778,6 +5116,7 @@ function updateSystemMeta(system) {
   renderInlineEntities(system);
   renderFileLinkIndicator(system);
   ensureSystemDescriptionTooltip(system);
+  markSystemLayoutDirty();
 }
 
 function updateSystemIcon(system) {
@@ -4930,6 +5269,7 @@ function renderInlineEntities(system) {
 
   table.appendChild(tbody);
   container.appendChild(table);
+  markSystemLayoutDirty();
 }
 
 function applyGlobalEntityExpansion() {
@@ -5030,12 +5370,15 @@ function handleDeleteSystem(system) {
     connections: relatedConnections.map((conn) => ({ ...conn })),
   };
   systems.splice(index, 1);
+  removeSystemFromIndex(system.id);
   system.element.remove();
   for (let i = connections.length - 1; i >= 0; i -= 1) {
     if (connections[i].from === system.id || connections[i].to === system.id) {
       connections.splice(i, 1);
     }
   }
+  markConnectionGraphDirty();
+  markSystemLayoutDirty();
   if (multiSelectedIds.has(system.id)) {
     multiSelectedIds.delete(system.id);
     refreshMultiSelectStyles();
@@ -5097,6 +5440,7 @@ function handleUndoDelete() {
       connections.push({ ...connection });
     }
   });
+  markConnectionGraphDirty();
   drawConnections();
   updateHighlights();
   undoDeleteBtn?.classList.add("hidden");
@@ -5140,7 +5484,9 @@ function resetDiagramToBlank() {
   systemHighlightState = new Map();
   systems.forEach((system) => system.element.remove());
   systems.length = 0;
+  systemById.clear();
   connections.length = 0;
+  markConnectionGraphDirty();
   groups.length = 0;
   connectionLayer.innerHTML = "";
   connectionHandleLayer.innerHTML = "";
@@ -5197,6 +5543,9 @@ function cloneSystemData(system) {
     platformOwner: system.platformOwner,
     businessOwner: system.businessOwner,
     functionOwner: system.functionOwner,
+    functionalConsumers: Array.from(system.functionalConsumers || []),
+    employeeTypes: Array.from(system.employeeTypes || []),
+    level: LEVEL_OPTIONS.includes(String(system.level)) ? String(system.level) : LEVEL_OPTIONS[0],
     icon: system.icon,
     comments: system.comments,
     description: system.description,
@@ -5243,6 +5592,8 @@ function resetFilters({ alsoClearSelection = false } = {}) {
   spreadsheetFilterValue = "yes";
   filePresenceFilterValue = "any";
   apiAvailabilityFilterValue = "any";
+  employeeTypeFilterValue = "any";
+  levelFilterSelection = new Set(LEVEL_OPTIONS);
   waitingOnInfoFilterValue = "any";
   relationFocus = null;
   clearEntityLinkHighlight(false);
@@ -5268,6 +5619,10 @@ function resetFilters({ alsoClearSelection = false } = {}) {
   if (apiAvailabilityFilterSelect) {
     apiAvailabilityFilterSelect.value = "any";
   }
+  if (employeeTypeFilterSelect) {
+    employeeTypeFilterSelect.value = "any";
+  }
+  syncLevelFilterUi();
   if (waitingOnInfoFilterSelect) {
     waitingOnInfoFilterSelect.value = "any";
   }
@@ -5283,6 +5638,15 @@ function handleClearHighlights() {
 }
 
 function updateHighlights() {
+  if (pendingHighlightFrame !== null) return;
+  pendingHighlightFrame = window.requestAnimationFrame(() => {
+    pendingHighlightFrame = null;
+    runUpdateHighlights();
+  });
+}
+
+function runUpdateHighlights() {
+  ensureConnectionGraph();
   const connectedSet = selectedSystemId ? getImmediateConnectedSystemIds(selectedSystemId) : null;
   const focusActive = !!relationFocus;
 
@@ -5323,27 +5687,23 @@ function updateHighlights() {
     const queue = showFullParentLineage ? [...parentSeedIds] : [];
 
     parentSeedIds.forEach((id) => {
-      connections.forEach((conn) => {
-        getIncomingSourcesTo(conn, id).forEach((sourceId) => {
-          parentBoostIds.add(sourceId);
-          if (showFullParentLineage && !visited.has(sourceId)) {
-            visited.add(sourceId);
-            queue.push(sourceId);
-          }
-        });
+      getIncomingForSystem(id).forEach((sourceId) => {
+        parentBoostIds.add(sourceId);
+        if (showFullParentLineage && !visited.has(sourceId)) {
+          visited.add(sourceId);
+          queue.push(sourceId);
+        }
       });
     });
 
     while (showFullParentLineage && queue.length) {
       const currentId = queue.shift();
-      connections.forEach((conn) => {
-        getIncomingSourcesTo(conn, currentId).forEach((sourceId) => {
-          if (!visited.has(sourceId)) {
-            visited.add(sourceId);
-            queue.push(sourceId);
-          }
-          parentBoostIds.add(sourceId);
-        });
+      getIncomingForSystem(currentId).forEach((sourceId) => {
+        if (!visited.has(sourceId)) {
+          visited.add(sourceId);
+          queue.push(sourceId);
+        }
+        parentBoostIds.add(sourceId);
       });
     }
   }
@@ -5414,7 +5774,6 @@ function updateHighlights() {
   applyColorCoding();
   applyApiGlowStyling();
   drawConnections();
-  applyConnectionFilterClasses(shouldApplyState);
   refreshDataTableIfVisible();
   if (visualModal && !visualModal.classList.contains("hidden")) {
     requestVisualRender();
@@ -5442,6 +5801,8 @@ function syncResetButtonsVisibility() {
     spreadsheetFilterValue !== "yes" ||
     filePresenceFilterValue !== "any" ||
     apiAvailabilityFilterValue !== "any" ||
+    levelFilterSelection.size !== LEVEL_OPTIONS.length ||
+    employeeTypeFilterValue !== "any" ||
     waitingOnInfoFilterValue !== "any" ||
     showParentsFilter ||
     showFullParentLineage;
@@ -5460,11 +5821,10 @@ function syncResetButtonsVisibility() {
 }
 
 function getImmediateConnectedSystemIds(startId) {
+  ensureConnectionGraph();
   const visited = new Set([startId]);
-  connections.forEach((conn) => {
-    getOutgoingTargetsFrom(conn, startId).forEach((id) => visited.add(id));
-    getIncomingSourcesTo(conn, startId).forEach((id) => visited.add(id));
-  });
+  getOutgoingForSystem(startId).forEach((id) => visited.add(id));
+  getIncomingForSystem(startId).forEach((id) => visited.add(id));
   return visited;
 }
 
@@ -5612,12 +5972,29 @@ function systemMatchesFilters(system) {
   if (filePresenceFilterValue === "no" && system.fileUrl && system.fileUrl.trim()) {
     return false;
   }
+  const levelValue = LEVEL_OPTIONS.includes(String(system.level)) ? String(system.level) : LEVEL_OPTIONS[0];
+  if (!levelFilterSelection.has(levelValue)) {
+    return false;
+  }
   const apiDetails = ensureApiDetailsOnSystem(system);
   if (apiAvailabilityFilterValue === "yes" && apiDetails.available !== "yes") {
     return false;
   }
   if (apiAvailabilityFilterValue === "no" && apiDetails.available !== "no") {
     return false;
+  }
+  const employeeTypes =
+    system.employeeTypes instanceof Set
+      ? system.employeeTypes
+      : new Set(Array.isArray(system.employeeTypes) ? system.employeeTypes : []);
+  if (employeeTypeFilterValue !== "any") {
+    const hasNone = employeeTypes.size === 0 || employeeTypes.has("None");
+    if (employeeTypeFilterValue === "none" && !hasNone) {
+      return false;
+    }
+    if (employeeTypeFilterValue !== "none" && !employeeTypes.has(employeeTypeFilterValue)) {
+      return false;
+    }
   }
   if (waitingOnInfoFilterValue === "yes" && !system.waitingOnInfo) {
     return false;
@@ -5645,6 +6022,7 @@ function hasActiveFilters() {
     spreadsheetFilterValue !== "yes" ||
     filePresenceFilterValue !== "any" ||
     apiAvailabilityFilterValue !== "any" ||
+    levelFilterSelection.size !== LEVEL_OPTIONS.length ||
     waitingOnInfoFilterValue !== "any" ||
     showParentsFilter ||
     showFullParentLineage
@@ -5675,6 +6053,10 @@ function doesSystemMatchSearch(system) {
       return (system.businessOwner || "").toLowerCase().includes(query);
     case "functionOwner":
       return (system.functionOwner || "").toLowerCase().includes(query);
+    case "employeeType": {
+      const types = Array.from(system.employeeTypes || []);
+      return types.some((type) => type.toLowerCase().includes(query));
+    }
     case "entity":
       return system.entities.some((entity) => entity.name.toLowerCase().includes(query));
     case "attributes":
@@ -6084,7 +6466,7 @@ function applyApiGlowStyling() {
     if (!element) return;
 
     element.dataset.apiAvailable = available || "unknown";
-    element.classList.remove("api-glow-yes", "api-glow-no");
+    element.classList.remove("api-glow-yes", "api-glow-no", "api-glow-unknown");
 
     if (!apiGlowEnabled) {
       return;
@@ -6094,6 +6476,8 @@ function applyApiGlowStyling() {
       element.classList.add("api-glow-yes");
     } else if (available === "no") {
       element.classList.add("api-glow-no");
+    } else {
+      element.classList.add("api-glow-unknown");
     }
   });
 }
@@ -6109,6 +6493,12 @@ function getColorForSystem(system) {
     const domainColor = definition?.color;
     if (!domainColor) return { background: "", border: "" };
     return { background: tintColor(domainColor, 0.85), border: domainColor };
+  }
+  if (currentColorBy === "apiAvailability") {
+    const apiDetails = ensureApiDetailsOnSystem(system);
+    const status = (apiDetails?.available || "unknown").toString().toLowerCase();
+    const color = API_AVAILABILITY_COLORS[status] || API_AVAILABILITY_COLORS.unknown;
+    return { background: tintColor(color, 0.85), border: color };
   }
   let value = "";
   if (currentColorBy === "functionOwner") value = system.functionOwner;
@@ -6421,6 +6811,10 @@ function handleShareDiagramWithMode(mode) {
     }
   } catch (error) {
     console.warn("Unable to build shareable URL", error);
+    alert(
+      error?.message ||
+        "Unable to build a shareable link. Try removing optional content or simplify the diagram before sharing.",
+    );
   }
 }
 
@@ -6565,8 +6959,28 @@ function handleRedoAction() {
 }
 
 function buildShareUrlFromState(state) {
-  const payload = encodeStatePayload(state);
-  return `${window.location.origin}${window.location.pathname}?data=${encodeURIComponent(payload)}`;
+  const buildUrl = (payload) => `${window.location.origin}${window.location.pathname}?data=${payload}`;
+
+  const compactSnapshot = compactStateForSharing(state);
+  let payload = encodeStatePayload(compactSnapshot, { forUrl: true, compact: false });
+  let url = buildUrl(payload);
+
+  if (url.length > MAX_SHARE_URL_LENGTH) {
+    const stripped = stripHeavyShareFields(compactSnapshot);
+    const trimmedPayload = encodeStatePayload(stripped, { forUrl: true, compact: false });
+    const trimmedUrl = buildUrl(trimmedPayload);
+    if (trimmedUrl.length < url) {
+      payload = trimmedPayload;
+      url = trimmedUrl;
+    }
+  }
+
+  if (url.length > MAX_SHARE_URL_LENGTH) {
+    throw new Error(
+      `Share URL is ${url.length.toLocaleString()} characters and exceeds the ${MAX_SHARE_URL_LENGTH.toLocaleString()} character limit even after trimming optional details. Export or save the diagram instead.`,
+    );
+  }
+  return url;
 }
 
 function buildSaveIdUrl(id) {
@@ -6713,6 +7127,261 @@ function requestVisualRender() {
   });
 }
 
+function createInitialDataTableFilters() {
+  const filters = {};
+  DATA_TABLE_DEFAULT_COLUMNS.forEach((key) => {
+    filters[key] = "";
+  });
+  return filters;
+}
+
+function getActiveDataTableColumns() {
+  const baseColumns = DATA_TABLE_DEFAULT_COLUMNS.filter(
+    (key) => !dataTableRemovedDefaultColumns.has(key),
+  );
+  return [...baseColumns, ...dataTableExtraColumns];
+}
+
+function getDataTableColumnLabel(columnKey) {
+  return DATA_TABLE_COLUMN_DEFINITIONS[columnKey]?.label || columnKey;
+}
+
+function getAvailableDataTableColumns() {
+  const activeColumns = new Set(getActiveDataTableColumns());
+  const options = [];
+
+  DATA_TABLE_DEFAULT_COLUMNS.forEach((key) => {
+    if (!activeColumns.has(key)) {
+      options.push({ key, label: getDataTableColumnLabel(key) });
+    }
+  });
+
+  DATA_TABLE_OPTIONAL_COLUMNS.forEach(({ key, label }) => {
+    if (!activeColumns.has(key)) {
+      options.push({ key, label });
+    }
+  });
+
+  return options;
+}
+
+function syncDataTableColumnFilters() {
+  const activeColumns = getActiveDataTableColumns();
+  activeColumns.forEach((key) => {
+    if (!(key in dataTableColumnFilters)) {
+      dataTableColumnFilters[key] = "";
+    }
+  });
+  Object.keys(dataTableColumnFilters).forEach((key) => {
+    if (!activeColumns.includes(key)) {
+      delete dataTableColumnFilters[key];
+    }
+  });
+}
+
+function renderDataTableColumnControls() {
+  if (!dataTableColumnMenu) return;
+  dataTableColumnMenu.innerHTML = "";
+  const availableColumns = getAvailableDataTableColumns();
+
+  if (!availableColumns.length) {
+    const emptyState = document.createElement("div");
+    emptyState.className = "menu-empty";
+    emptyState.textContent = "All columns added";
+    dataTableColumnMenu.appendChild(emptyState);
+  } else {
+    availableColumns.forEach(({ key, label }) => {
+      const optionBtn = document.createElement("button");
+      optionBtn.type = "button";
+      optionBtn.role = "menuitem";
+      optionBtn.textContent = label;
+      optionBtn.addEventListener("click", () => {
+        addDataTableExtraColumn(key);
+        closeDataTableColumnMenu();
+      });
+      dataTableColumnMenu.appendChild(optionBtn);
+    });
+  }
+
+  if (dataTableAddColumnBtn) {
+    const expanded = !dataTableColumnMenu.classList.contains("hidden");
+    dataTableAddColumnBtn.setAttribute("aria-expanded", expanded ? "true" : "false");
+  }
+}
+
+function openDataTableColumnMenu() {
+  if (!dataTableColumnMenu) return;
+  renderDataTableColumnControls();
+  dataTableColumnMenu.classList.remove("hidden");
+  dataTableAddColumnBtn?.setAttribute("aria-expanded", "true");
+}
+
+function closeDataTableColumnMenu() {
+  if (!dataTableColumnMenu) return;
+  dataTableColumnMenu.classList.add("hidden");
+  dataTableAddColumnBtn?.setAttribute("aria-expanded", "false");
+}
+
+function toggleDataTableColumnMenu() {
+  if (!dataTableColumnMenu) return;
+  const shouldOpen = dataTableColumnMenu.classList.contains("hidden");
+  if (shouldOpen) {
+    openDataTableColumnMenu();
+  } else {
+    closeDataTableColumnMenu();
+  }
+}
+
+function renderDataTableHeaderRows() {
+  if (!systemDataHeaderRow || !systemDataFilterRow) return;
+  syncDataTableColumnFilters();
+  const activeColumns = getActiveDataTableColumns();
+  systemDataHeaderRow.innerHTML = "";
+  systemDataFilterRow.innerHTML = "";
+  dataTableFilterInputs = {};
+
+  activeColumns.forEach((columnKey) => {
+    const headerCell = document.createElement("th");
+    const headerWrapper = document.createElement("div");
+    headerWrapper.className = "column-header";
+    const label = document.createElement("span");
+    label.textContent = getDataTableColumnLabel(columnKey);
+    headerWrapper.appendChild(label);
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "column-remove-btn";
+    removeBtn.title = `Remove ${getDataTableColumnLabel(columnKey)}`;
+    removeBtn.textContent = "−";
+    removeBtn.addEventListener("click", () => removeDataTableColumn(columnKey));
+    headerWrapper.appendChild(removeBtn);
+
+    headerCell.appendChild(headerWrapper);
+    systemDataHeaderRow.appendChild(headerCell);
+
+    const filterCell = document.createElement("th");
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "column-filter-input";
+    input.placeholder = "Filter";
+    input.value = dataTableColumnFilters[columnKey] || "";
+    input.addEventListener("input", (event) => {
+      dataTableColumnFilters[columnKey] = (event.target.value || "").trim().toLowerCase();
+      renderSystemDataTable();
+    });
+    dataTableFilterInputs[columnKey] = input;
+    filterCell.appendChild(input);
+    systemDataFilterRow.appendChild(filterCell);
+  });
+}
+
+function syncDataTableGroupOptions() {
+  if (!dataTableGroupSelect) return;
+  const previousValue = dataTableGroupSelect.value || "none";
+  const activeColumns = getActiveDataTableColumns();
+  const options = ["none", ...activeColumns];
+
+  dataTableGroupSelect.innerHTML = "";
+  options.forEach((key) => {
+    const option = document.createElement("option");
+    option.value = key;
+    option.textContent = key === "none" ? "None" : getDataTableColumnLabel(key);
+    dataTableGroupSelect.appendChild(option);
+  });
+
+  const validSelection = options.includes(previousValue)
+    ? previousValue
+    : activeColumns.includes(lastDataTableGroupField)
+      ? lastDataTableGroupField
+      : "none";
+  dataTableGroupSelect.value = validSelection;
+
+  if (validSelection !== "none") {
+    lastDataTableGroupField = validSelection;
+  }
+
+  syncDataTableHideEmptyVisibility();
+}
+
+function addDataTableExtraColumn(columnKey) {
+  if (!columnKey) return;
+  const isDefaultColumn = DATA_TABLE_DEFAULT_COLUMNS.includes(columnKey);
+  const isOptionalColumn = DATA_TABLE_OPTIONAL_COLUMNS.some((column) => column.key === columnKey);
+  if (!isDefaultColumn && !isOptionalColumn) return;
+
+  if (isDefaultColumn) {
+    dataTableRemovedDefaultColumns.delete(columnKey);
+  } else if (!dataTableExtraColumns.includes(columnKey)) {
+    dataTableExtraColumns.push(columnKey);
+  }
+
+  closeDataTableColumnMenu();
+  syncDataTableColumnFilters();
+  syncDataTableColumnsUi();
+  renderSystemDataTable();
+}
+
+function removeDataTableColumn(columnKey) {
+  if (DATA_TABLE_DEFAULT_COLUMNS.includes(columnKey)) {
+    dataTableRemovedDefaultColumns.add(columnKey);
+  } else {
+    dataTableExtraColumns = dataTableExtraColumns.filter((key) => key !== columnKey);
+  }
+  delete dataTableColumnFilters[columnKey];
+  syncDataTableColumnsUi();
+  renderSystemDataTable();
+}
+
+function resetDataTableColumns() {
+  dataTableRemovedDefaultColumns = new Set();
+  dataTableExtraColumns = [];
+  dataTableColumnFilters = createInitialDataTableFilters();
+  if (dataTableGroupSelect) {
+    dataTableGroupSelect.value = "none";
+  }
+  lastDataTableGroupField = "domain";
+  closeDataTableColumnMenu();
+  syncDataTableColumnsUi();
+  renderSystemDataTable();
+}
+
+function syncDataTableColumnsUi() {
+  renderDataTableColumnControls();
+  renderDataTableHeaderRows();
+  syncDataTableGroupOptions();
+}
+
+function formatBooleanLabel(flag) {
+  return flag ? "Yes" : "No";
+}
+
+function formatTitleCase(value, fallback = "") {
+  const text = (value ?? "").toString().trim();
+  if (!text) return fallback;
+  const withSpaces = text.replace(/([a-z])([A-Z])/g, "$1 $2");
+  return withSpaces
+    .split(/[\s_-]+/)
+    .map((part) => (part ? part.charAt(0).toUpperCase() + part.slice(1) : ""))
+    .filter(Boolean)
+    .join(" ");
+}
+
+function formatApiAvailabilityLabel(value) {
+  const normalized = (value || "").toString().toLowerCase();
+  if (normalized === "yes") return "Yes";
+  if (normalized === "no") return "No";
+  return "Unknown";
+}
+
+function formatApiFieldLabel(value, fallback = "") {
+  const text = (value ?? "").toString().trim();
+  if (!text) return fallback;
+  const normalized = text.toLowerCase();
+  if (normalized === "unknown") return "Unknown";
+  if (normalized === "none") return "None";
+  return formatTitleCase(text, fallback || text);
+}
+
 function syncDataTableHideEmptyVisibility() {
   if (!dataTableHideEmptyWrapper) return;
   const groupBy = dataTableGroupSelect?.value || "none";
@@ -6765,6 +7434,7 @@ function openDataTableModal() {
   if (dataTableMultiSystemToggle) {
     dataTableMultiSystemToggle.checked = dataTableMultiSystemOnly;
   }
+  syncDataTableColumnsUi();
   Object.entries(dataTableFilterInputs).forEach(([key, input]) => {
     if (!input) return;
     input.value = dataTableColumnFilters[key] || "";
@@ -6782,6 +7452,7 @@ function closeDataTableModal() {
     dataTableModal.classList.add("hidden");
     dataTableModal.setAttribute("aria-hidden", "true");
   }
+  closeDataTableColumnMenu();
 }
 
 function renderVisualSnapshot() {
@@ -8156,6 +8827,8 @@ function serializeState(accessModeOverride, options = {}) {
       businessOwner: system.businessOwner,
       functionOwner: system.functionOwner,
       functionalConsumers: Array.from(system.functionalConsumers || []),
+      employeeTypes: Array.from(system.employeeTypes || []),
+      level: LEVEL_OPTIONS.includes(String(system.level)) ? String(system.level) : LEVEL_OPTIONS[0],
       icon: system.icon,
       comments: system.comments,
       description: system.description,
@@ -8168,7 +8841,7 @@ function serializeState(accessModeOverride, options = {}) {
       shapeComments: system.shapeComments,
       entities: system.entities.map((entity) => ({ name: entity.name, isSor: !!entity.isSor })),
       ...(stripSensitive
-        ? { attributes: [] }
+        ? {}
         : {
             fileUrl: system.fileUrl,
             attributes: Array.isArray(system.attributes)
@@ -8217,6 +8890,8 @@ function serializeState(accessModeOverride, options = {}) {
       spreadsheets: spreadsheetFilterValue,
       filePresence: filePresenceFilterValue,
       apiAvailability: apiAvailabilityFilterValue,
+      levels: Array.from(levelFilterSelection),
+      employeeType: employeeTypeFilterValue,
       waitingOnInfo: waitingOnInfoFilterValue,
       expandEntities: expandEntitiesGlobally,
       showParents: showParentsFilter,
@@ -8235,10 +8910,12 @@ function loadSerializedState(snapshot) {
   currentSaveId = null;
   systems.forEach((system) => system.element.remove());
   systems.length = 0;
+  systemById.clear();
   textBoxes.forEach((box) => box.element?.remove());
   textBoxes.length = 0;
   setActiveTextBox(null);
   connections.length = 0;
+  markConnectionGraphDirty();
   groups.length = 0;
   visualNodePositions.clear();
   visualLayoutContext = { width: 0, height: 0, padding: 50, groupMode: "none", clusters: new Map(), anchors: new Map(), positions: new Map(), includedIds: new Set() };
@@ -8279,6 +8956,8 @@ function loadSerializedState(snapshot) {
       businessOwner: systemData.businessOwner,
       functionOwner: systemData.functionOwner,
       functionalConsumers: systemData.functionalConsumers,
+      employeeTypes: systemData.employeeTypes,
+      level: systemData.level,
       entities: systemData.entities,
       icon: systemData.icon,
       comments: systemData.comments,
@@ -8318,6 +8997,7 @@ function loadSerializedState(snapshot) {
         : !!connection.bidirectional,
     }))
   );
+  markConnectionGraphDirty();
   (snapshot.groups || []).forEach((group) => {
     if (!group || !Array.isArray(group.systemIds)) return;
     groups.push({
@@ -8367,6 +9047,10 @@ function applyFilterState(filterState = {}) {
   const spreadsheetFilter = filterState.spreadsheets || "yes";
   const filePresenceFilter = filterState.filePresence || "any";
   const apiAvailabilityFilter = filterState.apiAvailability || "any";
+  const levelFilters = Array.isArray(filterState.levels) && filterState.levels.length
+    ? new Set(filterState.levels.map((value) => String(value)))
+    : new Set(LEVEL_OPTIONS);
+  const employeeTypeFilter = filterState.employeeType || "any";
   const waitingFilter = filterState.waitingOnInfo || "any";
   const expandEntities = !!filterState.expandEntities;
   const showParents = !!filterState.showParents;
@@ -8384,6 +9068,8 @@ function applyFilterState(filterState = {}) {
   spreadsheetFilterValue = spreadsheetFilter;
   filePresenceFilterValue = filePresenceFilter;
   apiAvailabilityFilterValue = apiAvailabilityFilter;
+  levelFilterSelection = levelFilters;
+  employeeTypeFilterValue = employeeTypeFilter;
   waitingOnInfoFilterValue = waitingFilter;
   expandEntitiesGlobally = expandEntities;
   showParentsFilter = showParents;
@@ -8400,6 +9086,8 @@ function applyFilterState(filterState = {}) {
   if (spreadsheetFilterSelect) spreadsheetFilterSelect.value = spreadsheetFilterValue;
   if (filePresenceFilterSelect) filePresenceFilterSelect.value = filePresenceFilterValue;
   if (apiAvailabilityFilterSelect) apiAvailabilityFilterSelect.value = apiAvailabilityFilterValue;
+  syncLevelFilterUi();
+  if (employeeTypeFilterSelect) employeeTypeFilterSelect.value = employeeTypeFilterValue;
   if (waitingOnInfoFilterSelect) waitingOnInfoFilterSelect.value = waitingOnInfoFilterValue;
   if (expandEntitiesToggle) expandEntitiesToggle.checked = expandEntitiesGlobally;
   if (showParentsToggle) showParentsToggle.checked = showParentsFilter;
@@ -8471,45 +9159,263 @@ function formatSaveEntryName(fileName, date) {
     );
   }
 
-  function encodeStatePayload(state) {
-    const json = JSON.stringify(state);
+  function compactStateForSharing(state) {
+    const compactFilters = (() => {
+      const filterState = state.filterState || {};
+      const pruned = {};
+      if (filterState.search) pruned.search = filterState.search;
+      if (filterState.searchType && filterState.searchType !== "contains") pruned.searchType = filterState.searchType;
+      if (filterState.filterMode && filterState.filterMode !== "highlight") pruned.filterMode = filterState.filterMode;
+      if (Array.isArray(filterState.domains) && filterState.domains.length) pruned.domains = filterState.domains;
+      if (filterState.platformOwner) pruned.platformOwner = filterState.platformOwner;
+      if (filterState.businessOwner) pruned.businessOwner = filterState.businessOwner;
+      if (filterState.functionOwner) pruned.functionOwner = filterState.functionOwner;
+      if (Array.isArray(filterState.functionalConsumers) && filterState.functionalConsumers.length)
+        pruned.functionalConsumers = filterState.functionalConsumers;
+      if (filterState.sor && filterState.sor !== "any") pruned.sor = filterState.sor;
+      if (filterState.spreadsheets && filterState.spreadsheets !== "yes") pruned.spreadsheets = filterState.spreadsheets;
+      if (filterState.filePresence && filterState.filePresence !== "any") pruned.filePresence = filterState.filePresence;
+      if (filterState.apiAvailability && filterState.apiAvailability !== "any")
+        pruned.apiAvailability = filterState.apiAvailability;
+      if (filterState.employeeType && filterState.employeeType !== "any")
+        pruned.employeeType = filterState.employeeType;
+      if (filterState.waitingOnInfo && filterState.waitingOnInfo !== "any") pruned.waitingOnInfo = filterState.waitingOnInfo;
+      if (filterState.expandEntities) pruned.expandEntities = !!filterState.expandEntities;
+      if (filterState.showParents) pruned.showParents = !!filterState.showParents;
+      if (filterState.fullParentLineage) pruned.fullParentLineage = !!filterState.fullParentLineage;
+      if (typeof filterState.sidebarCollapsed === "boolean") pruned.sidebarCollapsed = filterState.sidebarCollapsed;
+      return pruned;
+    })();
+
+    const compactSystems = (state.systems || []).map((system) => {
+      const pruned = {
+        id: system.id,
+        name: system.name,
+        x: system.x,
+        y: system.y,
+      };
+
+      const copyIfValue = (key, value, shouldKeep = true) => {
+        if (value === undefined || value === null) return;
+        if (Array.isArray(value) && value.length === 0) return;
+        if (value === "" || value === false) return;
+        if (shouldKeep) pruned[key] = value;
+      };
+
+      copyIfValue("domains", Array.isArray(system.domains) && system.domains.length ? system.domains : undefined);
+      copyIfValue("platformOwner", system.platformOwner);
+      copyIfValue("businessOwner", system.businessOwner);
+      copyIfValue("functionOwner", system.functionOwner);
+      copyIfValue("functionalConsumers", Array.isArray(system.functionalConsumers) ? system.functionalConsumers : []);
+      copyIfValue("employeeTypes", Array.isArray(system.employeeTypes) ? system.employeeTypes : []);
+      copyIfValue("icon", system.icon !== DEFAULT_ICON ? system.icon : undefined);
+      copyIfValue("comments", system.comments);
+      copyIfValue("description", system.description);
+      copyIfValue("waitingOnInfo", system.waitingOnInfo);
+      // Omit file URLs from shared snapshots to keep links compact.
+      // copyIfValue("fileUrl", system.fileUrl);
+      copyIfValue("isSpreadsheet", system.isSpreadsheet);
+      copyIfValue("isObject", system.isObject);
+      copyIfValue("shapeType", system.shapeType);
+      copyIfValue("shapeLabel", system.shapeLabel);
+      copyIfValue("shapeColor", system.shapeColor && system.shapeColor !== DEFAULT_OBJECT_COLOR ? system.shapeColor : undefined);
+      copyIfValue("shapeComments", system.shapeComments);
+      copyIfValue(
+        "entities",
+        Array.isArray(system.entities) ? system.entities.filter((entity) => entity && entity.name) : [],
+        true
+      );
+      // Attributes, API metadata, and process maps are excluded from shared payloads to
+      // avoid exceeding URL length limits.
+
+      return pruned;
+    });
+
+    const compactText = (state.textBoxes || []).map((box) => {
+      const pruned = { id: box.id, x: box.x, y: box.y, text: box.text };
+      if (box.fontSize) pruned.fontSize = box.fontSize;
+      if (box.color && box.color !== "#000000") pruned.color = box.color;
+      if (box.width) pruned.width = box.width;
+      if (box.height) pruned.height = box.height;
+      return pruned;
+    });
+
+    const compactGroups = (state.groups || []).map((group) => {
+      const pruned = { id: group.id, systemIds: group.systemIds };
+      if (group.name && group.name !== getDefaultGroupName()) pruned.name = group.name;
+      if (group.color && group.color !== "#ffffff") pruned.color = group.color;
+      if (group.hidden) pruned.hidden = true;
+      return pruned;
+    });
+
+    const snapshot = {
+      fileName: state.fileName,
+      systems: compactSystems,
+      textBoxes: compactText.length ? compactText : undefined,
+      connections: (state.connections || []).map((connection) => {
+        const pruned = { ...connection };
+        const dropIf = (key, predicate) => {
+          if (key in pruned && predicate(pruned[key])) {
+            delete pruned[key];
+          }
+        };
+        dropIf("label", (value) => !value);
+        dropIf("bidirectional", (value) => !value);
+        dropIf("arrowMode", (value) => !value || value === "single");
+        dropIf("color", (value) => !value || value === "#000000");
+        dropIf("strokeWidth", (value) => !value || value === 2);
+        dropIf("pathStyle", (value) => !value || value === "angled");
+        dropIf("fromSide", (value) => !value);
+        dropIf("toSide", (value) => !value);
+        dropIf("id", (value) => !value);
+        return pruned;
+      }),
+      groups: compactGroups.length ? compactGroups : undefined,
+      counter: state.counter,
+      colorBy: state.colorBy,
+      filterState: compactFilters,
+      accessMode: state.accessMode,
+      customDomains: state.customDomains && state.customDomains.length ? state.customDomains : undefined,
+      functionOwners: state.functionOwners && state.functionOwners.length ? state.functionOwners : undefined,
+    };
+
+    return JSON.parse(JSON.stringify(snapshot));
+  }
+
+  function stripHeavyShareFields(state) {
+    const slim = JSON.parse(JSON.stringify(state));
+    if (Array.isArray(slim.systems)) {
+      slim.systems = slim.systems.map((system) => {
+        const { processMap, attributes, fileUrl, api, ...rest } = system;
+        return rest;
+      });
+    }
+    return slim;
+  }
+
+  function encodeStatePayload(state, options = {}) {
+    const { forUrl = false, compact = false } = options;
+    const preparedState = compact ? compactStateForSharing(state) : state;
+    const json = JSON.stringify(preparedState);
+    const candidates = [];
+
     if (window.LZString?.compressToEncodedURIComponent) {
       const compressed = window.LZString.compressToEncodedURIComponent(json);
-      if (compressed) return compressed;
-  }
-  if (typeof TextEncoder === "undefined") {
-    return btoa(unescape(encodeURIComponent(json)));
-  }
-  const encoder = new TextEncoder();
-  const bytes = encoder.encode(json);
-  let binary = "";
-  bytes.forEach((byte) => {
-    binary += String.fromCharCode(byte);
-  });
-  return btoa(binary);
-}
-
-function decodeStatePayload(payload) {
-  if (window.LZString?.decompressFromEncodedURIComponent) {
-    try {
-      const decompressed = window.LZString.decompressFromEncodedURIComponent(payload);
-      if (decompressed) {
-        return JSON.parse(decompressed);
+      if (compressed) {
+        candidates.push({ prefix: `${SHARE_ENCODING_PREFIX}:u:`, value: compressed });
       }
-    } catch (error) {
-      console.warn("Unable to decompress shared payload, trying legacy decode", error);
     }
+
+    if (window.LZString?.compressToBase64) {
+      const compressed = window.LZString.compressToBase64(json);
+      if (compressed) {
+        const safe = forUrl
+          ? compressed.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "")
+          : compressed;
+        candidates.push({ prefix: `${SHARE_ENCODING_PREFIX}:b:`, value: safe });
+      }
+    }
+
+    const base64 = (() => {
+      if (typeof TextEncoder === "undefined") {
+        return btoa(unescape(encodeURIComponent(json)));
+      }
+      const encoder = new TextEncoder();
+      const bytes = encoder.encode(json);
+      let binary = "";
+      bytes.forEach((byte) => {
+        binary += String.fromCharCode(byte);
+      });
+      return btoa(binary);
+    })();
+    if (base64) {
+      const safe = forUrl ? base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "") : base64;
+      candidates.push({ prefix: `${SHARE_ENCODING_PREFIX}:p:`, value: safe });
+    }
+
+    const shortest = candidates.reduce((best, current) => {
+      if (!best || current.value.length < best.value.length) return current;
+      return best;
+    }, null);
+
+    return shortest ? `${shortest.prefix}${shortest.value}` : "";
   }
-  const binary = atob(payload);
-  if (typeof TextDecoder === "undefined") {
-    const decoded = decodeURIComponent(escape(binary));
-    return JSON.parse(decoded);
+
+  function decodeStatePayload(payload) {
+    const normalizedPayload = typeof payload === "string" ? payload.replace(/\s/g, "+") : payload;
+
+    const parseLegacyOrPlain = (raw) => {
+      const b64 = (() => {
+        const reverted = raw.replace(/-/g, "+").replace(/_/g, "/");
+        const paddingNeeded = reverted.length % 4;
+        if (paddingNeeded === 0) return reverted;
+        return `${reverted}${"=".repeat(4 - paddingNeeded)}`;
+      })();
+      const binary = atob(b64);
+      if (typeof TextDecoder === "undefined") {
+        const decoded = decodeURIComponent(escape(binary));
+        return JSON.parse(decoded);
+      }
+      const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+      const decoder = new TextDecoder();
+      const json = decoder.decode(bytes);
+      return JSON.parse(json);
+    };
+
+    const [prefix, encoding, rawPayload] = (() => {
+      if (typeof normalizedPayload !== "string") return [null, null, normalizedPayload];
+      const parts = normalizedPayload.split(":");
+      if (parts.length >= 3 && parts[0] === SHARE_ENCODING_PREFIX) {
+        const [, enc, ...rest] = parts;
+        return [parts[0], enc, rest.join(":")];
+      }
+      return [null, null, normalizedPayload];
+    })();
+
+    if (!encoding && window.LZString?.decompressFromEncodedURIComponent) {
+      try {
+        const decompressed = window.LZString.decompressFromEncodedURIComponent(normalizedPayload);
+        if (decompressed) {
+          return JSON.parse(decompressed);
+        }
+      } catch (error) {
+        console.warn("Unable to decompress legacy payload, trying alternate decode", error);
+      }
+    }
+
+    if (encoding === "u" && window.LZString?.decompressFromEncodedURIComponent) {
+      try {
+        const decompressed = window.LZString.decompressFromEncodedURIComponent(rawPayload);
+        if (decompressed) {
+          return JSON.parse(decompressed);
+        }
+      } catch (error) {
+        console.warn("Unable to decompress shared payload, trying legacy decode", error);
+      }
+    }
+
+    if (encoding === "b" && window.LZString?.decompressFromBase64) {
+      try {
+        const reverted = rawPayload.replace(/-/g, "+").replace(/_/g, "/");
+        const decompressed = window.LZString.decompressFromBase64(reverted);
+        if (decompressed) {
+          return JSON.parse(decompressed);
+        }
+      } catch (error) {
+        console.warn("Unable to decompress base64 payload, trying legacy decode", error);
+      }
+    }
+
+    if (encoding === "p" || prefix === SHARE_ENCODING_PREFIX) {
+      try {
+        return parseLegacyOrPlain(rawPayload);
+      } catch (error) {
+        console.warn("Unable to decode base64 payload, trying legacy decode", error);
+      }
+    }
+
+    return parseLegacyOrPlain(normalizedPayload);
   }
-  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-  const decoder = new TextDecoder();
-  const json = decoder.decode(bytes);
-  return JSON.parse(json);
-}
 
 function loadFromUrlParams() {
   try {
@@ -8591,15 +9497,15 @@ function getSystemsForCurrentFilters() {
 
 function exportTableToCsv() {
   if (!lastRenderedTableRows.length) return;
-  const headers = [
-    "Domain",
-    "Entity",
-    "Attributes",
-    "System",
-    "Function Owner",
-    "Business Owner",
-    "Platform Owner",
-  ];
+  const headers = getActiveDataTableColumns().map((columnKey) => getDataTableColumnLabel(columnKey));
+
+  const sanitizeCellValue = (value) => {
+    if (value === undefined || value === null) {
+      return "";
+    }
+    const text = value.toString();
+    return text.trim() === "—" ? "" : text;
+  };
 
   const escapeCell = (value) => {
     const text = (value ?? "").toString();
@@ -8611,7 +9517,7 @@ function exportTableToCsv() {
 
   const lines = [headers.join(",")];
   lastRenderedTableRows.forEach((row) => {
-    const cells = headers.map((header) => escapeCell(row[header]));
+    const cells = headers.map((header) => escapeCell(sanitizeCellValue(row[header])));
     lines.push(cells.join(","));
   });
 
@@ -8627,37 +9533,52 @@ function exportTableToCsv() {
 function renderSystemDataTable() {
   if (!systemDataTableBody) return;
   syncDataTableHideEmptyVisibility();
+  syncDataTableColumnFilters();
   const systemsToShow = getSystemsForCurrentFilters();
-  const groupBy = dataTableGroupSelect?.value || "none";
+  const columnOrder = getActiveDataTableColumns();
+  if (!columnOrder.length) {
+    systemDataTableBody.innerHTML = "";
+    const emptyRow = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 1;
+    cell.textContent = "No columns selected. Use + to add columns.";
+    emptyRow.appendChild(cell);
+    systemDataTableBody.appendChild(emptyRow);
+    lastRenderedTableRows = [];
+    return;
+  }
+  let groupBy = dataTableGroupSelect?.value || "none";
+  if (groupBy !== "none" && !columnOrder.includes(groupBy)) {
+    groupBy = "none";
+    if (dataTableGroupSelect) {
+      dataTableGroupSelect.value = groupBy;
+    }
+  }
   if (groupBy !== "none") {
     lastDataTableGroupField = groupBy;
   }
+  const columnLabels = columnOrder.map((key) => getDataTableColumnLabel(key));
   const hideEmptyRows = dataTableHideEmptyFields && groupBy !== "none";
   const groupFieldForHiding = groupBy === "none" ? lastDataTableGroupField || "domain" : groupBy;
-  const headerCells = dataTableModal?.querySelectorAll(".system-data-table thead th") || [];
-  const groupOrder = [
-    "domain",
-    "entity",
-    "attributes",
-    "system",
-    "functionOwner",
-    "businessOwner",
-    "platformOwner",
-  ];
-  const groupColumnIndex = groupOrder.indexOf(groupBy);
+  const headerCells = Array.from(systemDataHeaderRow?.children || []);
+  const groupColumnIndex = columnOrder.indexOf(groupBy);
   const showAttributesColumn = dataTableShowAttributes || groupBy === "attributes";
   const requireMultiSystemGrouping = dataTableMultiSystemOnly && groupBy !== "none" && groupBy !== "system";
 
   const normalizeValues = (value) => {
+    if (value instanceof Set) {
+      return normalizeValues(Array.from(value));
+    }
     if (Array.isArray(value)) {
-      return value.length ? value.map((item) => (item ?? "").toString().trim()).filter(Boolean) : ["—"];
+      const normalized = value.map((item) => (item ?? "").toString().trim()).filter(Boolean);
+      return normalized.length ? normalized : ["—"];
     }
     const text = typeof value === "string" ? value.trim() : value;
     return text ? [text] : ["—"];
   };
 
   headerCells.forEach((th, index) => {
-    th.classList.toggle("highlight-column", index % groupOrder.length === groupColumnIndex);
+    th.classList.toggle("highlight-column", index === groupColumnIndex);
   });
 
   systemDataTableBody.innerHTML = "";
@@ -8665,21 +9586,19 @@ function renderSystemDataTable() {
 
   const pushExportRow = (rowValues) => {
     if (!rowValues) return;
-    lastRenderedTableRows.push({
-      Domain: rowValues.domain,
-      Entity: rowValues.entity,
-      Attributes: rowValues.attributes,
-      System: rowValues.system,
-      "Function Owner": rowValues.functionOwner,
-      "Business Owner": rowValues.businessOwner,
-      "Platform Owner": rowValues.platformOwner,
+    const exportRow = {};
+    columnOrder.forEach((key, index) => {
+      exportRow[columnLabels[index]] = rowValues[key];
     });
+    lastRenderedTableRows.push(exportRow);
   };
+
+  const emptyColSpan = columnOrder.length || 1;
 
   if (!systemsToShow.length) {
     const emptyRow = document.createElement("tr");
     const cell = document.createElement("td");
-    cell.colSpan = 7;
+    cell.colSpan = emptyColSpan;
     cell.textContent = "No systems match the current filters.";
     emptyRow.appendChild(cell);
     systemDataTableBody.appendChild(emptyRow);
@@ -8698,6 +9617,12 @@ function renderSystemDataTable() {
     const systemName = system.name || "Untitled";
     const entities = system.entities?.length ? system.entities : [{ name: "" }];
     const systemAttributes = Array.isArray(system.attributes) ? system.attributes : [];
+    const functionalConsumers = Array.from(system.functionalConsumers || []);
+    const employeeTypes = Array.from(system.employeeTypes || []);
+    const apiDetails = system.api || {};
+    const apiSupportedEntities = Array.isArray(apiDetails.supportedEntities) ? apiDetails.supportedEntities : [];
+    const description = system.description || "";
+    const comments = system.comments || "";
 
     entities.forEach((entity) => {
       const entityName = entity.name || "";
@@ -8712,9 +9637,24 @@ function renderSystemDataTable() {
         attributes: matchingAttributes,
         system: systemName,
         systemId: system.id,
+        level: LEVEL_OPTIONS.includes(String(system.level)) ? String(system.level) : LEVEL_OPTIONS[0],
         functionOwner: functionOwner || "—",
         businessOwner: businessOwner || "—",
         platformOwner: platformOwner || "—",
+        functionalConsumers,
+        employeeTypes,
+        waitingOnInfo: formatBooleanLabel(system.waitingOnInfo),
+        fileUrl: system.fileUrl || "",
+        isSpreadsheet: formatBooleanLabel(system.isSpreadsheet),
+        description,
+        comments,
+        apiAvailable: formatApiAvailabilityLabel(apiDetails.available),
+        apiType: formatApiFieldLabel(apiDetails.type, "None"),
+        apiAuthMethod: formatApiFieldLabel(apiDetails.authMethod, "Unknown"),
+        apiAccessLevel: formatApiFieldLabel(apiDetails.accessLevel, "Not set"),
+        apiSupportedEntities,
+        apiDocsStatus: formatApiFieldLabel(apiDetails.docsStatus, "Unknown"),
+        apiIntegration: formatApiFieldLabel(apiDetails.integration, "Not integrated"),
       });
     });
   });
@@ -8736,15 +9676,12 @@ function renderSystemDataTable() {
   };
 
   const filteredRows = rawRows.filter((row) => {
-    if (
-      !matchesFilter(row.domain, dataTableColumnFilters.domain) ||
-      !matchesFilter(row.entity, dataTableColumnFilters.entity) ||
-      !matchesFilter(row.attributes, dataTableColumnFilters.attributes) ||
-      !matchesFilter(row.system, dataTableColumnFilters.system) ||
-      !matchesFilter(row.functionOwner, dataTableColumnFilters.functionOwner) ||
-      !matchesFilter(row.businessOwner, dataTableColumnFilters.businessOwner) ||
-      !matchesFilter(row.platformOwner, dataTableColumnFilters.platformOwner)
-    ) {
+    const hasFilterMismatch = Object.entries(dataTableColumnFilters).some(([columnKey, filterValue]) => {
+      if (!filterValue) return false;
+      return !matchesFilter(row[columnKey], filterValue);
+    });
+
+    if (hasFilterMismatch) {
       return false;
     }
 
@@ -8762,7 +9699,7 @@ function renderSystemDataTable() {
   if (!filteredRows.length) {
     const emptyRow = document.createElement("tr");
     const cell = document.createElement("td");
-    cell.colSpan = 7;
+    cell.colSpan = emptyColSpan;
     cell.textContent = "No rows match the current table filters.";
     emptyRow.appendChild(cell);
     systemDataTableBody.appendChild(emptyRow);
@@ -8779,21 +9716,25 @@ function renderSystemDataTable() {
 
       groupValues.forEach((key) => {
         if (!grouped.has(key)) {
-          grouped.set(key, {
-            domain: new Set(),
-            entity: new Set(),
-            attributes: new Set(),
-            system: new Set(),
-            functionOwner: new Set(),
-            businessOwner: new Set(),
-            platformOwner: new Set(),
+          const bucket = {};
+          columnOrder.forEach((field) => {
+            bucket[field] = field === "system" ? new Map() : new Set();
           });
+          grouped.set(key, bucket);
         }
         const bucket = grouped.get(key);
 
-        Object.entries(row).forEach(([field, value]) => {
-          if (!bucket[field]) return;
-          const values = normalizeValues(value);
+        columnOrder.forEach((field) => {
+          if (field === "system") {
+            const label = (row.system || "").trim() || "—";
+            const systemId = row.systemId || label;
+            if (!bucket.system.has(systemId)) {
+              bucket.system.set(systemId, label);
+            }
+            return;
+          }
+
+          const values = normalizeValues(row[field]);
           values.forEach((val) => {
             if (val && val !== "—") {
               bucket[field].add(val);
@@ -8801,8 +9742,13 @@ function renderSystemDataTable() {
           });
         });
 
-        if (!bucket[groupBy].size) {
-          bucket[groupBy].add("—");
+        const groupBucket = bucket[groupBy];
+        if (groupBucket && !groupBucket.size) {
+          if (groupBy === "system") {
+            groupBucket.set("—", "—");
+          } else {
+            groupBucket.add("—");
+          }
         }
       });
     });
@@ -8816,9 +9762,11 @@ function renderSystemDataTable() {
       }
       const row = document.createElement("tr");
       const exportRow = {};
-      groupOrder.forEach((field, index) => {
+      columnOrder.forEach((field, index) => {
         const cell = document.createElement("td");
-        const values = Array.from(bucket[field]);
+        const isSystemField = field === "system";
+        const rawValues = bucket[field];
+        const values = isSystemField ? Array.from(rawValues.values()) : Array.from(rawValues);
         const hideAttributes = !showAttributesColumn && field === "attributes" && groupBy !== "attributes";
         const display = hideAttributes
           ? "—"
@@ -8828,7 +9776,30 @@ function renderSystemDataTable() {
               ? values.sort((a, b) => a.localeCompare(b)).join(", ")
               : "—";
         exportRow[field] = display;
-        cell.textContent = display;
+
+        if (isSystemField && rawValues.size) {
+          const sortedSystems = Array.from(rawValues.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+          sortedSystems.forEach(([systemId, label], idx) => {
+            if (idx > 0) {
+              cell.appendChild(document.createTextNode(", "));
+            }
+            const linkBtn = document.createElement("a");
+            linkBtn.href = "#";
+            linkBtn.className = "table-system-link";
+            linkBtn.textContent = label;
+            linkBtn.addEventListener("click", (event) => {
+              event.preventDefault();
+              const targetSystem = systems.find((sys) => sys.id === systemId);
+              if (targetSystem) {
+                selectSystem(targetSystem, { skipHighlight: true, skipSelectionState: true });
+              }
+            });
+            cell.appendChild(linkBtn);
+          });
+        } else {
+          cell.textContent = display;
+        }
+
         if (index === groupColumnIndex) {
           cell.classList.add("highlight-column");
         }
@@ -8841,7 +9812,7 @@ function renderSystemDataTable() {
     if (!appendedGroupedRows) {
       const emptyRow = document.createElement("tr");
       const cell = document.createElement("td");
-      cell.colSpan = 7;
+      cell.colSpan = emptyColSpan;
       cell.textContent = "No rows match the current table filters.";
       emptyRow.appendChild(cell);
       systemDataTableBody.appendChild(emptyRow);
@@ -8852,7 +9823,7 @@ function renderSystemDataTable() {
   filteredRows.forEach((entry) => {
     const row = document.createElement("tr");
     const exportRow = {};
-    groupOrder.forEach((field) => {
+    columnOrder.forEach((field, index) => {
       const cell = document.createElement("td");
       const values = normalizeValues(entry[field]);
       const hideAttributes = !showAttributesColumn && field === "attributes" && groupBy !== "attributes";
@@ -8863,20 +9834,24 @@ function renderSystemDataTable() {
           : "—";
       exportRow[field] = display;
 
-      if (field === "system" && groupBy === "none" && entry.systemId) {
-        const linkBtn = document.createElement("button");
-        linkBtn.type = "button";
-        linkBtn.className = "table-system-link";
-        linkBtn.textContent = display;
-        linkBtn.addEventListener("click", () => {
-          const targetSystem = systems.find((sys) => sys.id === entry.systemId);
-          if (targetSystem) {
-            selectSystem(targetSystem, { skipHighlight: true, skipSelectionState: true });
-          }
-        });
-        cell.appendChild(linkBtn);
-      } else {
-        cell.textContent = display;
+    if (field === "system" && groupBy === "none" && entry.systemId) {
+      const linkBtn = document.createElement("a");
+      linkBtn.href = "#";
+      linkBtn.className = "table-system-link";
+      linkBtn.textContent = display;
+      linkBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        const targetSystem = systems.find((sys) => sys.id === entry.systemId);
+        if (targetSystem) {
+          selectSystem(targetSystem, { skipHighlight: true, skipSelectionState: true });
+        }
+      });
+      cell.appendChild(linkBtn);
+    } else {
+      cell.textContent = display;
+    }
+      if (index === groupColumnIndex) {
+        cell.classList.add("highlight-column");
       }
       row.appendChild(cell);
     });
