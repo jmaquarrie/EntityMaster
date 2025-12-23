@@ -1487,6 +1487,7 @@ function init() {
   closeDataStandardisationModalBtn?.addEventListener("click", closeDataStandardisationModal);
   dataStandardisationGroups?.addEventListener("click", handleStandardisationGroupClick);
   dataStandardisationGroups?.addEventListener("change", handleStandardisationGroupChange);
+  dataStandardisationGroups?.addEventListener("input", handleStandardisationGroupInput);
   dataStandardisationModal?.addEventListener("click", (event) => {
     if (event.target === dataStandardisationModal) {
       closeDataStandardisationModal();
@@ -4692,20 +4693,24 @@ function renderStandardisationGroups() {
     attributeSpan.textContent = "Attributes";
     const attributeRow = document.createElement("div");
     attributeRow.className = "inline-form";
+    const attributeSearch = document.createElement("input");
+    attributeSearch.type = "text";
+    attributeSearch.placeholder = "Type to filter attributes";
+    attributeSearch.dataset.groupId = group.id;
+    attributeSearch.dataset.role = "attributeSearch";
+    attributeSearch.className = "standardisation-attribute-search";
     const attributeSelect = document.createElement("select");
     attributeSelect.dataset.groupId = group.id;
     attributeSelect.dataset.role = "attributeSelect";
     const usedAttributes = new Set((group.attributes || []).map((attr) => normalizeAttributeLabel(attr).toLowerCase()));
-    const selectOptions = [
-      "",
-      ...availableAttributes.filter((attr) => {
-        const normalized = attr.toLowerCase();
-        if (usedAttributes.has(normalized)) return false;
-        if (globallyUsedAttributes.has(normalized)) return false;
-        return true;
-      }),
-    ];
-    attributeSelect.innerHTML = selectOptions
+    const availableForGroup = availableAttributes.filter((attr) => {
+      const normalized = attr.toLowerCase();
+      if (usedAttributes.has(normalized)) return false;
+      if (globallyUsedAttributes.has(normalized)) return false;
+      return true;
+    });
+    attributeSelect.dataset.allOptions = JSON.stringify(availableForGroup);
+    attributeSelect.innerHTML = ["", ...availableForGroup]
       .map((value) => {
         const label = value || "Select attribute";
         return `<option value="${value}">${label}</option>`;
@@ -4716,7 +4721,7 @@ function renderStandardisationGroups() {
     addBtn.textContent = "Add";
     addBtn.dataset.groupId = group.id;
     addBtn.dataset.action = "add-attribute";
-    attributeRow.append(attributeSelect, addBtn);
+    attributeRow.append(attributeSearch, attributeSelect, addBtn);
     attributeField.append(attributeSpan, attributeRow);
 
     const tokenList = document.createElement("div");
@@ -4765,6 +4770,24 @@ function renderStandardisationGroups() {
   dataStandardisationGroups.appendChild(fragment);
 }
 
+function filterStandardisationSelect(groupId, query = "") {
+  const select = dataStandardisationGroups?.querySelector(`select[data-group-id="${groupId}"]`);
+  if (!select) return;
+  const baseOptions = select.dataset.allOptions ? JSON.parse(select.dataset.allOptions) : [];
+  const previousValue = select.value;
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredOptions = ["", ...baseOptions.filter((option) => option.toLowerCase().includes(normalizedQuery))];
+  select.innerHTML = filteredOptions
+    .map((value) => {
+      const label = value || "Select attribute";
+      return `<option value="${value}">${label}</option>`;
+    })
+    .join("");
+  if (filteredOptions.includes(previousValue)) {
+    select.value = previousValue;
+  }
+}
+
 function handleStandardisationGroupChange(event) {
   const target = event.target;
   if (target instanceof HTMLInputElement && target.classList.contains("standardisation-name-input")) {
@@ -4775,6 +4798,15 @@ function handleStandardisationGroupChange(event) {
     refreshStandardisedAttributeUsage();
     scheduleShareUrlSync();
   }
+}
+
+function handleStandardisationGroupInput(event) {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement)) return;
+  if (target.dataset.role !== "attributeSearch") return;
+  const groupId = target.dataset.groupId;
+  if (!groupId) return;
+  filterStandardisationSelect(groupId, target.value);
 }
 
 function handleStandardisationGroupClick(event) {

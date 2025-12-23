@@ -2749,6 +2749,11 @@ button.small {
   max-width: 100%;
 }
 
+.inline-form .standardisation-attribute-search {
+  flex: 1;
+  min-width: 0;
+}
+
 .settings-inline-form input {
   flex: 1;
 }
