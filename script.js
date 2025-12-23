@@ -2189,7 +2189,11 @@ function addSystem({
     shapeColor: shapeColor || DEFAULT_OBJECT_COLOR,
     shapeComments: shapeComments || "",
     attributes: Array.isArray(attributes)
-      ? attributes.map((entry) => ({ attribute: entry.attribute || entry.name || "", entity: entry.entity || "" }))
+      ? attributes.map((entry) => ({
+          attribute: entry.attribute || entry.name || "",
+          entity: entry.entity || "",
+          isSor: !!entry.isSor,
+        }))
       : [],
     api: normalizeApiDetails(apiDetails),
     processMap: normalizeProcessMap(processMap),
@@ -4597,6 +4601,12 @@ function renderEntityList(system, { skipAttributesRefresh = false } = {}) {
 function ensureAttributesArray(system) {
   if (!system.attributes || !Array.isArray(system.attributes)) {
     system.attributes = [];
+  } else {
+    system.attributes = system.attributes.map((entry) => ({
+      attribute: entry?.attribute || entry?.name || "",
+      entity: entry?.entity || "",
+      isSor: !!entry?.isSor,
+    }));
   }
   return system.attributes;
 }
@@ -4988,6 +4998,17 @@ function renderAttributesModal(system) {
     entitySelect.classList.add("cell-input");
     entityCell.appendChild(entitySelect);
 
+    const sorCell = document.createElement("td");
+    sorCell.className = "sor-col";
+    const sorToggle = document.createElement("input");
+    sorToggle.type = "checkbox";
+    sorToggle.className = "cell-input";
+    sorToggle.dataset.index = String(index);
+    sorToggle.dataset.field = "isSor";
+    sorToggle.checked = !!entry.isSor;
+    sorToggle.title = "Mark attribute as system of record";
+    sorCell.appendChild(sorToggle);
+
     const actionsCell = document.createElement("td");
     actionsCell.className = "actions-col";
     const deleteBtn = document.createElement("button");
@@ -4997,7 +5018,7 @@ function renderAttributesModal(system) {
     deleteBtn.dataset.index = String(index);
     actionsCell.appendChild(deleteBtn);
 
-    row.append(attributeCell, entityCell, actionsCell);
+    row.append(attributeCell, entityCell, sorCell, actionsCell);
     fragment.appendChild(row);
   });
 
@@ -5216,14 +5237,15 @@ function handleAttributeTableInput(event) {
   }
   const attributes = ensureAttributesArray(activePanelSystem);
   if (!attributes[index]) {
-    attributes[index] = { attribute: "", entity: "" };
+    attributes[index] = { attribute: "", entity: "", isSor: false };
   }
   const indicesToUpdate = new Set(selectedAttributeRows.size ? selectedAttributeRows : [index]);
   indicesToUpdate.forEach((idx) => {
     if (!attributes[idx]) {
-      attributes[idx] = { attribute: "", entity: "" };
+      attributes[idx] = { attribute: "", entity: "", isSor: false };
     }
-    attributes[idx][field] = target.value;
+    const value = target.type === "checkbox" ? target.checked : target.value;
+    attributes[idx][field] = value;
   });
   refreshAttributeSummaries(activePanelSystem);
 }
@@ -5291,7 +5313,7 @@ function handleAddAttributeRow() {
   if (isEditingLocked()) return;
   if (!activePanelSystem) return;
   const attributes = ensureAttributesArray(activePanelSystem);
-  attributes.push({ attribute: "", entity: attributesModalEntityFilter || "" });
+  attributes.push({ attribute: "", entity: attributesModalEntityFilter || "", isSor: false });
   renderAttributesModal(activePanelSystem);
   refreshAttributeSummaries(activePanelSystem);
 }
@@ -5314,11 +5336,11 @@ function handleProcessAttributesCsv() {
       const attribute = tokens[i];
       if (!attribute) continue;
       const entity = tokens[i + 1] || attributesModalEntityFilter || "";
-      attributes.push({ attribute, entity });
+      attributes.push({ attribute, entity, isSor: false });
     }
   } else {
     tokens.forEach((attribute) => {
-      attributes.push({ attribute, entity: attributesModalEntityFilter || "" });
+      attributes.push({ attribute, entity: attributesModalEntityFilter || "", isSor: false });
     });
   }
   if (attributesCsvInput) {
@@ -9153,7 +9175,11 @@ function serializeState(accessModeOverride, options = {}) {
         : {
             fileUrl: system.fileUrl,
             attributes: Array.isArray(system.attributes)
-              ? system.attributes.map((entry) => ({ attribute: entry.attribute || "", entity: entry.entity || "" }))
+              ? system.attributes.map((entry) => ({
+                  attribute: entry.attribute || "",
+                  entity: entry.entity || "",
+                  isSor: !!entry.isSor,
+                }))
               : [],
           }),
       api: normalizeApiDetails(system.api || {}),

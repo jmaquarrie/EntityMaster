@@ -1856,6 +1856,13 @@ button.ghost {
   table-layout: fixed;
 }
 
+.attributes-table .sor-col,
+.attributes-table th.sor-col,
+.attributes-table td.sor-col {
+  width: 74px;
+  text-align: center;
+}
+
 .attributes-table th,
 .attributes-table td {
   padding: 0.45rem 0.5rem;
@@ -1910,6 +1917,12 @@ button.ghost {
   border-radius: 0;
   font-size: 0.95rem;
   background: transparent;
+}
+
+.attributes-table input[type="checkbox"] {
+  width: auto;
+  margin: 0 auto;
+  display: block;
 }
 
 .cell-input {
