@@ -6372,7 +6372,10 @@ function doesSystemMatchSearch(system) {
       return types.some((type) => type.toLowerCase().includes(query));
     }
     case "entity":
-      return system.entities.some((entity) => entity.name.toLowerCase().includes(query));
+      return (
+        system.entities.some((entity) => entity.name.toLowerCase().includes(query)) ||
+        (system.attributes || []).some((entry) => (entry.entity || "").toLowerCase().includes(query))
+      );
     case "attributes":
       return (system.attributes || []).some((entry) => {
         const raw = (entry.attribute || "").toLowerCase();
