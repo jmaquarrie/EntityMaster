@@ -572,6 +572,7 @@ let platformOwnerFilterText = "";
 let businessOwnerFilterText = "";
 let functionOwnerFilterText = "";
 const functionalConsumerFilters = new Set();
+let filterMatchMode = "or";
 let searchType = "system";
 let searchQuery = "";
 let currentZoom = 1;
@@ -832,6 +833,7 @@ const businessOwnerFilterInput = document.getElementById("businessOwnerFilter");
 const functionOwnerFilterInput = document.getElementById("functionOwnerFilter");
 const functionalConsumerFilterChips = document.getElementById("functionalConsumerFilterChips");
 const searchInput = document.getElementById("searchInput");
+const filterMatchModeSelect = document.getElementById("filterMatchMode");
 const searchTypeSelect = document.getElementById("searchType");
 const apiAvailabilityFilterSelect = document.getElementById("apiAvailabilityFilter");
 const employeeTypeFilterSelect = document.getElementById("employeeTypeFilter");
@@ -1050,6 +1052,7 @@ function applyAccessMode(mode = "full") {
       businessOwnerFilterInput,
       functionOwnerFilterInput,
       searchInput,
+      filterMatchModeSelect,
       searchTypeSelect,
       filterModeSelect,
       filterModeToggleBtn,
@@ -1124,6 +1127,7 @@ function setFilterMode(nextMode) {
 function init() {
   setCanvasDimensions(CANVAS_WIDTH, CANVAS_HEIGHT);
   applyZoom(currentZoom);
+  filterMatchMode = filterMatchModeSelect?.value || "or";
   searchType = searchTypeSelect.value;
   currentColorBy = colorBySelect.value || "none";
   filterMode = filterModeSelect?.value || "fade";
@@ -1247,6 +1251,12 @@ function init() {
   searchTypeSelect.addEventListener("change", (event) => {
     if (isFiltersLocked()) return;
     searchType = event.target.value;
+    selectedSystemId = null;
+    updateHighlights();
+  });
+  filterMatchModeSelect?.addEventListener("change", (event) => {
+    if (isFiltersLocked()) return;
+    filterMatchMode = event.target.value === "and" ? "and" : "or";
     selectedSystemId = null;
     updateHighlights();
   });
@@ -5901,6 +5911,7 @@ function resetFilters({ alsoClearSelection = false } = {}) {
   businessOwnerFilterText = "";
   functionOwnerFilterText = "";
   functionalConsumerFilters.clear();
+  filterMatchMode = "or";
   searchQuery = "";
   sorFilterValue = "any";
   spreadsheetFilterValue = "yes";
@@ -5920,6 +5931,9 @@ function resetFilters({ alsoClearSelection = false } = {}) {
   if (businessOwnerFilterInput) businessOwnerFilterInput.value = "";
   if (functionOwnerFilterInput) functionOwnerFilterInput.value = "";
   renderFunctionalConsumerFilterChips();
+  if (filterMatchModeSelect) {
+    filterMatchModeSelect.value = "or";
+  }
   if (searchInput) searchInput.value = "";
   if (sorFilterSelect) {
     sorFilterSelect.value = "any";
@@ -6227,99 +6241,132 @@ function focusOnSystemRelations(system, mode) {
 }
 
 function systemMatchesFilters(system) {
-  if (activeDomainFilters.size) {
+  const matches = [];
+  const addMatch = (isActive, isMatch) => {
+    if (!isActive) return;
+    matches.push(!!isMatch);
+  };
+
+  const domainActive = activeDomainFilters.size > 0;
+  const domainMatches = (() => {
+    if (!domainActive) return true;
     if (activeDomainFilters.has(DOMAIN_NONE_KEY)) {
-      if (system.domains.size > 0 || activeDomainFilters.size > 1) {
-        return false;
-      }
-    } else {
-      const hasAllDomains = Array.from(activeDomainFilters).every((domain) => system.domains.has(domain));
-      if (!hasAllDomains) {
-        return false;
-      }
+      return system.domains.size === 0 && activeDomainFilters.size === 1;
     }
-  }
-  if (platformOwnerFilterText) {
+    return Array.from(activeDomainFilters).every((domain) => system.domains.has(domain));
+  })();
+  addMatch(domainActive, domainMatches);
+
+  const platformActive = !!platformOwnerFilterText;
+  const platformMatches = (() => {
+    if (!platformActive) return true;
     const ownerValue = (system.platformOwner || "").trim();
     if (platformOwnerFilterText === OWNER_NONE_FILTER) {
-      if (ownerValue) return false;
-    } else if (!ownerValue.toLowerCase().includes(platformOwnerFilterText)) {
-      return false;
+      return !ownerValue;
     }
-  }
-  if (businessOwnerFilterText) {
+    return ownerValue.toLowerCase().includes(platformOwnerFilterText);
+  })();
+  addMatch(platformActive, platformMatches);
+
+  const businessActive = !!businessOwnerFilterText;
+  const businessMatches = (() => {
+    if (!businessActive) return true;
     const ownerValue = (system.businessOwner || "").trim();
     if (businessOwnerFilterText === OWNER_NONE_FILTER) {
-      if (ownerValue) return false;
-    } else if (!ownerValue.toLowerCase().includes(businessOwnerFilterText)) {
-      return false;
+      return !ownerValue;
     }
-  }
-  if (functionOwnerFilterText) {
+    return ownerValue.toLowerCase().includes(businessOwnerFilterText);
+  })();
+  addMatch(businessActive, businessMatches);
+
+  const functionActive = !!functionOwnerFilterText;
+  const functionMatches = (() => {
+    if (!functionActive) return true;
     const ownerValue = (system.functionOwner || "").trim();
     if (functionOwnerFilterText === OWNER_NONE_FILTER) {
-      if (ownerValue) return false;
-    } else if (!ownerValue.toLowerCase().includes(functionOwnerFilterText)) {
-      return false;
+      return !ownerValue;
     }
-  }
-  if (functionalConsumerFilters.size) {
+    return ownerValue.toLowerCase().includes(functionOwnerFilterText);
+  })();
+  addMatch(functionActive, functionMatches);
+
+  const consumersActive = functionalConsumerFilters.size > 0;
+  const consumersMatch = (() => {
+    if (!consumersActive) return true;
     const consumers =
       system.functionalConsumers instanceof Set
         ? system.functionalConsumers
         : new Set(system.functionalConsumers || []);
-    const hasAll = Array.from(functionalConsumerFilters).every((consumer) => consumers.has(consumer));
-    if (!hasAll) return false;
-  }
-  if (sorFilterValue === "yes" && !systemHasSor(system)) {
-    return false;
-  }
-  if (sorFilterValue === "no" && systemHasSor(system)) {
-    return false;
-  }
-  if (spreadsheetFilterValue === "no" && system.isSpreadsheet) {
-    return false;
-  }
-  if (filePresenceFilterValue === "yes" && !(system.fileUrl && system.fileUrl.trim())) {
-    return false;
-  }
-  if (filePresenceFilterValue === "no" && system.fileUrl && system.fileUrl.trim()) {
-    return false;
-  }
-  const levelValue = LEVEL_OPTIONS.includes(String(system.level)) ? String(system.level) : LEVEL_OPTIONS[0];
-  if (!levelFilterSelection.has(levelValue)) {
-    return false;
-  }
-  const apiDetails = ensureApiDetailsOnSystem(system);
-  if (apiAvailabilityFilterValue === "yes" && apiDetails.available !== "yes") {
-    return false;
-  }
-  if (apiAvailabilityFilterValue === "no" && apiDetails.available !== "no") {
-    return false;
-  }
-  const employeeTypes =
-    system.employeeTypes instanceof Set
-      ? system.employeeTypes
-      : new Set(Array.isArray(system.employeeTypes) ? system.employeeTypes : []);
-  if (employeeTypeFilterValue !== "any") {
+    return Array.from(functionalConsumerFilters).every((consumer) => consumers.has(consumer));
+  })();
+  addMatch(consumersActive, consumersMatch);
+
+  const sorActive = sorFilterValue !== "any";
+  const sorMatch = (() => {
+    if (!sorActive) return true;
+    const hasSor = systemHasSor(system);
+    return sorFilterValue === "yes" ? hasSor : !hasSor;
+  })();
+  addMatch(sorActive, sorMatch);
+
+  const spreadsheetActive = spreadsheetFilterValue !== "yes";
+  const spreadsheetMatch = (() => {
+    if (!spreadsheetActive) return true;
+    return spreadsheetFilterValue === "no" ? !system.isSpreadsheet : true;
+  })();
+  addMatch(spreadsheetActive, spreadsheetMatch);
+
+  const filePresenceActive = filePresenceFilterValue !== "any";
+  const filePresenceMatch = (() => {
+    if (!filePresenceActive) return true;
+    const hasFile = !!(system.fileUrl && system.fileUrl.trim());
+    return filePresenceFilterValue === "yes" ? hasFile : !hasFile;
+  })();
+  addMatch(filePresenceActive, filePresenceMatch);
+
+  const levelActive = levelFilterSelection.size !== LEVEL_OPTIONS.length;
+  const levelMatch = (() => {
+    const levelValue = LEVEL_OPTIONS.includes(String(system.level)) ? String(system.level) : LEVEL_OPTIONS[0];
+    return levelFilterSelection.has(levelValue);
+  })();
+  addMatch(levelActive, levelMatch);
+
+  const apiActive = apiAvailabilityFilterValue !== "any";
+  const apiMatch = (() => {
+    if (!apiActive) return true;
+    const apiDetails = ensureApiDetailsOnSystem(system);
+    return apiAvailabilityFilterValue === "yes" ? apiDetails.available === "yes" : apiDetails.available === "no";
+  })();
+  addMatch(apiActive, apiMatch);
+
+  const employeeActive = employeeTypeFilterValue !== "any";
+  const employeeMatch = (() => {
+    if (!employeeActive) return true;
+    const employeeTypes =
+      system.employeeTypes instanceof Set
+        ? system.employeeTypes
+        : new Set(Array.isArray(system.employeeTypes) ? system.employeeTypes : []);
     const hasNone = employeeTypes.size === 0 || employeeTypes.has("None");
-    if (employeeTypeFilterValue === "none" && !hasNone) {
-      return false;
+    if (employeeTypeFilterValue === "none") {
+      return hasNone;
     }
-    if (employeeTypeFilterValue !== "none" && !employeeTypes.has(employeeTypeFilterValue)) {
-      return false;
-    }
-  }
-  if (waitingOnInfoFilterValue === "yes" && !system.waitingOnInfo) {
-    return false;
-  }
-  if (waitingOnInfoFilterValue === "no" && system.waitingOnInfo) {
-    return false;
-  }
-  if (searchQuery) {
-    return doesSystemMatchSearch(system);
-  }
-  return true;
+    return employeeTypes.has(employeeTypeFilterValue);
+  })();
+  addMatch(employeeActive, employeeMatch);
+
+  const waitingActive = waitingOnInfoFilterValue !== "any";
+  const waitingMatch = (() => {
+    if (!waitingActive) return true;
+    return waitingOnInfoFilterValue === "yes" ? system.waitingOnInfo : !system.waitingOnInfo;
+  })();
+  addMatch(waitingActive, waitingMatch);
+
+  const searchActive = !!searchQuery;
+  const searchMatch = searchActive ? doesSystemMatchSearch(system) : true;
+  addMatch(searchActive, searchMatch);
+
+  if (!matches.length) return true;
+  return filterMatchMode === "and" ? matches.every(Boolean) : matches.some(Boolean);
 }
 
 function hasActiveFilters() {
@@ -9225,6 +9272,7 @@ function serializeState(accessModeOverride, options = {}) {
       businessOwner: businessOwnerFilterInput?.value || "",
       functionOwner: functionOwnerFilterInput?.value || "",
       functionalConsumers: Array.from(functionalConsumerFilters),
+      filterMatchMode,
       search: searchInput?.value || "",
       searchType,
       filterMode,
@@ -9394,6 +9442,7 @@ function applyFilterState(filterState = {}) {
     ? filterState.functionalConsumers
     : [];
   const searchValue = filterState.search || "";
+  const matchMode = filterState.filterMatchMode || "or";
   const spreadsheetFilter = filterState.spreadsheets || "yes";
   const filePresenceFilter = filterState.filePresence || "any";
   const apiAvailabilityFilter = filterState.apiAvailability || "any";
@@ -9411,6 +9460,7 @@ function applyFilterState(filterState = {}) {
   functionOwnerFilterText = normalizeOwnerFilterValue(functionOwnerValue);
   functionalConsumerFilters.clear();
   functionalConsumerValues.forEach((value) => functionalConsumerFilters.add(value));
+  filterMatchMode = matchMode === "and" ? "and" : "or";
   searchQuery = searchValue.trim().toLowerCase();
   searchType = filterState.searchType || searchType;
   filterMode = filterState.filterMode || filterMode;
@@ -9429,6 +9479,7 @@ function applyFilterState(filterState = {}) {
   if (businessOwnerFilterInput) businessOwnerFilterInput.value = businessOwnerValue;
   if (functionOwnerFilterInput) functionOwnerFilterInput.value = functionOwnerValue;
   renderFunctionalConsumerFilterChips();
+  if (filterMatchModeSelect) filterMatchModeSelect.value = filterMatchMode;
   if (searchInput) searchInput.value = searchValue;
   if (searchTypeSelect) searchTypeSelect.value = searchType;
   if (filterModeSelect) filterModeSelect.value = filterMode;
@@ -9522,6 +9573,8 @@ function formatSaveEntryName(fileName, date) {
       if (filterState.functionOwner) pruned.functionOwner = filterState.functionOwner;
       if (Array.isArray(filterState.functionalConsumers) && filterState.functionalConsumers.length)
         pruned.functionalConsumers = filterState.functionalConsumers;
+      if (filterState.filterMatchMode && filterState.filterMatchMode !== "or")
+        pruned.filterMatchMode = filterState.filterMatchMode;
       if (filterState.sor && filterState.sor !== "any") pruned.sor = filterState.sor;
       if (filterState.spreadsheets && filterState.spreadsheets !== "yes") pruned.spreadsheets = filterState.spreadsheets;
       if (filterState.filePresence && filterState.filePresence !== "any") pruned.filePresence = filterState.filePresence;
