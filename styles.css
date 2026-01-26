@@ -78,7 +78,8 @@ html::-webkit-scrollbar,
 
 .add-menu-popover {
   position: absolute;
-  right: 0;
+  left: 0;
+  right: auto;
   bottom: calc(100% + 0.5rem);
   background: #ffffff;
   border-radius: 14px;
@@ -1006,6 +1007,10 @@ button.ghost {
   z-index: 9;
   max-height: calc(100vh - 2.5rem);
   overflow: hidden;
+}
+
+#filterPanel {
+  z-index: 14;
 }
 
 .group-sidebar {
