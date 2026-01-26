@@ -106,128 +106,156 @@
             Reset
           </button>
           <div class="sidebar-content">
-          <div class="sidebar-section">
-            <label class="field">
-              <span>Search Type</span>
-              <select id="filterMatchMode">
-                <option value="or">Or</option>
-                <option value="and">And</option>
-              </select>
-            </label>
-            <label class="field">
-              <span>Search Field</span>
-              <select id="searchType">
-                <option value="system">System</option>
-                <option value="domain">Domain</option>
-                <option value="platformOwner">Platform Owner</option>
-                <option value="businessOwner">Business Owner</option>
-                <option value="functionOwner">Function Owner</option>
-                <option value="employeeType">Employee Type</option>
-                <option value="entity">Entity</option>
-                <option value="attributes">Attributes</option>
-              </select>
-            </label>
-            <label class="field">
-              <span>Search</span>
-              <input type="text" id="searchInput" placeholder="Search…" />
-            </label>
-          </div>
-          <div class="sidebar-section">
-            <div class="section-title">Domains</div>
-            <div id="globalDomainChips" class="domain-chips"></div>
-          </div>
-          <div class="sidebar-section sidebar-grid compact-section">
-            <label class="field compact">
-              <span>Platform Owner</span>
-              <input
-                type="text"
-                id="platformOwnerFilter"
-                placeholder="Filter by platform owner"
-                list="platformOwnerSuggestions"
-              />
-            </label>
-            <label class="field compact">
-              <span>Business Owner</span>
-              <input
-                type="text"
-                id="businessOwnerFilter"
-                placeholder="Filter by business owner"
-                list="businessOwnerSuggestions"
-              />
-            </label>
-            <label class="field compact">
-              <span>Function Owner</span>
-              <input
-                type="text"
-                id="functionOwnerFilter"
-                placeholder="Filter by function owner"
-                list="functionOwnerOptions"
-              />
-            </label>
-          </div>
-          <div class="sidebar-section">
-            <div class="section-title">Functional Consumers</div>
-            <div id="functionalConsumerFilterChips" class="domain-chips"></div>
-          </div>
-          <div class="sidebar-section sidebar-grid compact-section">
-            <label class="field compact">
-              <span>System of Record</span>
-              <select id="sorFilter">
-                <option value="any">Any</option>
-                <option value="yes">Yes</option>
-                <option value="no">No</option>
-              </select>
-            </label>
-            <label class="field compact">
-              <span>Include spreadsheets?</span>
-              <select id="spreadsheetFilter">
-                <option value="yes">Yes</option>
-                <option value="no">No</option>
-              </select>
-            </label>
-            <label class="field compact">
-              <span>Has file?</span>
-              <select id="filePresenceFilter">
-                <option value="any">Any</option>
-                <option value="yes">Yes</option>
-                <option value="no">No</option>
-              </select>
-            </label>
-            <label class="field compact">
-              <span>Has API?</span>
-              <select id="apiAvailabilityFilter">
-                <option value="any">Any</option>
-                <option value="yes">Yes</option>
-                <option value="no">No</option>
-              </select>
-            </label>
-            <div class="field compact level-filter" id="levelFilterControls" role="group" aria-label="Level filter">
-              <span>Level</span>
-              <div class="level-chip-row" aria-live="polite">
-                <button type="button" data-level="1" class="level-chip active" aria-pressed="true">1</button>
-                <button type="button" data-level="2" class="level-chip active" aria-pressed="true">2</button>
-                <button type="button" data-level="3" class="level-chip active" aria-pressed="true">3</button>
-                <button type="button" data-level="4" class="level-chip active" aria-pressed="true">4</button>
-              </div>
+          <div class="sidebar-section filter-section" data-section="search">
+            <button class="section-toggle" type="button" aria-expanded="true">
+              <span class="section-title">Search</span>
+              <span class="toggle-icon" aria-hidden="true">−</span>
+            </button>
+            <div class="section-body">
+              <label class="field">
+                <span>Search Type</span>
+                <select id="filterMatchMode">
+                  <option value="or">Or</option>
+                  <option value="and">And</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Search Field</span>
+                <select id="searchType">
+                  <option value="system">System</option>
+                  <option value="domain">Domain</option>
+                  <option value="platformOwner">Platform Owner</option>
+                  <option value="businessOwner">Business Owner</option>
+                  <option value="functionOwner">Function Owner</option>
+                  <option value="employeeType">Employee Type</option>
+                  <option value="entity">Entity</option>
+                  <option value="attributes">Attributes</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Search</span>
+                <input type="text" id="searchInput" placeholder="Search…" />
+              </label>
             </div>
-            <label class="field compact">
-              <span>Employee Type</span>
-              <select id="employeeTypeFilter">
-                <option value="any">Any</option>
-                <option value="PAYE">PAYE</option>
-                <option value="CIS">CIS</option>
-                <option value="Subcontractor">Subcontractor</option>
-                <option value="none">None/Unset</option>
-              </select>
-            </label>
-            <label class="field compact">
-              <span>Waiting on Info</span>
-              <select id="waitingOnInfoFilter">
-                <option value="any">Any</option>
-                <option value="yes">Yes</option>
-                <option value="no">No</option>
-              </select>
-            </label>
+          </div>
+          <div class="sidebar-section filter-section" data-section="domains">
+            <button class="section-toggle" type="button" aria-expanded="true">
+              <span class="section-title">Domains</span>
+              <span class="toggle-icon" aria-hidden="true">−</span>
+            </button>
+            <div class="section-body">
+              <div id="globalDomainChips" class="domain-chips"></div>
+            </div>
+          </div>
+          <div class="sidebar-section filter-section" data-section="owners">
+            <button class="section-toggle" type="button" aria-expanded="true">
+              <span class="section-title">Owners</span>
+              <span class="toggle-icon" aria-hidden="true">−</span>
+            </button>
+            <div class="section-body sidebar-grid compact-section">
+              <label class="field compact">
+                <span>Platform Owner</span>
+                <input
+                  type="text"
+                  id="platformOwnerFilter"
+                  placeholder="Filter by platform owner"
+                  list="platformOwnerSuggestions"
+                />
+              </label>
+              <label class="field compact">
+                <span>Business Owner</span>
+                <input
+                  type="text"
+                  id="businessOwnerFilter"
+                  placeholder="Filter by business owner"
+                  list="businessOwnerSuggestions"
+                />
+              </label>
+              <label class="field compact">
+                <span>Function Owner</span>
+                <input
+                  type="text"
+                  id="functionOwnerFilter"
+                  placeholder="Filter by function owner"
+                  list="functionOwnerOptions"
+                />
+              </label>
+            </div>
+          </div>
+          <div class="sidebar-section filter-section" data-section="consumers">
+            <button class="section-toggle" type="button" aria-expanded="true">
+              <span class="section-title">Functional Consumers</span>
+              <span class="toggle-icon" aria-hidden="true">−</span>
+            </button>
+            <div class="section-body">
+              <div id="functionalConsumerFilterChips" class="domain-chips"></div>
+            </div>
+          </div>
+          <div class="sidebar-section filter-section" data-section="flags">
+            <button class="section-toggle" type="button" aria-expanded="true">
+              <span class="section-title">Status &amp; Flags</span>
+              <span class="toggle-icon" aria-hidden="true">−</span>
+            </button>
+            <div class="section-body sidebar-grid compact-section">
+              <label class="field compact">
+                <span>System of Record</span>
+                <select id="sorFilter">
+                  <option value="any">Any</option>
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              </label>
+              <label class="field compact">
+                <span>Include spreadsheets?</span>
+                <select id="spreadsheetFilter">
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              </label>
+              <label class="field compact">
+                <span>Has file?</span>
+                <select id="filePresenceFilter">
+                  <option value="any">Any</option>
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              </label>
+              <label class="field compact">
+                <span>Has API?</span>
+                <select id="apiAvailabilityFilter">
+                  <option value="any">Any</option>
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              </label>
+              <div class="field compact level-filter" id="levelFilterControls" role="group" aria-label="Level filter">
+                <span>Level</span>
+                <div class="level-chip-row" aria-live="polite">
+                  <button type="button" data-level="1" class="level-chip active" aria-pressed="true">1</button>
+                  <button type="button" data-level="2" class="level-chip active" aria-pressed="true">2</button>
+                  <button type="button" data-level="3" class="level-chip active" aria-pressed="true">3</button>
+                  <button type="button" data-level="4" class="level-chip active" aria-pressed="true">4</button>
+                </div>
+              </div>
+              <label class="field compact">
+                <span>Employee Type</span>
+                <select id="employeeTypeFilter">
+                  <option value="any">Any</option>
+                  <option value="PAYE">PAYE</option>
+                  <option value="CIS">CIS</option>
+                  <option value="Subcontractor">Subcontractor</option>
+                  <option value="none">None/Unset</option>
+                </select>
+              </label>
+              <label class="field compact">
+                <span>Waiting on Info</span>
+                <select id="waitingOnInfoFilter">
+                  <option value="any">Any</option>
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              </label>
+            </div>
           </div>
           <div class="sidebar-actions">
             <button id="resetFiltersBtn" type="button">Reset</button>

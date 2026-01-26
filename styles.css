@@ -1159,6 +1159,46 @@ button.ghost {
   gap: 0.5rem;
 }
 
+#filterPanel .filter-section {
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid rgba(143, 154, 192, 0.2);
+}
+
+#filterPanel .filter-section:last-of-type {
+  border-bottom: none;
+}
+
+.section-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.section-toggle .toggle-icon {
+  font-size: 0.9rem;
+  color: #4b5069;
+}
+
+#filterPanel .section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+#filterPanel .section-body.sidebar-grid {
+  gap: 0.5rem 0.75rem;
+}
+
+#filterPanel .filter-section.collapsed .section-body {
+  display: none;
+}
+
 #filterPanel .sidebar-section {
   gap: 0.35rem;
 }

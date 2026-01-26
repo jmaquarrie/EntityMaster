@@ -1254,6 +1254,20 @@ function init() {
     selectedSystemId = null;
     updateHighlights();
   });
+  filterPanel?.addEventListener("click", (event) => {
+    const toggleBtn = event.target.closest(".section-toggle");
+    if (!toggleBtn || !filterPanel.contains(toggleBtn)) return;
+    const section = toggleBtn.closest(".filter-section");
+    if (!section) return;
+    const expanded = toggleBtn.getAttribute("aria-expanded") === "true";
+    const nextExpanded = !expanded;
+    toggleBtn.setAttribute("aria-expanded", nextExpanded ? "true" : "false");
+    section.classList.toggle("collapsed", !nextExpanded);
+    const icon = toggleBtn.querySelector(".toggle-icon");
+    if (icon) {
+      icon.textContent = nextExpanded ? "−" : "+";
+    }
+  });
   filterMatchModeSelect?.addEventListener("change", (event) => {
     if (isFiltersLocked()) return;
     filterMatchMode = event.target.value === "and" ? "and" : "or";
@@ -6250,10 +6264,18 @@ function systemMatchesFilters(system) {
   const domainActive = activeDomainFilters.size > 0;
   const domainMatches = (() => {
     if (!domainActive) return true;
-    if (activeDomainFilters.has(DOMAIN_NONE_KEY)) {
-      return system.domains.size === 0 && activeDomainFilters.size === 1;
+    const hasNone = activeDomainFilters.has(DOMAIN_NONE_KEY);
+    const selectedDomains = Array.from(activeDomainFilters).filter((domain) => domain !== DOMAIN_NONE_KEY);
+    const hasNoDomains = system.domains.size === 0;
+    if (filterMatchMode === "and") {
+      if (hasNone) {
+        return hasNoDomains && selectedDomains.length === 0;
+      }
+      return selectedDomains.every((domain) => system.domains.has(domain));
     }
-    return Array.from(activeDomainFilters).every((domain) => system.domains.has(domain));
+    if (hasNone && hasNoDomains) return true;
+    if (!selectedDomains.length) return hasNoDomains;
+    return selectedDomains.some((domain) => system.domains.has(domain));
   })();
   addMatch(domainActive, domainMatches);
 
@@ -6297,7 +6319,10 @@ function systemMatchesFilters(system) {
       system.functionalConsumers instanceof Set
         ? system.functionalConsumers
         : new Set(system.functionalConsumers || []);
-    return Array.from(functionalConsumerFilters).every((consumer) => consumers.has(consumer));
+    const selectedConsumers = Array.from(functionalConsumerFilters);
+    return filterMatchMode === "and"
+      ? selectedConsumers.every((consumer) => consumers.has(consumer))
+      : selectedConsumers.some((consumer) => consumers.has(consumer));
   })();
   addMatch(consumersActive, consumersMatch);
 
