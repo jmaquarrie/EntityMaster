@@ -52,9 +52,14 @@
         </div>
         <div class="canvas-toolbar" aria-label="Canvas controls">
               <div class="toolbar-actions">
-                <button id="addSystemBtn">Add System</button>
-                <button id="addObjectBtn" class="secondary">Add Object</button>
-                <button id="addTextBtn" class="secondary">Add Text</button>
+                <div class="add-menu">
+                  <button id="addMenuBtn" aria-expanded="false" aria-haspopup="true">Add +</button>
+                  <div id="addMenu" class="add-menu-popover hidden" role="menu" aria-label="Add options">
+                    <button id="addSystemBtn" role="menuitem">Add System</button>
+                    <button id="addObjectBtn" role="menuitem">Add Object</button>
+                    <button id="addTextBtn" role="menuitem">Add Text</button>
+                  </div>
+                </div>
                 <span id="fileNameDisplay" class="file-name" title="Click to rename">Untitled</span>
               </div>
             <div class="zoom-controls" aria-label="Zoom">
@@ -106,10 +111,10 @@
             Reset
           </button>
           <div class="sidebar-content">
-          <div class="sidebar-section filter-section" data-section="search">
-            <button class="section-toggle" type="button" aria-expanded="true">
+          <div class="sidebar-section filter-section collapsed" data-section="search">
+            <button class="section-toggle" type="button" aria-expanded="false">
               <span class="section-title">Search</span>
-              <span class="toggle-icon" aria-hidden="true">−</span>
+              <span class="toggle-icon" aria-hidden="true">+</span>
             </button>
             <div class="section-body">
               <label class="field">
@@ -138,19 +143,19 @@
               </label>
             </div>
           </div>
-          <div class="sidebar-section filter-section" data-section="domains">
-            <button class="section-toggle" type="button" aria-expanded="true">
+          <div class="sidebar-section filter-section collapsed" data-section="domains">
+            <button class="section-toggle" type="button" aria-expanded="false">
               <span class="section-title">Domains</span>
-              <span class="toggle-icon" aria-hidden="true">−</span>
+              <span class="toggle-icon" aria-hidden="true">+</span>
             </button>
             <div class="section-body">
               <div id="globalDomainChips" class="domain-chips"></div>
             </div>
           </div>
-          <div class="sidebar-section filter-section" data-section="owners">
-            <button class="section-toggle" type="button" aria-expanded="true">
+          <div class="sidebar-section filter-section collapsed" data-section="owners">
+            <button class="section-toggle" type="button" aria-expanded="false">
               <span class="section-title">Owners</span>
-              <span class="toggle-icon" aria-hidden="true">−</span>
+              <span class="toggle-icon" aria-hidden="true">+</span>
             </button>
             <div class="section-body sidebar-grid compact-section">
               <label class="field compact">
@@ -182,19 +187,19 @@
               </label>
             </div>
           </div>
-          <div class="sidebar-section filter-section" data-section="consumers">
-            <button class="section-toggle" type="button" aria-expanded="true">
+          <div class="sidebar-section filter-section collapsed" data-section="consumers">
+            <button class="section-toggle" type="button" aria-expanded="false">
               <span class="section-title">Functional Consumers</span>
-              <span class="toggle-icon" aria-hidden="true">−</span>
+              <span class="toggle-icon" aria-hidden="true">+</span>
             </button>
             <div class="section-body">
               <div id="functionalConsumerFilterChips" class="domain-chips"></div>
             </div>
           </div>
-          <div class="sidebar-section filter-section" data-section="flags">
-            <button class="section-toggle" type="button" aria-expanded="true">
+          <div class="sidebar-section filter-section collapsed" data-section="flags">
+            <button class="section-toggle" type="button" aria-expanded="false">
               <span class="section-title">Status &amp; Flags</span>
-              <span class="toggle-icon" aria-hidden="true">−</span>
+              <span class="toggle-icon" aria-hidden="true">+</span>
             </button>
             <div class="section-body sidebar-grid compact-section">
               <label class="field compact">

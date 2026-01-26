@@ -747,6 +747,27 @@ function toggleElementsDisabled(elements, disabled) {
     });
 }
 
+function openAddMenu() {
+  if (!addMenu) return;
+  addMenu.classList.remove("hidden");
+  addMenuBtn?.setAttribute("aria-expanded", "true");
+}
+
+function closeAddMenu() {
+  if (!addMenu) return;
+  addMenu.classList.add("hidden");
+  addMenuBtn?.setAttribute("aria-expanded", "false");
+}
+
+function toggleAddMenu() {
+  if (!addMenu) return;
+  if (addMenu.classList.contains("hidden")) {
+    openAddMenu();
+  } else {
+    closeAddMenu();
+  }
+}
+
 function syncApiGlowControls() {
   if (!apiGlowToggleBtn) return;
   apiGlowToggleBtn.textContent = apiGlowEnabled ? "API On" : "API Off";
@@ -841,6 +862,8 @@ const fileUrlInput = document.getElementById("fileUrlInput");
 const zoomLabel = document.getElementById("zoomLabel");
 const zoomButtons = document.querySelectorAll(".zoom-btn");
 const colorBySelect = document.getElementById("colorBySelect");
+const addMenuBtn = document.getElementById("addMenuBtn");
+const addMenu = document.getElementById("addMenu");
 const filterPanel = document.getElementById("filterPanel");
 const filterPanelToggle = document.getElementById("filterPanelToggle");
 const filterToggleIcon = filterPanelToggle?.querySelector(".toggle-icon");
@@ -1148,6 +1171,7 @@ function init() {
   renderFunctionalConsumerFilterChips();
   syncApiGlowControls();
   syncLevelFilterUi();
+  closeAddMenu();
 
   refreshDomainOptionsUi();
   panelDomainChoices.addEventListener("change", handleDomainSelection);
@@ -1155,12 +1179,23 @@ function init() {
   functionalConsumerFilterChips?.addEventListener("click", handleFunctionalConsumerFilterClick);
   canvas.addEventListener("pointerdown", handleCanvasPointerDown);
   createSelectionBox();
+  addMenuBtn?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleAddMenu();
+  });
   addSystemBtn.addEventListener("click", () => {
     if (isEditingLocked()) return;
     addSystem();
+    closeAddMenu();
   });
-  addObjectBtn?.addEventListener("click", handleAddObjectClick);
-  addTextBtn?.addEventListener("click", handleAddTextClick);
+  addObjectBtn?.addEventListener("click", (event) => {
+    handleAddObjectClick(event);
+    closeAddMenu();
+  });
+  addTextBtn?.addEventListener("click", (event) => {
+    handleAddTextClick(event);
+    closeAddMenu();
+  });
   fileNameDisplay?.addEventListener("click", beginFileNameEdit);
   fileNameDisplay?.addEventListener("keydown", handleFileNameKeyDown);
   fileNameDisplay?.addEventListener("blur", commitFileNameEdit);
@@ -1202,6 +1237,11 @@ function init() {
   closeProcessMapModalBtn?.addEventListener("click", closeProcessMapModal);
   canvas.addEventListener("click", handleCanvasClick);
   document.addEventListener("pointerdown", (event) => {
+    if (addMenu && !addMenu.classList.contains("hidden")) {
+      if (!event.target.closest(".add-menu")) {
+        closeAddMenu();
+      }
+    }
     if (!event.target.closest(".text-box")) {
       setActiveTextBox(null);
     }
