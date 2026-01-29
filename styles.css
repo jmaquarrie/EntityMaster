@@ -1010,7 +1010,11 @@ button.ghost {
 }
 
 #filterPanel {
-  z-index: 14;
+  z-index: 13;
+}
+
+#dataTableModal {
+  z-index: 20;
 }
 
 .group-sidebar {
