@@ -479,6 +479,7 @@ const OBJECT_TYPES = {
 const connections = [];
 const connectionGraph = { incoming: new Map(), outgoing: new Map(), dirty: true };
 const groups = [];
+let attributeStandardisationGroups = [];
 
 function registerSystemIndex(system) {
   if (!system?.id) return;
@@ -571,6 +572,7 @@ let platformOwnerFilterText = "";
 let businessOwnerFilterText = "";
 let functionOwnerFilterText = "";
 const functionalConsumerFilters = new Set();
+let filterMatchMode = "or";
 let searchType = "system";
 let searchQuery = "";
 let currentZoom = 1;
@@ -745,6 +747,27 @@ function toggleElementsDisabled(elements, disabled) {
     });
 }
 
+function openAddMenu() {
+  if (!addMenu) return;
+  addMenu.classList.remove("hidden");
+  addMenuBtn?.setAttribute("aria-expanded", "true");
+}
+
+function closeAddMenu() {
+  if (!addMenu) return;
+  addMenu.classList.add("hidden");
+  addMenuBtn?.setAttribute("aria-expanded", "false");
+}
+
+function toggleAddMenu() {
+  if (!addMenu) return;
+  if (addMenu.classList.contains("hidden")) {
+    openAddMenu();
+  } else {
+    closeAddMenu();
+  }
+}
+
 function syncApiGlowControls() {
   if (!apiGlowToggleBtn) return;
   apiGlowToggleBtn.textContent = apiGlowEnabled ? "API On" : "API Off";
@@ -831,6 +854,7 @@ const businessOwnerFilterInput = document.getElementById("businessOwnerFilter");
 const functionOwnerFilterInput = document.getElementById("functionOwnerFilter");
 const functionalConsumerFilterChips = document.getElementById("functionalConsumerFilterChips");
 const searchInput = document.getElementById("searchInput");
+const filterMatchModeSelect = document.getElementById("filterMatchMode");
 const searchTypeSelect = document.getElementById("searchType");
 const apiAvailabilityFilterSelect = document.getElementById("apiAvailabilityFilter");
 const employeeTypeFilterSelect = document.getElementById("employeeTypeFilter");
@@ -838,6 +862,8 @@ const fileUrlInput = document.getElementById("fileUrlInput");
 const zoomLabel = document.getElementById("zoomLabel");
 const zoomButtons = document.querySelectorAll(".zoom-btn");
 const colorBySelect = document.getElementById("colorBySelect");
+const addMenuBtn = document.getElementById("addMenuBtn");
+const addMenu = document.getElementById("addMenu");
 const filterPanel = document.getElementById("filterPanel");
 const filterPanelToggle = document.getElementById("filterPanelToggle");
 const filterToggleIcon = filterPanelToggle?.querySelector(".toggle-icon");
@@ -891,6 +917,12 @@ const redoActionBtn = document.getElementById("redoActionBtn");
 const settingsBtn = document.getElementById("settingsBtn");
 const settingsModal = document.getElementById("settingsModal");
 const closeSettingsModalBtn = document.getElementById("closeSettingsModal");
+const openDataStandardisationBtn = document.getElementById("openDataStandardisationBtn");
+const dataStandardisationModal = document.getElementById("dataStandardisationModal");
+const dataStandardisationGroups = document.getElementById("dataStandardisationGroups");
+const addDataGroupBtn = document.getElementById("addDataGroupBtn");
+const saveDataStandardisationBtn = document.getElementById("saveDataStandardisationBtn");
+const closeDataStandardisationModalBtn = document.getElementById("closeDataStandardisationModal");
 const groupColorModal = document.getElementById("groupColorModal");
 const groupNameInput = document.getElementById("groupNameInput");
 const groupColorInput = document.getElementById("groupColorInput");
@@ -1043,6 +1075,7 @@ function applyAccessMode(mode = "full") {
       businessOwnerFilterInput,
       functionOwnerFilterInput,
       searchInput,
+      filterMatchModeSelect,
       searchTypeSelect,
       filterModeSelect,
       filterModeToggleBtn,
@@ -1117,6 +1150,7 @@ function setFilterMode(nextMode) {
 function init() {
   setCanvasDimensions(CANVAS_WIDTH, CANVAS_HEIGHT);
   applyZoom(currentZoom);
+  filterMatchMode = filterMatchModeSelect?.value || "or";
   searchType = searchTypeSelect.value;
   currentColorBy = colorBySelect.value || "none";
   filterMode = filterModeSelect?.value || "fade";
@@ -1137,6 +1171,7 @@ function init() {
   renderFunctionalConsumerFilterChips();
   syncApiGlowControls();
   syncLevelFilterUi();
+  closeAddMenu();
 
   refreshDomainOptionsUi();
   panelDomainChoices.addEventListener("change", handleDomainSelection);
@@ -1144,12 +1179,23 @@ function init() {
   functionalConsumerFilterChips?.addEventListener("click", handleFunctionalConsumerFilterClick);
   canvas.addEventListener("pointerdown", handleCanvasPointerDown);
   createSelectionBox();
+  addMenuBtn?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleAddMenu();
+  });
   addSystemBtn.addEventListener("click", () => {
     if (isEditingLocked()) return;
     addSystem();
+    closeAddMenu();
   });
-  addObjectBtn?.addEventListener("click", handleAddObjectClick);
-  addTextBtn?.addEventListener("click", handleAddTextClick);
+  addObjectBtn?.addEventListener("click", (event) => {
+    handleAddObjectClick(event);
+    closeAddMenu();
+  });
+  addTextBtn?.addEventListener("click", (event) => {
+    handleAddTextClick(event);
+    closeAddMenu();
+  });
   fileNameDisplay?.addEventListener("click", beginFileNameEdit);
   fileNameDisplay?.addEventListener("keydown", handleFileNameKeyDown);
   fileNameDisplay?.addEventListener("blur", commitFileNameEdit);
@@ -1191,6 +1237,11 @@ function init() {
   closeProcessMapModalBtn?.addEventListener("click", closeProcessMapModal);
   canvas.addEventListener("click", handleCanvasClick);
   document.addEventListener("pointerdown", (event) => {
+    if (addMenu && !addMenu.classList.contains("hidden")) {
+      if (!event.target.closest(".add-menu")) {
+        closeAddMenu();
+      }
+    }
     if (!event.target.closest(".text-box")) {
       setActiveTextBox(null);
     }
@@ -1240,6 +1291,26 @@ function init() {
   searchTypeSelect.addEventListener("change", (event) => {
     if (isFiltersLocked()) return;
     searchType = event.target.value;
+    selectedSystemId = null;
+    updateHighlights();
+  });
+  filterPanel?.addEventListener("click", (event) => {
+    const toggleBtn = event.target.closest(".section-toggle");
+    if (!toggleBtn || !filterPanel.contains(toggleBtn)) return;
+    const section = toggleBtn.closest(".filter-section");
+    if (!section) return;
+    const expanded = toggleBtn.getAttribute("aria-expanded") === "true";
+    const nextExpanded = !expanded;
+    toggleBtn.setAttribute("aria-expanded", nextExpanded ? "true" : "false");
+    section.classList.toggle("collapsed", !nextExpanded);
+    const icon = toggleBtn.querySelector(".toggle-icon");
+    if (icon) {
+      icon.textContent = nextExpanded ? "−" : "+";
+    }
+  });
+  filterMatchModeSelect?.addEventListener("change", (event) => {
+    if (isFiltersLocked()) return;
+    filterMatchMode = event.target.value === "and" ? "and" : "or";
     selectedSystemId = null;
     updateHighlights();
   });
@@ -1474,6 +1545,18 @@ function init() {
   connectionLabelField?.addEventListener("blur", commitConnectionLabel);
   settingsBtn?.addEventListener("click", openSettingsModal);
   closeSettingsModalBtn?.addEventListener("click", closeSettingsModal);
+  openDataStandardisationBtn?.addEventListener("click", openDataStandardisationModal);
+  addDataGroupBtn?.addEventListener("click", addStandardisationGroup);
+  saveDataStandardisationBtn?.addEventListener("click", closeDataStandardisationModal);
+  closeDataStandardisationModalBtn?.addEventListener("click", closeDataStandardisationModal);
+  dataStandardisationGroups?.addEventListener("click", handleStandardisationGroupClick);
+  dataStandardisationGroups?.addEventListener("change", handleStandardisationGroupChange);
+  dataStandardisationGroups?.addEventListener("input", handleStandardisationGroupInput);
+  dataStandardisationModal?.addEventListener("click", (event) => {
+    if (event.target === dataStandardisationModal) {
+      closeDataStandardisationModal();
+    }
+  });
   settingsModal?.addEventListener("click", (event) => {
     if (event.target === settingsModal) {
       closeSettingsModal();
@@ -1790,7 +1873,7 @@ function renderVisualAttributeOptions(sourceSystems = systems) {
   sourceSystems.forEach((system) => {
     const seenForSystem = new Set();
     (system.attributes || []).forEach((entry) => {
-      const name = (entry.attribute || "").trim();
+      const name = getStandardisedAttributeName(entry.attribute);
       if (!name) return;
       seenForSystem.add(name);
     });
@@ -2170,7 +2253,11 @@ function addSystem({
     shapeColor: shapeColor || DEFAULT_OBJECT_COLOR,
     shapeComments: shapeComments || "",
     attributes: Array.isArray(attributes)
-      ? attributes.map((entry) => ({ attribute: entry.attribute || entry.name || "", entity: entry.entity || "" }))
+      ? attributes.map((entry) => ({
+          attribute: entry.attribute || entry.name || "",
+          entity: entry.entity || "",
+          isSor: !!entry.isSor,
+        }))
       : [],
     api: normalizeApiDetails(apiDetails),
     processMap: normalizeProcessMap(processMap),
@@ -4578,8 +4665,282 @@ function renderEntityList(system, { skipAttributesRefresh = false } = {}) {
 function ensureAttributesArray(system) {
   if (!system.attributes || !Array.isArray(system.attributes)) {
     system.attributes = [];
+  } else {
+    system.attributes = system.attributes.map((entry) => ({
+      attribute: entry?.attribute || entry?.name || "",
+      entity: entry?.entity || "",
+      isSor: !!entry?.isSor,
+    }));
   }
   return system.attributes;
+}
+
+function normalizeAttributeLabel(name) {
+  return (name || "").trim();
+}
+
+function getAllAttributeNames() {
+  const names = new Set();
+  systems.forEach((system) => {
+    (system.attributes || []).forEach((entry) => {
+      const label = normalizeAttributeLabel(entry.attribute);
+      if (label) {
+        names.add(label);
+      }
+    });
+  });
+  attributeStandardisationGroups.forEach((group) => {
+    (group.attributes || []).forEach((label) => {
+      const normalized = normalizeAttributeLabel(label);
+      if (normalized) names.add(normalized);
+    });
+  });
+  return Array.from(names).sort((a, b) => a.localeCompare(b));
+}
+
+function getStandardisedAttributeName(name) {
+  const trimmed = normalizeAttributeLabel(name);
+  if (!trimmed) return "";
+  const match = attributeStandardisationGroups.find((group) =>
+    Array.isArray(group.attributes)
+      ? group.attributes.some((alias) => normalizeAttributeLabel(alias).toLowerCase() === trimmed.toLowerCase())
+      : false
+  );
+  return normalizeAttributeLabel(match?.name) || trimmed;
+}
+
+function addStandardisationGroup() {
+  const id = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `std-${Date.now()}`;
+  attributeStandardisationGroups.push({ id, name: "", attributes: [] });
+  renderStandardisationGroups();
+}
+
+function getStandardisationGroup(groupId) {
+  return attributeStandardisationGroups.find((group) => group.id === groupId);
+}
+
+function renderStandardisationGroups() {
+  if (!dataStandardisationGroups) return;
+  dataStandardisationGroups.innerHTML = "";
+  const availableAttributes = getAllAttributeNames();
+  const globallyUsedAttributes = new Set();
+  attributeStandardisationGroups.forEach((group) => {
+    (group.attributes || []).forEach((attr) => {
+      const normalized = normalizeAttributeLabel(attr).toLowerCase();
+      if (normalized) globallyUsedAttributes.add(normalized);
+    });
+  });
+  if (!attributeStandardisationGroups.length) {
+    const empty = document.createElement("p");
+    empty.className = "modal-hint";
+    empty.textContent = "No attribute groups yet. Add your first grouping to begin standardising names.";
+    dataStandardisationGroups.appendChild(empty);
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  attributeStandardisationGroups.forEach((group, index) => {
+    const card = document.createElement("div");
+    card.className = "standardisation-card";
+    card.dataset.groupId = group.id;
+
+    const title = document.createElement("h4");
+    title.textContent = `Grouping ${index + 1}`;
+    card.appendChild(title);
+
+    const nameField = document.createElement("label");
+    nameField.className = "field";
+    const nameSpan = document.createElement("span");
+    nameSpan.textContent = "Master name";
+    const nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.value = group.name || "";
+    nameInput.placeholder = "e.g. First name";
+    nameInput.dataset.groupId = group.id;
+    nameInput.className = "standardisation-name-input";
+    nameField.append(nameSpan, nameInput);
+    card.appendChild(nameField);
+
+    const attributeField = document.createElement("label");
+    attributeField.className = "field";
+    const attributeSpan = document.createElement("span");
+    attributeSpan.textContent = "Attributes";
+    const attributeRow = document.createElement("div");
+    attributeRow.className = "inline-form";
+    const attributeSearch = document.createElement("input");
+    attributeSearch.type = "text";
+    attributeSearch.placeholder = "Type to filter attributes";
+    attributeSearch.dataset.groupId = group.id;
+    attributeSearch.dataset.role = "attributeSearch";
+    attributeSearch.className = "standardisation-attribute-search";
+    const attributeSelect = document.createElement("select");
+    attributeSelect.dataset.groupId = group.id;
+    attributeSelect.dataset.role = "attributeSelect";
+    const usedAttributes = new Set((group.attributes || []).map((attr) => normalizeAttributeLabel(attr).toLowerCase()));
+    const availableForGroup = availableAttributes.filter((attr) => {
+      const normalized = attr.toLowerCase();
+      if (usedAttributes.has(normalized)) return false;
+      if (globallyUsedAttributes.has(normalized)) return false;
+      return true;
+    });
+    attributeSelect.dataset.allOptions = JSON.stringify(availableForGroup);
+    attributeSelect.innerHTML = ["", ...availableForGroup]
+      .map((value) => {
+        const label = value || "Select attribute";
+        return `<option value="${value}">${label}</option>`;
+      })
+      .join("");
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.textContent = "Add";
+    addBtn.dataset.groupId = group.id;
+    addBtn.dataset.action = "add-attribute";
+    attributeRow.append(attributeSearch, attributeSelect, addBtn);
+    attributeField.append(attributeSpan, attributeRow);
+
+    const tokenList = document.createElement("div");
+    tokenList.className = "attribute-token-list";
+    if (Array.isArray(group.attributes) && group.attributes.length) {
+      group.attributes.forEach((attr) => {
+        const token = document.createElement("span");
+        token.className = "attribute-token";
+        const label = document.createElement("span");
+        label.textContent = getStandardisedAttributeName(attr);
+        const raw = document.createElement("span");
+        raw.className = "attribute-display-tag";
+        raw.textContent = normalizeAttributeLabel(attr);
+        const removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.dataset.groupId = group.id;
+        removeBtn.dataset.value = attr;
+        removeBtn.dataset.action = "remove-attribute";
+        removeBtn.setAttribute("aria-label", `Remove ${attr} from ${group.name || "group"}`);
+        removeBtn.textContent = "×";
+        token.append(label, raw, removeBtn);
+        tokenList.appendChild(token);
+      });
+    } else {
+      const emptyToken = document.createElement("div");
+      emptyToken.className = "attribute-display-tag";
+      emptyToken.textContent = "No attributes linked yet.";
+      tokenList.appendChild(emptyToken);
+    }
+
+    const actionsRow = document.createElement("div");
+    actionsRow.className = "modal-actions modal-actions-inline";
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "ghost";
+    removeBtn.dataset.groupId = group.id;
+    removeBtn.dataset.action = "remove-group";
+    removeBtn.textContent = "Remove grouping";
+    actionsRow.appendChild(removeBtn);
+
+    attributeField.appendChild(tokenList);
+    card.append(attributeField, actionsRow);
+    fragment.appendChild(card);
+  });
+
+  dataStandardisationGroups.appendChild(fragment);
+}
+
+function filterStandardisationSelect(groupId, query = "") {
+  const select = dataStandardisationGroups?.querySelector(`select[data-group-id="${groupId}"]`);
+  if (!select) return;
+  const baseOptions = select.dataset.allOptions ? JSON.parse(select.dataset.allOptions) : [];
+  const previousValue = select.value;
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredOptions = ["", ...baseOptions.filter((option) => option.toLowerCase().includes(normalizedQuery))];
+  select.innerHTML = filteredOptions
+    .map((value) => {
+      const label = value || "Select attribute";
+      return `<option value="${value}">${label}</option>`;
+    })
+    .join("");
+  if (filteredOptions.includes(previousValue)) {
+    select.value = previousValue;
+  }
+}
+
+function handleStandardisationGroupChange(event) {
+  const target = event.target;
+  if (target instanceof HTMLInputElement && target.classList.contains("standardisation-name-input")) {
+    const groupId = target.dataset.groupId;
+    const group = getStandardisationGroup(groupId);
+    if (!group) return;
+    group.name = target.value;
+    refreshStandardisedAttributeUsage();
+    scheduleShareUrlSync();
+  }
+}
+
+function handleStandardisationGroupInput(event) {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement)) return;
+  if (target.dataset.role !== "attributeSearch") return;
+  const groupId = target.dataset.groupId;
+  if (!groupId) return;
+  filterStandardisationSelect(groupId, target.value);
+}
+
+function handleStandardisationGroupClick(event) {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  const { action, groupId, value } = target.dataset;
+  if (!groupId) return;
+  const group = getStandardisationGroup(groupId);
+  if (!group) return;
+
+  if (action === "add-attribute") {
+    const select = dataStandardisationGroups?.querySelector(`select[data-group-id="${groupId}"]`);
+    const selected = select?.value || "";
+    const normalized = normalizeAttributeLabel(selected);
+    const takenElsewhere = attributeStandardisationGroups.some(
+      (entry) =>
+        entry.id !== groupId &&
+        (entry.attributes || []).some((attr) => normalizeAttributeLabel(attr).toLowerCase() === normalized.toLowerCase())
+    );
+    if (takenElsewhere) {
+      alert("That attribute is already linked to another grouping. Remove it there first.");
+      return;
+    }
+    if (normalized && !group.attributes.some((attr) => normalizeAttributeLabel(attr).toLowerCase() === normalized.toLowerCase())) {
+      group.attributes.push(normalized);
+      renderStandardisationGroups();
+      refreshStandardisedAttributeUsage();
+      scheduleShareUrlSync();
+    }
+    return;
+  }
+
+  if (action === "remove-attribute") {
+    group.attributes = (group.attributes || []).filter(
+      (attr) => normalizeAttributeLabel(attr).toLowerCase() !== normalizeAttributeLabel(value).toLowerCase()
+    );
+    renderStandardisationGroups();
+    refreshStandardisedAttributeUsage();
+    scheduleShareUrlSync();
+    return;
+  }
+
+  if (action === "remove-group") {
+    attributeStandardisationGroups = attributeStandardisationGroups.filter((entry) => entry.id !== groupId);
+    renderStandardisationGroups();
+    refreshStandardisedAttributeUsage();
+    scheduleShareUrlSync();
+  }
+}
+
+function refreshStandardisedAttributeUsage() {
+  if (activePanelSystem && attributesModal && !attributesModal.classList.contains("hidden")) {
+    renderAttributesModal(activePanelSystem);
+  }
+  renderSystemDataTable();
+  renderVisualAttributeOptions();
+  if (visualModal && !visualModal.classList.contains("hidden")) {
+    window.requestAnimationFrame(renderVisualSnapshot);
+  }
+  updateHighlights();
 }
 
 function ensureApiDetailsOnSystem(system) {
@@ -4689,12 +5050,28 @@ function renderAttributesModal(system) {
     attributeInput.placeholder = "Attribute";
     attributeInput.className = "cell-input";
     attributeCell.appendChild(attributeInput);
+    const displayLabel = document.createElement("div");
+    displayLabel.className = "attribute-display-tag";
+    const displayName = getStandardisedAttributeName(entry.attribute);
+    displayLabel.textContent = displayName ? `Displays as: ${displayName}` : "Displays as: —";
+    attributeCell.appendChild(displayLabel);
 
     const entityCell = document.createElement("td");
     const entitySelect = buildAttributeEntitySelect(system, entry.entity);
     entitySelect.dataset.index = String(index);
     entitySelect.classList.add("cell-input");
     entityCell.appendChild(entitySelect);
+
+    const sorCell = document.createElement("td");
+    sorCell.className = "sor-col";
+    const sorToggle = document.createElement("input");
+    sorToggle.type = "checkbox";
+    sorToggle.className = "cell-input";
+    sorToggle.dataset.index = String(index);
+    sorToggle.dataset.field = "isSor";
+    sorToggle.checked = !!entry.isSor;
+    sorToggle.title = "Mark attribute as system of record";
+    sorCell.appendChild(sorToggle);
 
     const actionsCell = document.createElement("td");
     actionsCell.className = "actions-col";
@@ -4705,7 +5082,7 @@ function renderAttributesModal(system) {
     deleteBtn.dataset.index = String(index);
     actionsCell.appendChild(deleteBtn);
 
-    row.append(attributeCell, entityCell, actionsCell);
+    row.append(attributeCell, entityCell, sorCell, actionsCell);
     fragment.appendChild(row);
   });
 
@@ -4924,14 +5301,15 @@ function handleAttributeTableInput(event) {
   }
   const attributes = ensureAttributesArray(activePanelSystem);
   if (!attributes[index]) {
-    attributes[index] = { attribute: "", entity: "" };
+    attributes[index] = { attribute: "", entity: "", isSor: false };
   }
   const indicesToUpdate = new Set(selectedAttributeRows.size ? selectedAttributeRows : [index]);
   indicesToUpdate.forEach((idx) => {
     if (!attributes[idx]) {
-      attributes[idx] = { attribute: "", entity: "" };
+      attributes[idx] = { attribute: "", entity: "", isSor: false };
     }
-    attributes[idx][field] = target.value;
+    const value = target.type === "checkbox" ? target.checked : target.value;
+    attributes[idx][field] = value;
   });
   refreshAttributeSummaries(activePanelSystem);
 }
@@ -4999,7 +5377,7 @@ function handleAddAttributeRow() {
   if (isEditingLocked()) return;
   if (!activePanelSystem) return;
   const attributes = ensureAttributesArray(activePanelSystem);
-  attributes.push({ attribute: "", entity: attributesModalEntityFilter || "" });
+  attributes.push({ attribute: "", entity: attributesModalEntityFilter || "", isSor: false });
   renderAttributesModal(activePanelSystem);
   refreshAttributeSummaries(activePanelSystem);
 }
@@ -5022,11 +5400,11 @@ function handleProcessAttributesCsv() {
       const attribute = tokens[i];
       if (!attribute) continue;
       const entity = tokens[i + 1] || attributesModalEntityFilter || "";
-      attributes.push({ attribute, entity });
+      attributes.push({ attribute, entity, isSor: false });
     }
   } else {
     tokens.forEach((attribute) => {
-      attributes.push({ attribute, entity: attributesModalEntityFilter || "" });
+      attributes.push({ attribute, entity: attributesModalEntityFilter || "", isSor: false });
     });
   }
   if (attributesCsvInput) {
@@ -5587,6 +5965,7 @@ function resetFilters({ alsoClearSelection = false } = {}) {
   businessOwnerFilterText = "";
   functionOwnerFilterText = "";
   functionalConsumerFilters.clear();
+  filterMatchMode = "or";
   searchQuery = "";
   sorFilterValue = "any";
   spreadsheetFilterValue = "yes";
@@ -5606,6 +5985,9 @@ function resetFilters({ alsoClearSelection = false } = {}) {
   if (businessOwnerFilterInput) businessOwnerFilterInput.value = "";
   if (functionOwnerFilterInput) functionOwnerFilterInput.value = "";
   renderFunctionalConsumerFilterChips();
+  if (filterMatchModeSelect) {
+    filterMatchModeSelect.value = "or";
+  }
   if (searchInput) searchInput.value = "";
   if (sorFilterSelect) {
     sorFilterSelect.value = "any";
@@ -5913,99 +6295,143 @@ function focusOnSystemRelations(system, mode) {
 }
 
 function systemMatchesFilters(system) {
-  if (activeDomainFilters.size) {
-    if (activeDomainFilters.has(DOMAIN_NONE_KEY)) {
-      if (system.domains.size > 0 || activeDomainFilters.size > 1) {
-        return false;
+  const matches = [];
+  const addMatch = (isActive, isMatch) => {
+    if (!isActive) return;
+    matches.push(!!isMatch);
+  };
+
+  const domainActive = activeDomainFilters.size > 0;
+  const domainMatches = (() => {
+    if (!domainActive) return true;
+    const hasNone = activeDomainFilters.has(DOMAIN_NONE_KEY);
+    const selectedDomains = Array.from(activeDomainFilters).filter((domain) => domain !== DOMAIN_NONE_KEY);
+    const hasNoDomains = system.domains.size === 0;
+    if (filterMatchMode === "and") {
+      if (hasNone) {
+        return hasNoDomains && selectedDomains.length === 0;
       }
-    } else {
-      const hasAllDomains = Array.from(activeDomainFilters).every((domain) => system.domains.has(domain));
-      if (!hasAllDomains) {
-        return false;
-      }
+      return selectedDomains.every((domain) => system.domains.has(domain));
     }
-  }
-  if (platformOwnerFilterText) {
+    if (hasNone && hasNoDomains) return true;
+    if (!selectedDomains.length) return hasNoDomains;
+    return selectedDomains.some((domain) => system.domains.has(domain));
+  })();
+  addMatch(domainActive, domainMatches);
+
+  const platformActive = !!platformOwnerFilterText;
+  const platformMatches = (() => {
+    if (!platformActive) return true;
     const ownerValue = (system.platformOwner || "").trim();
     if (platformOwnerFilterText === OWNER_NONE_FILTER) {
-      if (ownerValue) return false;
-    } else if (!ownerValue.toLowerCase().includes(platformOwnerFilterText)) {
-      return false;
+      return !ownerValue;
     }
-  }
-  if (businessOwnerFilterText) {
+    return ownerValue.toLowerCase().includes(platformOwnerFilterText);
+  })();
+  addMatch(platformActive, platformMatches);
+
+  const businessActive = !!businessOwnerFilterText;
+  const businessMatches = (() => {
+    if (!businessActive) return true;
     const ownerValue = (system.businessOwner || "").trim();
     if (businessOwnerFilterText === OWNER_NONE_FILTER) {
-      if (ownerValue) return false;
-    } else if (!ownerValue.toLowerCase().includes(businessOwnerFilterText)) {
-      return false;
+      return !ownerValue;
     }
-  }
-  if (functionOwnerFilterText) {
+    return ownerValue.toLowerCase().includes(businessOwnerFilterText);
+  })();
+  addMatch(businessActive, businessMatches);
+
+  const functionActive = !!functionOwnerFilterText;
+  const functionMatches = (() => {
+    if (!functionActive) return true;
     const ownerValue = (system.functionOwner || "").trim();
     if (functionOwnerFilterText === OWNER_NONE_FILTER) {
-      if (ownerValue) return false;
-    } else if (!ownerValue.toLowerCase().includes(functionOwnerFilterText)) {
-      return false;
+      return !ownerValue;
     }
-  }
-  if (functionalConsumerFilters.size) {
+    return ownerValue.toLowerCase().includes(functionOwnerFilterText);
+  })();
+  addMatch(functionActive, functionMatches);
+
+  const consumersActive = functionalConsumerFilters.size > 0;
+  const consumersMatch = (() => {
+    if (!consumersActive) return true;
     const consumers =
       system.functionalConsumers instanceof Set
         ? system.functionalConsumers
         : new Set(system.functionalConsumers || []);
-    const hasAll = Array.from(functionalConsumerFilters).every((consumer) => consumers.has(consumer));
-    if (!hasAll) return false;
-  }
-  if (sorFilterValue === "yes" && !systemHasSor(system)) {
-    return false;
-  }
-  if (sorFilterValue === "no" && systemHasSor(system)) {
-    return false;
-  }
-  if (spreadsheetFilterValue === "no" && system.isSpreadsheet) {
-    return false;
-  }
-  if (filePresenceFilterValue === "yes" && !(system.fileUrl && system.fileUrl.trim())) {
-    return false;
-  }
-  if (filePresenceFilterValue === "no" && system.fileUrl && system.fileUrl.trim()) {
-    return false;
-  }
-  const levelValue = LEVEL_OPTIONS.includes(String(system.level)) ? String(system.level) : LEVEL_OPTIONS[0];
-  if (!levelFilterSelection.has(levelValue)) {
-    return false;
-  }
-  const apiDetails = ensureApiDetailsOnSystem(system);
-  if (apiAvailabilityFilterValue === "yes" && apiDetails.available !== "yes") {
-    return false;
-  }
-  if (apiAvailabilityFilterValue === "no" && apiDetails.available !== "no") {
-    return false;
-  }
-  const employeeTypes =
-    system.employeeTypes instanceof Set
-      ? system.employeeTypes
-      : new Set(Array.isArray(system.employeeTypes) ? system.employeeTypes : []);
-  if (employeeTypeFilterValue !== "any") {
+    const selectedConsumers = Array.from(functionalConsumerFilters);
+    return filterMatchMode === "and"
+      ? selectedConsumers.every((consumer) => consumers.has(consumer))
+      : selectedConsumers.some((consumer) => consumers.has(consumer));
+  })();
+  addMatch(consumersActive, consumersMatch);
+
+  const sorActive = sorFilterValue !== "any";
+  const sorMatch = (() => {
+    if (!sorActive) return true;
+    const hasSor = systemHasSor(system);
+    return sorFilterValue === "yes" ? hasSor : !hasSor;
+  })();
+  addMatch(sorActive, sorMatch);
+
+  const spreadsheetActive = spreadsheetFilterValue !== "yes";
+  const spreadsheetMatch = (() => {
+    if (!spreadsheetActive) return true;
+    return spreadsheetFilterValue === "no" ? !system.isSpreadsheet : true;
+  })();
+  addMatch(spreadsheetActive, spreadsheetMatch);
+
+  const filePresenceActive = filePresenceFilterValue !== "any";
+  const filePresenceMatch = (() => {
+    if (!filePresenceActive) return true;
+    const hasFile = !!(system.fileUrl && system.fileUrl.trim());
+    return filePresenceFilterValue === "yes" ? hasFile : !hasFile;
+  })();
+  addMatch(filePresenceActive, filePresenceMatch);
+
+  const levelActive = levelFilterSelection.size !== LEVEL_OPTIONS.length;
+  const levelMatch = (() => {
+    const levelValue = LEVEL_OPTIONS.includes(String(system.level)) ? String(system.level) : LEVEL_OPTIONS[0];
+    return levelFilterSelection.has(levelValue);
+  })();
+  addMatch(levelActive, levelMatch);
+
+  const apiActive = apiAvailabilityFilterValue !== "any";
+  const apiMatch = (() => {
+    if (!apiActive) return true;
+    const apiDetails = ensureApiDetailsOnSystem(system);
+    return apiAvailabilityFilterValue === "yes" ? apiDetails.available === "yes" : apiDetails.available === "no";
+  })();
+  addMatch(apiActive, apiMatch);
+
+  const employeeActive = employeeTypeFilterValue !== "any";
+  const employeeMatch = (() => {
+    if (!employeeActive) return true;
+    const employeeTypes =
+      system.employeeTypes instanceof Set
+        ? system.employeeTypes
+        : new Set(Array.isArray(system.employeeTypes) ? system.employeeTypes : []);
     const hasNone = employeeTypes.size === 0 || employeeTypes.has("None");
-    if (employeeTypeFilterValue === "none" && !hasNone) {
-      return false;
+    if (employeeTypeFilterValue === "none") {
+      return hasNone;
     }
-    if (employeeTypeFilterValue !== "none" && !employeeTypes.has(employeeTypeFilterValue)) {
-      return false;
-    }
-  }
-  if (waitingOnInfoFilterValue === "yes" && !system.waitingOnInfo) {
-    return false;
-  }
-  if (waitingOnInfoFilterValue === "no" && system.waitingOnInfo) {
-    return false;
-  }
-  if (searchQuery) {
-    return doesSystemMatchSearch(system);
-  }
-  return true;
+    return employeeTypes.has(employeeTypeFilterValue);
+  })();
+  addMatch(employeeActive, employeeMatch);
+
+  const waitingActive = waitingOnInfoFilterValue !== "any";
+  const waitingMatch = (() => {
+    if (!waitingActive) return true;
+    return waitingOnInfoFilterValue === "yes" ? system.waitingOnInfo : !system.waitingOnInfo;
+  })();
+  addMatch(waitingActive, waitingMatch);
+
+  const searchActive = !!searchQuery;
+  const searchMatch = searchActive ? doesSystemMatchSearch(system) : true;
+  addMatch(searchActive, searchMatch);
+
+  if (!matches.length) return true;
+  return filterMatchMode === "and" ? matches.every(Boolean) : matches.some(Boolean);
 }
 
 function hasActiveFilters() {
@@ -6058,9 +6484,16 @@ function doesSystemMatchSearch(system) {
       return types.some((type) => type.toLowerCase().includes(query));
     }
     case "entity":
-      return system.entities.some((entity) => entity.name.toLowerCase().includes(query));
+      return (
+        system.entities.some((entity) => entity.name.toLowerCase().includes(query)) ||
+        (system.attributes || []).some((entry) => (entry.entity || "").toLowerCase().includes(query))
+      );
     case "attributes":
-      return (system.attributes || []).some((entry) => (entry.attribute || "").toLowerCase().includes(query));
+      return (system.attributes || []).some((entry) => {
+        const raw = (entry.attribute || "").toLowerCase();
+        const display = getStandardisedAttributeName(entry.attribute).toLowerCase();
+        return raw.includes(query) || display.includes(query);
+      });
     case "system":
     default:
       return system.name.toLowerCase().includes(query);
@@ -7037,6 +7470,18 @@ function closeSettingsModal() {
   settingsModal?.classList.add("hidden");
 }
 
+function openDataStandardisationModal() {
+  closeSettingsModal();
+  renderStandardisationGroups();
+  dataStandardisationModal?.classList.remove("hidden");
+}
+
+function closeDataStandardisationModal() {
+  dataStandardisationModal?.classList.add("hidden");
+  refreshStandardisedAttributeUsage();
+  scheduleShareUrlSync();
+}
+
 function embedFilterPanelIntoVisual() {
   if (!filterPanel || !visualFilterHost || !filterPanelPlaceholder) return;
   if (sidebarCollapsedBeforeVisual === null) {
@@ -7599,7 +8044,7 @@ function renderVisualSnapshot() {
   } else if (groupByAttribute) {
     eligibleSystems = systemsToShow.filter((system) =>
       (system.attributes || []).some(
-        (entry) => (entry.attribute || "").trim().toLowerCase() === targetAttribute.trim().toLowerCase()
+        (entry) => getStandardisedAttributeName(entry.attribute).toLowerCase() === targetAttribute.trim().toLowerCase()
       )
     );
   } else if (groupByBusinessOwner) {
@@ -8845,7 +9290,11 @@ function serializeState(accessModeOverride, options = {}) {
         : {
             fileUrl: system.fileUrl,
             attributes: Array.isArray(system.attributes)
-              ? system.attributes.map((entry) => ({ attribute: entry.attribute || "", entity: entry.entity || "" }))
+              ? system.attributes.map((entry) => ({
+                  attribute: entry.attribute || "",
+                  entity: entry.entity || "",
+                  isSor: !!entry.isSor,
+                }))
               : [],
           }),
       api: normalizeApiDetails(system.api || {}),
@@ -8872,6 +9321,11 @@ function serializeState(accessModeOverride, options = {}) {
     functionOwners: Array.from(functionOwnerOptions),
     counter: systemCounter,
     colorBy: currentColorBy,
+    attributeGroups: attributeStandardisationGroups.map((group) => ({
+      id: group.id,
+      name: group.name,
+      attributes: Array.isArray(group.attributes) ? [...group.attributes] : [],
+    })),
     customDomains: domainDefinitions.filter((domain) => domain.isCustom).map((domain) => ({
       key: domain.key,
       label: domain.label,
@@ -8883,6 +9337,7 @@ function serializeState(accessModeOverride, options = {}) {
       businessOwner: businessOwnerFilterInput?.value || "",
       functionOwner: functionOwnerFilterInput?.value || "",
       functionalConsumers: Array.from(functionalConsumerFilters),
+      filterMatchMode,
       search: searchInput?.value || "",
       searchType,
       filterMode,
@@ -8938,10 +9393,18 @@ function loadSerializedState(snapshot) {
     snapshot.functionOwners.forEach((value) => functionOwnerOptions.add(value));
   }
   domainDefinitions = buildDomainDefinitions(snapshot.customDomains);
+  attributeStandardisationGroups = Array.isArray(snapshot.attributeGroups)
+    ? snapshot.attributeGroups.map((group) => ({
+        id: group.id || `std-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        name: group.name || "",
+        attributes: Array.isArray(group.attributes) ? group.attributes.filter(Boolean) : [],
+      }))
+    : [];
   refreshDomainOptionsUi();
   populateFunctionOwnerOptions();
   renderVisualFunctionOptions();
   renderVisualEntityOptions();
+  renderVisualAttributeOptions();
   renderVisualBusinessOwnerOptions();
   setFileName(snapshot.fileName || "Untitled");
   applyFilterState(snapshot.filterState);
@@ -9044,6 +9507,7 @@ function applyFilterState(filterState = {}) {
     ? filterState.functionalConsumers
     : [];
   const searchValue = filterState.search || "";
+  const matchMode = filterState.filterMatchMode || "or";
   const spreadsheetFilter = filterState.spreadsheets || "yes";
   const filePresenceFilter = filterState.filePresence || "any";
   const apiAvailabilityFilter = filterState.apiAvailability || "any";
@@ -9061,6 +9525,7 @@ function applyFilterState(filterState = {}) {
   functionOwnerFilterText = normalizeOwnerFilterValue(functionOwnerValue);
   functionalConsumerFilters.clear();
   functionalConsumerValues.forEach((value) => functionalConsumerFilters.add(value));
+  filterMatchMode = matchMode === "and" ? "and" : "or";
   searchQuery = searchValue.trim().toLowerCase();
   searchType = filterState.searchType || searchType;
   filterMode = filterState.filterMode || filterMode;
@@ -9079,6 +9544,7 @@ function applyFilterState(filterState = {}) {
   if (businessOwnerFilterInput) businessOwnerFilterInput.value = businessOwnerValue;
   if (functionOwnerFilterInput) functionOwnerFilterInput.value = functionOwnerValue;
   renderFunctionalConsumerFilterChips();
+  if (filterMatchModeSelect) filterMatchModeSelect.value = filterMatchMode;
   if (searchInput) searchInput.value = searchValue;
   if (searchTypeSelect) searchTypeSelect.value = searchType;
   if (filterModeSelect) filterModeSelect.value = filterMode;
@@ -9172,6 +9638,8 @@ function formatSaveEntryName(fileName, date) {
       if (filterState.functionOwner) pruned.functionOwner = filterState.functionOwner;
       if (Array.isArray(filterState.functionalConsumers) && filterState.functionalConsumers.length)
         pruned.functionalConsumers = filterState.functionalConsumers;
+      if (filterState.filterMatchMode && filterState.filterMatchMode !== "or")
+        pruned.filterMatchMode = filterState.filterMatchMode;
       if (filterState.sor && filterState.sor !== "any") pruned.sor = filterState.sor;
       if (filterState.spreadsheets && filterState.spreadsheets !== "yes") pruned.spreadsheets = filterState.spreadsheets;
       if (filterState.filePresence && filterState.filePresence !== "any") pruned.filePresence = filterState.filePresence;
@@ -9275,6 +9743,10 @@ function formatSaveEntryName(fileName, date) {
       colorBy: state.colorBy,
       filterState: compactFilters,
       accessMode: state.accessMode,
+      attributeGroups:
+        attributeStandardisationGroups && attributeStandardisationGroups.length
+          ? attributeStandardisationGroups
+          : undefined,
       customDomains: state.customDomains && state.customDomains.length ? state.customDomains : undefined,
       functionOwners: state.functionOwners && state.functionOwners.length ? state.functionOwners : undefined,
     };
@@ -9628,13 +10100,14 @@ function renderSystemDataTable() {
       const entityName = entity.name || "";
       const matchingAttributes = systemAttributes
         .filter((entry) => (entry.entity || "") === entityName)
-        .map((entry) => entry.attribute)
+        .map((entry) => getStandardisedAttributeName(entry.attribute))
         .filter((attr) => !!attr && !!attr.trim());
+      const uniqueAttributes = Array.from(new Set(matchingAttributes));
 
       rawRows.push({
         domain: domainLabel || "—",
         entity: entityName || "—",
-        attributes: matchingAttributes,
+        attributes: uniqueAttributes,
         system: systemName,
         systemId: system.id,
         level: LEVEL_OPTIONS.includes(String(system.level)) ? String(system.level) : LEVEL_OPTIONS[0],
@@ -9659,9 +10132,19 @@ function renderSystemDataTable() {
     });
   });
 
-  const matchesFilter = (value, filterText) => {
+  const matchesFilter = (value, filterText, columnKey) => {
     const normalizedFilter = (filterText || "").trim().toLowerCase();
     if (!normalizedFilter) return true;
+
+    if (columnKey === "attributes") {
+      const terms = normalizedFilter
+        .split(",")
+        .map((term) => term.trim())
+        .filter(Boolean);
+      const searchTerms = terms.length ? terms : [normalizedFilter];
+      const values = normalizeValues(value).map((val) => val.toLowerCase());
+      return searchTerms.some((term) => values.some((val) => val === term));
+    }
 
     const terms = normalizedFilter
       .split(/[\s,]+/)
@@ -9678,7 +10161,7 @@ function renderSystemDataTable() {
   const filteredRows = rawRows.filter((row) => {
     const hasFilterMismatch = Object.entries(dataTableColumnFilters).some(([columnKey, filterValue]) => {
       if (!filterValue) return false;
-      return !matchesFilter(row[columnKey], filterValue);
+      return !matchesFilter(row[columnKey], filterValue, columnKey);
     });
 
     if (hasFilterMismatch) {
